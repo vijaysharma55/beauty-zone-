@@ -1,0 +1,6 @@
+{
+  "name": "Beauty Zone Jaipur",
+  "description": "Jaipur's trusted luxury salon, bridal makeover studio, and beauty academy offering HD bridal makeup, hair botox, 24K gold facials, and doorstep home salon services.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

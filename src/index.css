@@ -1,0 +1,193 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: 'Playfair Display', Georgia, serif;
+  --font-sans: 'Source Sans 3', 'Inter', system-ui, sans-serif;
+  --font-tight: 'Inter Tight', 'Inter', sans-serif;
+
+  --color-bz-cream: #FAF5E5;
+  --color-bz-slate: #0F172A;
+  --color-bz-charcoal: #4A4A4A;
+  --color-bz-gold: #D09A40;
+  --color-bz-amber: #DCA54A;
+  --color-bz-white: #FFFFFF;
+
+  --shadow-token: rgba(0, 0, 0, 0.24) 0px 64px 120px -48px;
+  --shadow-sm-token: rgba(10, 13, 18, 0.04) 0px 3px 3px -1.5px, rgba(10, 13, 18, 0.03) 0px 8px 8px -4px, rgba(10, 13, 18, 0.08) 0px 20px 24px -4px;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #FAF5E5;
+  color: #0F172A;
+}
+
+/* Custom scrollbar for sleek design system panels */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(208, 154, 64, 0.35);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(208, 154, 64, 0.6);
+}
+
+/* ========================================================
+   LUXURY HOVER & MICRO-INTERACTIONS
+   ======================================================== */
+
+/* Major Cards: scale(1.03) and 0 18px 45px rgba(0,0,0,0.12) */
+.luxe-card-hover {
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease;
+  will-change: transform, box-shadow;
+}
+.luxe-card-hover:hover {
+  transform: scale(1.03);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.12);
+}
+
+/* Major Cards with subtle lift: scale(1.03) translateY(-4px) */
+.luxe-card-lift {
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease;
+  will-change: transform, box-shadow;
+}
+.luxe-card-lift:hover {
+  transform: scale(1.03) translateY(-4px);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.12);
+}
+
+/* Logo Hover: scale(1.05) */
+.luxe-logo-hover {
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+}
+.luxe-logo-hover:hover {
+  transform: scale(1.05);
+}
+
+/* Button Hover Animations */
+.luxe-btn {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+  will-change: transform, box-shadow;
+}
+.luxe-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.16);
+}
+.luxe-btn:active {
+  transform: translateY(0);
+}
+
+.luxe-btn-gold {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.25s ease, color 0.25s ease;
+  will-change: transform, box-shadow;
+}
+.luxe-btn-gold:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(208, 154, 64, 0.35);
+}
+.luxe-btn-gold:active {
+  transform: translateY(0);
+}
+
+/* Navigation Underline Animation */
+.nav-link-underline {
+  position: relative;
+  display: inline-block;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.nav-link-underline::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background-color: #D09A40;
+  border-radius: 9999px;
+  transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1), left 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.nav-link-underline:hover::after {
+  width: 100%;
+  left: 0;
+}
+
+/* Luxury Image Zoom on Hover */
+.luxe-img-zoom {
+  transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+}
+.group:hover .luxe-img-zoom {
+  transform: scale(1.08);
+}
+
+/* Subtle Floating Effects */
+@keyframes floatSubtle {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+.animate-float-subtle {
+  animation: floatSubtle 4.5s ease-in-out infinite;
+}
+
+@keyframes floatSubtleSlow {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+.animate-float-slow {
+  animation: floatSubtleSlow 6s ease-in-out infinite;
+}
+
+/* Modal Entrance Animation */
+@keyframes modalEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.animate-modal-enter {
+  animation: modalEnter 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Success Confirmation Animation */
+@keyframes successPop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.animate-success-pop {
+  animation: successPop 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
