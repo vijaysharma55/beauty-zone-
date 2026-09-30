@@ -1,5 +1,5 @@
 import React from 'react';
-import { CalendarCheck, Crown, SlidersHorizontal } from 'lucide-react';
+import { CalendarCheck, Crown, SlidersHorizontal, Sparkles } from 'lucide-react';
 
 interface NavbarProps {
   onOpenBooking: () => void;
@@ -29,15 +29,32 @@ export const Navbar: React.FC<NavbarProps> = ({
         </a>
 
         {/* Navigation Links in Simple Indian English */}
-        <nav className="hidden lg:flex items-center gap-6 text-sm font-medium text-[#4A4A4A]">
-          <a href="#services" className="nav-link-underline hover:text-[#D09A40] transition-colors">Services</a>
-          <a href="#bridal" className="nav-link-underline hover:text-[#D09A40] transition-colors">Bridal Studio</a>
-          <a href="#bundles" className="nav-link-underline hover:text-[#D09A40] transition-colors">Packages</a>
-          <a href="#gallery" className="nav-link-underline hover:text-[#D09A40] transition-colors">Real Photos</a>
-          <a href="#stylists" className="nav-link-underline hover:text-[#D09A40] transition-colors">Our Stylists</a>
-          <a href="#founder" className="nav-link-underline hover:text-[#D09A40] transition-colors">About Founder</a>
-          <a href="#booking" className="nav-link-underline hover:text-[#D09A40] transition-colors">Home Service</a>
-          <a href="#locations" className="nav-link-underline hover:text-[#D09A40] transition-colors">Our Salons</a>
+        <nav className="hidden lg:flex items-center gap-4.5 text-sm font-medium text-[#4A4A4A]">
+          <a href="#featured-reels" className="nav-link-underline hover:text-[#D09A40] transition-colors flex items-center gap-1">
+            <span>Trending Reels</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-pink-500 animate-pulse" />
+          </a>
+          <a href="#bundles" className="nav-link-underline hover:text-[#D09A40] transition-colors font-semibold text-[#D09A40]">
+            Deals & Offers
+          </a>
+          <a href="#services" className="nav-link-underline hover:text-[#D09A40] transition-colors">
+            Services & Rate Card
+          </a>
+          <a href="#booking" className="nav-link-underline hover:text-[#D09A40] transition-colors">
+            Price Calculator
+          </a>
+          <a href="#gallery" className="nav-link-underline hover:text-[#D09A40] transition-colors">
+            Transformations
+          </a>
+          <a href="#reviews" className="nav-link-underline hover:text-[#D09A40] transition-colors">
+            Client Reviews
+          </a>
+          <a href="#locations" className="nav-link-underline hover:text-[#D09A40] transition-colors">
+            Our Salons
+          </a>
+          <a href="#faq" className="nav-link-underline hover:text-[#D09A40] transition-colors">
+            FAQs
+          </a>
         </nav>
 
         {/* Action Buttons */}
@@ -46,7 +63,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               onClick={onOpenManagement}
               className="px-3.5 py-2 text-xs font-semibold text-[#0F172A] bg-white/80 hover:bg-white border border-[#0F172A]/15 hover:border-[#D09A40] rounded-lg luxe-btn shadow-xs flex items-center gap-1.5 cursor-pointer"
-              title="Admin Dashboard: Manage Packages & Real Photos"
+              title="Admin Dashboard: Manage Packages, Services & Videos"
             >
               <SlidersHorizontal className="w-3.5 h-3.5 text-[#D09A40]" />
               <span className="hidden sm:inline">Admin Dashboard</span>

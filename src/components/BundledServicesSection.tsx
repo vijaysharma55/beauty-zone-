@@ -43,13 +43,15 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
   ]);
 
   // Active packages from props or fallback to CURATED_BUNDLES
-  const displayPackages = useMemo(() => {
+  const displayPackages: SalonPackage[] = useMemo(() => {
     if (packages && packages.length > 0) {
       return packages.filter((p) => p.active);
     }
     return CURATED_BUNDLES.map((cb) => ({
       id: cb.id,
       name: cb.title,
+      tagline: cb.tagline,
+      offer_name: cb.badge || 'Curated Offer',
       description: cb.description,
       services: cb.servicesIncluded,
       duration: cb.duration,
@@ -216,12 +218,24 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
                         {/* Bottom Title in Scrim */}
                         <div className="absolute bottom-3 left-4 right-4 text-white">
                           <div className="flex items-center gap-2 text-xs font-mono text-[#FAF5E5]/90 uppercase">
-                            <Tag className="w-3.5 h-3.5 text-[#D09A40]" />
-                            <span>Validity: {pkg.validity}</span>
+                            {pkg.offer_name && (
+                              <span className="px-2 py-0.5 bg-[#D09A40] text-[#0F172A] font-bold rounded text-[10px]">
+                                {pkg.offer_name}
+                              </span>
+                            )}
+                            <div className="flex items-center gap-1">
+                              <Tag className="w-3.5 h-3.5 text-[#D09A40]" />
+                              <span>Validity: {pkg.validity}</span>
+                            </div>
                           </div>
-                          <h3 className="font-serif text-xl sm:text-2xl font-bold text-white mt-0.5">
+                          <h3 className="font-serif text-xl sm:text-2xl font-bold text-white mt-1">
                             {pkg.name}
                           </h3>
+                          {pkg.tagline && (
+                            <p className="text-xs text-[#FAF5E5]/90 italic line-clamp-1 mt-0.5">
+                              "{pkg.tagline}"
+                            </p>
+                          )}
                         </div>
                       </div>
 

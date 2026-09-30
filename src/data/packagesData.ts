@@ -1,5 +1,199 @@
 import { SalonPackage } from '../types';
 
+export const PACKAGE_PRESET_IMAGES = [
+  {
+    label: 'Bridal Makeover & Draping',
+    url: '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg',
+    category: 'Bridal',
+  },
+  {
+    label: 'Hair Botox & Luxury Styling',
+    url: '/src/assets/images/hair_styling_luxe_1790672021591.jpg',
+    category: 'Hair',
+  },
+  {
+    label: 'Party Glam & Sangeet Makeup',
+    url: '/src/assets/images/home_salon_service_1790676110547.jpg',
+    category: 'Makeup',
+  },
+  {
+    label: 'Ayurvedic Spa & Body Polish',
+    url: '/src/assets/images/prebridal_spa_ritual_1790676123541.jpg',
+    category: 'Spa',
+  },
+  {
+    label: 'Jaipur Salon Atmosphere',
+    url: '/src/assets/images/hero_jaipur_salon_1790671992521.jpg',
+    category: 'Salon',
+  },
+  {
+    label: 'Academy & Masterclass',
+    url: '/src/assets/images/academy_training_jaipur_1790676136151.jpg',
+    category: 'Academy',
+  },
+];
+
+export interface PackagePresetTemplate {
+  name: string;
+  festivalName: string;
+  tagline: string;
+  taglineIdeas: [string, string, string];
+  description: string;
+  duration: string;
+  regularPrice: number;
+  packagePrice: number;
+  validity: string;
+  image: string;
+  services: string[];
+}
+
+export const PACKAGE_PRESET_TEMPLATES: PackagePresetTemplate[] = [
+  {
+    name: 'Royal Rajasthani Bridal Package',
+    festivalName: 'Wedding Season Exclusive Deal',
+    tagline: 'Complete head-to-toe makeover for your big day',
+    taglineIdeas: [
+      'Complete head-to-toe makeover for your big day',
+      'Radiate timeless bridal elegance with luxury Rajasthani touches',
+      'Look picture-perfect with HD airbrush finish & Kundan jewellery draping'
+    ],
+    description: 'Comprehensive 2-day royal makeover for Jaipur brides. Includes HD Airbrush makeup, 24K Gold Leaf facial, bridal nail extensions, and milk body spa.',
+    duration: '2 Days (Wedding Eve & D-Day)',
+    regularPrice: 38000,
+    packagePrice: 28500,
+    validity: 'Wedding Season Pass (Oct - Feb)',
+    image: '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg',
+    services: [
+      'Royal Rajasthani HD Bridal Makeover (Airbrush & Jewelry Setting)',
+      '24K Gold Leaf Glow Facial with Ultrasound Skin Firming',
+      'Bridal Gel Nail Extensions with Swarovski Stones & Gold Foil Art',
+      'Rose Petal & Milk Body Spa with Warm Almond Oil Massage'
+    ]
+  },
+  {
+    name: 'Karwa Chauth Glow Combo',
+    festivalName: 'Karwa Chauth Special Offer',
+    tagline: 'Get festive-ready glow with top hair & skin treatments',
+    taglineIdeas: [
+      'Get festive-ready glow with top hair & skin treatments',
+      'Radiate timeless bridal glow for your special Karwa Chauth evening',
+      'Head-to-toe festive pampering at exclusive festival savings'
+    ],
+    description: 'Festive ready in 3 hours with instant glass skin gold facial, bouncy blowdry hair styling, hand manicure & traditional henna.',
+    duration: '180 mins',
+    regularPrice: 12000,
+    packagePrice: 8400,
+    validity: '60 Days from purchase',
+    image: '/src/assets/images/home_salon_service_1790676110547.jpg',
+    services: [
+      '24K Gold Leaf Glow Facial with Ultrasound Skin Firming',
+      'Haircut, Head Wash & Bouncy Blowdry',
+      'Russian Manicure & Warm Paraffin Hand Spa'
+    ]
+  },
+  {
+    name: 'Festive Hair Spa & Keratin Deal',
+    festivalName: 'Grand Hair Revival Festival',
+    tagline: 'Save big on our most requested luxury salon services',
+    taglineIdeas: [
+      'Save big on our most requested luxury salon services',
+      'Transform frizzy locks into mirror-shine silky smooth hair',
+      'Chemical-free Moroccan Nanoplastia with revitalizing scalp therapy'
+    ],
+    description: 'Transform rough, frizzy hair into silky smooth tresses with 100% formaldehyde-free nanoplastia, deep scalp spa and precision split-end haircut.',
+    duration: '210 mins',
+    regularPrice: 15500,
+    packagePrice: 10850,
+    validity: '90 Days from purchase',
+    image: '/src/assets/images/hair_styling_luxe_1790672021591.jpg',
+    services: [
+      'Moroccan Nanoplastia & Hair Botox Treatment (Chemical-Free)',
+      'Hydra-Facial Deep Clean with Blackhead Removal',
+      'Haircut, Head Wash & Bouncy Blowdry'
+    ]
+  },
+  {
+    name: 'Diwali Party Prep Pack',
+    festivalName: 'Diwali Shubh Deepawali Sale',
+    tagline: 'Sparkle bright this Diwali with 7-step glass skin glow & glam makeup',
+    taglineIdeas: [
+      'Sparkle bright this Diwali with 7-step glass skin glow & glam makeup',
+      'Get festive celebration ready in just 3 hours with deep pampering',
+      'Save big on our most requested luxury salon services'
+    ],
+    description: 'The ultimate Diwali party glow package featuring waterproof HD makeup, 24K Gold luxury facial, and festive nail art extensions.',
+    duration: '190 mins',
+    regularPrice: 13500,
+    packagePrice: 9450,
+    validity: '60 Days from purchase',
+    image: '/src/assets/images/prebridal_spa_ritual_1790676123541.jpg',
+    services: [
+      'Sangeet & Party Glam Makeup (Dewy Glow & Soft Waves)',
+      '24K Gold Leaf Glow Facial with Ultrasound Skin Firming',
+      'Bridal Gel Nail Extensions with Swarovski Stones & Gold Foil Art'
+    ]
+  },
+  {
+    name: 'Summer Hydration Glow Kit',
+    festivalName: 'Summer Sun Shield & De-Tan Sale',
+    tagline: 'Deep hydration, cooling cleanse and herbal de-tan for glowing summer skin',
+    taglineIdeas: [
+      'Beat the Jaipur summer heat with refreshing icy HydraFacial',
+      'Complete sun damage repair and cooling mint body polish',
+      'Deeply hydrate, tone and protect your skin against harsh UV damage'
+    ],
+    description: 'Cooling, purifying package designed for Jaipur summers. Removes sun tan, extracts blackheads, and delivers deep hyaluronic skin hydration.',
+    duration: '150 mins',
+    regularPrice: 9500,
+    packagePrice: 6650,
+    validity: '30 Days from purchase',
+    image: '/src/assets/images/hero_jaipur_salon_1790671992521.jpg',
+    services: [
+      'Hydra-Facial Deep Clean with Blackhead Removal',
+      'Rose Petal & Milk Body Spa with Warm Almond Oil Massage',
+      'Russian Manicure & Warm Paraffin Hand Spa'
+    ]
+  }
+];
+
+export function generateTaglineIdeas(packageName: string): [string, string, string] {
+  const lower = packageName.toLowerCase();
+  
+  if (lower.includes('bridal') || lower.includes('wedding') || lower.includes('dulhan')) {
+    return [
+      'Complete head-to-toe makeover for your big day',
+      'Radiate timeless bridal elegance with luxury Rajasthani touches',
+      'Look picture-perfect with HD airbrush finish and royal jewellery draping'
+    ];
+  }
+  if (lower.includes('hair') || lower.includes('botox') || lower.includes('keratin') || lower.includes('spa')) {
+    return [
+      'Save big on our most requested luxury salon services',
+      'Transform frizzy locks into mirror-shine smooth hair',
+      'Chemical-free Moroccan Nanoplastia with revitalizing scalp therapy'
+    ];
+  }
+  if (lower.includes('glow') || lower.includes('skin') || lower.includes('facial') || lower.includes('hydra')) {
+    return [
+      'Get festive-ready glow with top hair & skin treatments',
+      'Recharge tired skin with deep ultrasound hydration & 24K gold leaf',
+      'Flawless glass skin radiance designed for Jaipur weather'
+    ];
+  }
+  if (lower.includes('party') || lower.includes('sangeet') || lower.includes('glam') || lower.includes('diwali')) {
+    return [
+      'Sparkle bright at every festive celebration with HD glam',
+      'Get festive-ready glow with top hair & skin treatments',
+      'Save big on our most requested luxury salon services'
+    ];
+  }
+  return [
+    `Complete head-to-toe makeover with verified salon savings`,
+    `Get festive-ready glow with top hair & skin treatments`,
+    `Save big on our most requested luxury salon services`
+  ];
+}
+
 export const OUTLET_OPTIONS = [
   'All Jaipur Outlets',
   'C-Scheme Flagship Salon',

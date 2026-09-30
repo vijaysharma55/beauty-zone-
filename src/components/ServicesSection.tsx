@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { SALON_SERVICES } from '../data/salonData';
 import { ServiceItem, ServiceReview } from '../types';
@@ -7,7 +7,6 @@ import { ServiceReviewModal } from './ServiceReviewModal';
 import { RevealOnScroll } from './RevealOnScroll';
 import { 
   Check, 
-  Clock, 
   Sparkles, 
   ArrowUpRight, 
   Search, 
@@ -18,18 +17,27 @@ import {
   Layers,
   ArrowUpDown,
   Star,
-  MessageSquare
+  MessageSquare,
+  Sparkle,
+  Heart,
+  GraduationCap,
+  Flame,
+  Sliders,
+  RotateCcw,
+  IndianRupee
 } from 'lucide-react';
 
 interface ServicesSectionProps {
+  services?: ServiceItem[];
   onSelectService: (service: ServiceItem) => void;
 }
 
-export type ServiceFilterCategory = 'bridal' | 'hair' | 'skin' | 'all';
+export type ServiceFilterCategory = 'all' | 'bridal' | 'hair' | 'skin' | 'nails' | 'spa' | 'academy';
 
 interface CategoryMetadata {
   id: ServiceFilterCategory;
   label: string;
+  shortLabel: string;
   icon: React.ElementType;
   description: string;
   image: string;
@@ -38,9 +46,11 @@ interface CategoryMetadata {
   features: string[];
 }
 
-export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectService }) => {
-  const [activeCategory, setActiveCategory] = useState<ServiceFilterCategory>('bridal');
+export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSelectService }) => {
+  const allServices = services && services.length > 0 ? services : SALON_SERVICES;
+  const [activeCategory, setActiveCategory] = useState<ServiceFilterCategory>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [maxPrice, setMaxPrice] = useState<number>(50000);
   const [sortBy, setSortBy] = useState<'featured' | 'price-asc' | 'price-desc' | 'rating-desc'>('featured');
   const [failedImages, setFailedImages] = useState<{ [key: string]: boolean }>({});
 
@@ -59,11 +69,20 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
 
   const [reviewModalService, setReviewModalService] = useState<ServiceItem | null>(null);
 
+  // Quick preset price brackets for instant 1-tap filtering
+  const pricePresetBrackets = [
+    { label: 'All Prices', max: 50000 },
+    { label: 'Under ₹3,000', max: 3000 },
+    { label: 'Under ₹7,500', max: 7500 },
+    { label: 'Under ₹15,000', max: 15000 },
+    { label: 'Under ₹35,000', max: 35000 },
+  ];
+
   // Calculate live aggregate rating and review count per service
   const serviceRatingsMap = useMemo(() => {
     const map: { [serviceId: string]: { rating: number; count: number } } = {};
 
-    SALON_SERVICES.forEach((service) => {
+    allServices.forEach((service) => {
       const baseline = BASELINE_SERVICE_RATINGS[service.id] || { rating: 4.8, count: 15 };
       const serviceReviews = reviews.filter((r) => r.serviceId === service.id);
       
@@ -79,71 +98,109 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
     });
 
     return map;
-  }, [reviews]);
+  }, [allServices, reviews]);
 
   // Quick trending search recommendations
   const quickSearchKeywords = [
-    'Temptu Airbrush',
+    'Bridal Airbrush',
     'Hair Botox',
     'Balayage',
     '24K Gold Facial',
     'HydraFacial',
     'Gel Nails',
-    'Pre-Bridal'
+    'Body Spa',
+    'Academy'
   ];
 
-  // High-quality imagery for each category meeting the design system's aesthetic guidelines
+  // Comprehensive category metadata for all beauty service segments
   const categories: CategoryMetadata[] = [
+    { 
+      id: 'all', 
+      label: 'All Services', 
+      shortLabel: 'All',
+      icon: Layers, 
+      tagline: 'Complete Beauty Zone Jaipur Service List',
+      description: 'Browse all our salon treatments including bridal makeup, hair smoothening, glowing facials, nail art extensions, body spa, and certified makeup courses.', 
+      image: '/src/assets/images/hero_jaipur_salon_1790671992521.jpg',
+      altText: 'Interior view of Beauty Zone Jaipur salon',
+      features: ['3 Jaipur Salons', 'Private Bridal Suites', '100% Genuine Branded Products', 'Doorstep Home Service'],
+    },
     { 
       id: 'bridal', 
       label: 'Bridal Makeup', 
+      shortLabel: 'Bridal',
       icon: Crown, 
-      tagline: 'Bridal Makeup & Draping for Weddings',
-      description: 'Long-lasting HD airbrush makeup, Kundan jewelry setting, and lehenga & dupatta draping for brides and family.', 
+      tagline: 'HD Airbrush Bridal Makeup & Draping for Weddings',
+      description: 'Waterproof HD airbrush makeup, Kundan jewelry setting, and royal lehenga & dupatta draping for brides, sangeet, and destination weddings.', 
       image: '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg',
       altText: 'Indian bride wearing heavy gold jewelry and red lehenga with HD makeup at Beauty Zone Jaipur',
-      features: ['HD Airbrush Makeup', 'Kundan & Borla Setting', 'Lehenga Draping', 'Hotel & Venue Visits'],
+      features: ['Temptu HD Airbrush', 'Kundan & Borla Setting', 'Lehenga Draping Included', 'Destination Wedding Visits'],
     },
     { 
       id: 'hair', 
-      label: 'Hair Care', 
+      label: 'Hair Care & Styling', 
+      shortLabel: 'Hair',
       icon: Scissors, 
-      tagline: 'Hair Botox, Nanoplastia & Hair Color',
-      description: 'Chemical-free hair smoothening, Olaplex balayage hair color, and precision haircuts for soft, shiny hair.', 
+      tagline: 'Chemical-Free Hair Botox, Nanoplastia & Balayage',
+      description: '100% safe formaldehyde-free hair smoothening, Olaplex balayage hair coloring, and precision haircuts for soft, shiny, frizz-free hair.', 
       image: '/src/assets/images/hair_styling_luxe_1790672021591.jpg',
       altText: 'Client with sleek balayage hair styled at Beauty Zone Jaipur salon',
-      features: ['Chemical-Free Botox', 'Olaplex Hair Repair', 'Custom Hair Colors', 'Haircut & Blowdry'],
+      features: ['Chemical-Free Nanoplastia', 'Olaplex Bond Protection', 'Custom Hair Colors', 'Relaxing Wash & Blowout'],
     },
     { 
       id: 'skin', 
       label: 'Skin & Facials', 
+      shortLabel: 'Skin',
       icon: Droplet, 
-      tagline: 'Hydra-Facials & 24K Gold Glow',
-      description: '7-step deep clean machine facials, real 24K gold leaf facials, and herbal kesar de-tan treatments.', 
+      tagline: '24K Gold Leaf Glow & 7-Step Hydra-Facials',
+      description: 'Deep-cleansing HydraFacials, signature 24K real gold leaf facials, and natural herbal kesar de-tan treatments for glowing, blemish-free skin.', 
       image: '/src/assets/images/skin_spa_treatment_1790672037475.jpg',
       altText: 'Client getting a relaxing 24K gold facial at Beauty Zone Jaipur salon',
-      features: ['Real 24K Gold Leaf', 'Deep Pore Cleansing', 'Cooling Ice Globes', 'Natural Kesar De-Tan'],
+      features: ['Real 24K Gold Leaf', 'Deep Blackhead Extraction', 'Cooling Ice Globes', 'Natural Herbal De-Tan'],
     },
     { 
-      id: 'all', 
-      label: 'All Services', 
-      icon: Layers, 
-      tagline: 'Complete Beauty Zone Jaipur Service List',
-      description: 'Browse all our salon services including bridal makeup, hair smoothening, skin facials, nail extensions, body spa, and beauty academy courses.', 
-      image: '/src/assets/images/hero_jaipur_salon_1790671992521.jpg',
-      altText: 'Interior view of Beauty Zone Jaipur salon',
-      features: ['3 Jaipur Salons', 'Private Bridal Rooms', '100% Genuine Products', 'Home Salon Service'],
+      id: 'nails', 
+      label: 'Nails & Art', 
+      shortLabel: 'Nails',
+      icon: Sparkle, 
+      tagline: 'Bridal Gel Extensions & Swarovski Nail Art',
+      description: 'Chip-proof gel nail extensions, chrome finishes, Swarovski crystal stone art, and dry Russian machine manicures that last 4+ weeks.', 
+      image: '/src/assets/images/nail_art_luxe_1790676094903.jpg',
+      altText: 'Bridal gel nail extensions with stone art at Beauty Zone Jaipur',
+      features: ['4-Week Chip-Free Gel', 'Real Swarovski Stones', 'Russian Manicure Care', 'Warm Paraffin Hand Spa'],
+    },
+    { 
+      id: 'spa', 
+      label: 'Spa & Body Care', 
+      shortLabel: 'Spa',
+      icon: Heart, 
+      tagline: 'Rose Petal Milk Baths & Full Body Polishing',
+      description: 'Indulgent body spa rituals featuring organic milk baths, fresh rose petals, almond oil massages, and herbal de-tan body scrubs.', 
+      image: '/src/assets/images/prebridal_spa_ritual_1790676123541.jpg',
+      altText: 'Relaxing rose petal body spa treatment at Beauty Zone Jaipur',
+      features: ['Rose Petal & Milk Soak', 'Full Body Herbal Scrub', 'Warm Steam Therapy', 'Pure Essential Oils'],
+    },
+    { 
+      id: 'academy', 
+      label: 'Makeup Academy', 
+      shortLabel: 'Academy',
+      icon: GraduationCap, 
+      tagline: 'Govt & ISO Certified Professional Makeup Courses',
+      description: '30-day professional diploma in bridal makeup and advanced hair chemical treatments with practice on live models and 100% freelance support.', 
+      image: '/src/assets/images/academy_makeup_class_1790676134907.jpg',
+      altText: 'Students practicing makeup in Beauty Zone Jaipur Academy class',
+      features: ['Govt & ISO Diploma', 'Full Vanity Kit Included', 'Practice on Live Models', 'Freelance Career Guidance'],
     },
   ];
 
   // Calculate item counts per category
   const categoryCounts = useMemo(() => {
-    const counts: { [key: string]: number } = { all: SALON_SERVICES.length };
-    SALON_SERVICES.forEach((s) => {
+    const counts: { [key: string]: number } = { all: allServices.length };
+    allServices.forEach((s) => {
       counts[s.category] = (counts[s.category] || 0) + 1;
     });
     return counts;
-  }, []);
+  }, [allServices]);
 
   const activeCategoryMeta = categories.find((c) => c.id === activeCategory) || categories[0];
 
@@ -171,24 +228,31 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
   const globalMatchesCount = useMemo(() => {
     if (!searchQuery.trim()) return 0;
     const q = searchQuery.toLowerCase();
-    return SALON_SERVICES.filter(
+    return allServices.filter(
       (s) =>
         s.title.toLowerCase().includes(q) ||
         s.category.toLowerCase().includes(q) ||
         (s.category === 'skin' && (q.includes('skin') || q.includes('facial'))) ||
         (s.category === 'hair' && (q.includes('hair') || q.includes('cut'))) ||
         (s.category === 'bridal' && (q.includes('bride') || q.includes('bridal') || q.includes('wedding'))) ||
+        (s.category === 'nails' && (q.includes('nail') || q.includes('manicure'))) ||
+        (s.category === 'spa' && (q.includes('spa') || q.includes('body') || q.includes('massage'))) ||
+        (s.category === 'academy' && (q.includes('course') || q.includes('class') || q.includes('academy') || q.includes('learn'))) ||
         s.description.toLowerCase().includes(q) ||
         s.highlights.some((h) => h.toLowerCase().includes(q))
     ).length;
-  }, [searchQuery]);
+  }, [allServices, searchQuery]);
 
-  // Dynamic filter & search logic
+  // Dynamic filter & search logic with Price Range filtering
   const filteredAndSortedServices = useMemo(() => {
     let result = activeCategory === 'all'
-      ? [...SALON_SERVICES]
-      : SALON_SERVICES.filter((s) => s.category === activeCategory);
+      ? [...allServices]
+      : allServices.filter((s) => s.category === activeCategory);
 
+    // Apply Price Budget Filter
+    result = result.filter((s) => s.price <= maxPrice);
+
+    // Apply Search Query Filter
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
@@ -198,11 +262,15 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
           (s.category === 'skin' && (q.includes('skin') || q.includes('facial'))) ||
           (s.category === 'hair' && (q.includes('hair') || q.includes('cut'))) ||
           (s.category === 'bridal' && (q.includes('bride') || q.includes('bridal') || q.includes('wedding'))) ||
+          (s.category === 'nails' && (q.includes('nail') || q.includes('manicure'))) ||
+          (s.category === 'spa' && (q.includes('spa') || q.includes('body') || q.includes('massage'))) ||
+          (s.category === 'academy' && (q.includes('course') || q.includes('class') || q.includes('academy') || q.includes('learn'))) ||
           s.description.toLowerCase().includes(q) ||
           s.highlights.some((h) => h.toLowerCase().includes(q))
       );
     }
 
+    // Apply Sorting
     if (sortBy === 'price-asc') {
       result.sort((a, b) => a.price - b.price);
     } else if (sortBy === 'price-desc') {
@@ -216,19 +284,20 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
     }
 
     return result;
-  }, [activeCategory, searchQuery, sortBy, serviceRatingsMap]);
+  }, [allServices, activeCategory, searchQuery, maxPrice, sortBy, serviceRatingsMap]);
 
   return (
     <section id="services" className="py-16 md:py-24 bg-white/70 border-y border-[#0F172A]/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        
         {/* Editorial Section Header */}
         <RevealOnScroll duration={0.6}>
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-[#0F172A]/10">
             <div className="max-w-2xl">
               <div className="flex items-center gap-2 text-xs font-semibold text-[#D09A40] tracking-wider uppercase mb-2">
-                <span>Salon Services & Pricing</span>
+                <span>Services & Treatments</span>
                 <span aria-hidden="true">·</span>
-                <span>Jaipur Rate Card & Verified Reviews</span>
+                <span>Jaipur Salon Rate Card & Price Range Filter</span>
               </div>
               <h2
                 className="text-3xl sm:text-4xl font-bold text-[#0F172A] tracking-tight"
@@ -237,8 +306,8 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
                 Our Best Beauty & Hair Services
               </h2>
               <p className="mt-2 text-sm sm:text-base text-[#4A4A4A] leading-relaxed font-light">
-                All services are done using top-quality branded products by certified professionals.
-                Choose from bridal makeup, hair smoothening, glowing facials, nail extensions, and body spa.
+                Use the category tabs and price range slider below to quickly find beauty treatments, 
+                nail extensions, and bridal makeovers that fit your exact budget.
               </p>
             </div>
 
@@ -283,10 +352,88 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
           </div>
         </RevealOnScroll>
 
+        {/* Price Range Slider & Budget Filter Control Panel */}
+        <div className="mt-6 p-4 sm:p-5 rounded-2xl bg-[#FAF5E5] border border-[#D09A40]/30 shadow-xs">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            
+            {/* Left: Slider Input with Real-Time Ceiling Display */}
+            <div className="flex-1 max-w-xl">
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-[#0F172A]">
+                  <Sliders className="w-3.5 h-3.5 text-[#D09A40]" />
+                  <span>Filter by Budget (Price Range):</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-[#4A4A4A]">Up to:</span>
+                  <span className="text-sm font-bold font-mono text-[#0F172A] bg-white px-2.5 py-0.5 rounded-lg border border-[#D09A40]/40 shadow-2xs">
+                    {maxPrice >= 50000 ? 'All Prices (₹50,000+)' : `₹${maxPrice.toLocaleString('en-IN')}`}
+                  </span>
+                </div>
+              </div>
+
+              {/* Range Slider Track */}
+              <div className="space-y-1">
+                <input
+                  type="range"
+                  min="1499"
+                  max="50000"
+                  step="500"
+                  value={maxPrice}
+                  onChange={(e) => setMaxPrice(Number(e.target.value))}
+                  className="w-full accent-[#D09A40] cursor-pointer h-2 bg-neutral-200 rounded-lg appearance-none"
+                  aria-label="Price range filter slider"
+                />
+                <div className="flex items-center justify-between text-[10px] text-[#4A4A4A] font-mono">
+                  <span>Min: ₹1,499 (Haircut/Wash)</span>
+                  <span>₹7,500</span>
+                  <span>₹15,000</span>
+                  <span>₹35,000</span>
+                  <span>Max: ₹50,000+</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Quick Budget Chips & Reset Button */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-2 lg:pt-0 lg:border-l lg:border-[#0F172A]/10 lg:pl-6">
+              <span className="text-[11px] font-semibold text-[#4A4A4A] uppercase tracking-wider block w-full sm:w-auto mr-1">
+                Quick Budget:
+              </span>
+              {pricePresetBrackets.map((bracket) => {
+                const isSelected = maxPrice === bracket.max;
+                return (
+                  <button
+                    key={bracket.label}
+                    onClick={() => setMaxPrice(bracket.max)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shadow-2xs ${
+                      isSelected
+                        ? 'bg-[#0F172A] text-white'
+                        : 'bg-white hover:bg-neutral-100 text-[#0F172A] border border-[#0F172A]/15'
+                    }`}
+                  >
+                    {bracket.label}
+                  </button>
+                );
+              })}
+
+              {maxPrice < 50000 && (
+                <button
+                  onClick={() => setMaxPrice(50000)}
+                  className="px-2 py-1 text-xs text-[#D09A40] hover:text-[#0F172A] font-bold flex items-center gap-1 transition-colors cursor-pointer ml-1"
+                  title="Reset price filter to show all services"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Reset Price</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Quick Search Trending Tags Strip */}
         <div className="mt-4 flex items-center gap-2 overflow-x-auto pb-1 text-xs text-[#4A4A4A]">
-          <span className="font-semibold text-[11px] text-[#0F172A] whitespace-nowrap uppercase tracking-wider">
-            Popular Searches:
+          <span className="font-semibold text-[11px] text-[#0F172A] whitespace-nowrap uppercase tracking-wider flex items-center gap-1">
+            <Flame className="w-3 h-3 text-[#D09A40]" />
+            <span>Popular:</span>
           </span>
           <div className="flex items-center gap-1.5 flex-nowrap">
             {quickSearchKeywords.map((kw) => (
@@ -307,18 +454,28 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
                 onClick={() => setSearchQuery('')}
                 className="px-2 py-1 text-[11px] text-[#D09A40] hover:underline font-semibold cursor-pointer whitespace-nowrap"
               >
-                Reset
+                Reset Search
               </button>
             )}
           </div>
         </div>
 
-        {/* Tabbed Filter Controls */}
+        {/* Category Filter Tabs with Active Indicators and Counts */}
         <div className="mt-6">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
+              Filter by Service Category:
+            </span>
+            <span className="text-xs text-[#4A4A4A] font-mono">
+              Showing {filteredAndSortedServices.length} {filteredAndSortedServices.length === 1 ? 'Service' : 'Services'} 
+              {maxPrice < 50000 && ` (under ₹${maxPrice.toLocaleString('en-IN')})`}
+            </span>
+          </div>
+
           <div 
             role="tablist" 
-            aria-label="Service Categories" 
-            className="flex items-center gap-2 p-1.5 bg-[#FAF5E5] rounded-2xl border border-[#0F172A]/10 w-fit max-w-full overflow-x-auto scrollbar-none"
+            aria-label="Beauty Service Categories" 
+            className="flex items-center gap-2 p-1.5 bg-[#FAF5E5] rounded-2xl border border-[#0F172A]/10 w-full overflow-x-auto scrollbar-none shadow-2xs"
           >
             {categories.map((cat) => {
               const Icon = cat.icon;
@@ -333,7 +490,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
                   aria-selected={isSelected}
                   aria-controls={`panel-${cat.id}`}
                   onClick={() => setActiveCategory(cat.id)}
-                  className={`px-5 py-2.5 text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shrink-0 relative ${
+                  className={`px-4 py-2.5 text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shrink-0 relative ${
                     isSelected
                       ? 'bg-[#0F172A] text-white shadow-md'
                       : 'text-[#4A4A4A] hover:text-[#0F172A] hover:bg-white/80'
@@ -341,8 +498,8 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
                 >
                   <Icon className={`w-4 h-4 ${isSelected ? 'text-[#D09A40]' : 'text-[#4A4A4A]'}`} />
                   <span>{cat.label}</span>
-                  <span className={`text-[11px] tabular-nums ${isSelected ? 'text-white/70' : 'text-[#4A4A4A]/60'}`}>
-                    ({count})
+                  <span className={`text-[11px] px-1.5 py-0.2 rounded-md font-mono ${isSelected ? 'bg-white/20 text-[#FAF5E5]' : 'bg-neutral-200/80 text-[#4A4A4A]'}`}>
+                    {count}
                   </span>
                 </button>
               );
@@ -375,7 +532,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
                   <div className="absolute bottom-3 left-4 right-4 text-white">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-[#FAF5E5] bg-[#0F172A]/70 px-2 py-0.5 rounded backdrop-blur-xs">
-                      {activeCategoryMeta.label} Showcase
+                      {activeCategoryMeta.label}
                     </span>
                     <p className="text-xs font-serif font-bold mt-1 text-white/95">
                       Beauty Zone Signature Quality
@@ -393,7 +550,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
                       className="text-xl sm:text-2xl font-bold text-[#0F172A] tracking-tight mt-1"
                       style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
                     >
-                      Special {activeCategoryMeta.label} Services
+                      {activeCategoryMeta.id === 'all' ? 'All Beauty Zone Services' : `Special ${activeCategoryMeta.label} Services`}
                     </h3>
                   </div>
 
@@ -411,10 +568,18 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
                     ))}
                   </div>
 
-                  {/* Active Search Context Indicator */}
+                  {/* Active Search & Price Context Indicator */}
                   <div className="pt-2 text-[11px] text-[#4A4A4A] flex flex-wrap items-center justify-between gap-2 border-t border-neutral-100">
                     <div className="flex items-center gap-2">
-                      <span className="text-emerald-700 font-medium">✓ Certified salon artists & experts</span>
+                      <span className="text-emerald-700 font-medium">✓ Done by certified senior specialists</span>
+                      {maxPrice < 50000 && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span className="text-[#0F172A] font-semibold">
+                            Budget limit: ≤ ₹{maxPrice.toLocaleString('en-IN')}
+                          </span>
+                        </>
+                      )}
                       {searchQuery && (
                         <>
                           <span aria-hidden="true">·</span>
@@ -425,7 +590,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
                       )}
                     </div>
                     <span className="font-mono text-neutral-500 tabular-nums">
-                      {filteredAndSortedServices.length} {filteredAndSortedServices.length === 1 ? 'service shown' : 'services shown'}
+                      {filteredAndSortedServices.length} {filteredAndSortedServices.length === 1 ? 'treatment listed' : 'treatments listed'}
                     </span>
                   </div>
                 </div>
@@ -439,10 +604,13 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
           <div className="mt-6 p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <span className="font-bold">No results in {activeCategoryMeta.label}, </span>
-              <span>but found <strong className="tabular-nums">{globalMatchesCount}</strong> matching services across our full catalog.</span>
+              <span>but found <strong className="tabular-nums">{globalMatchesCount}</strong> matching services in other categories.</span>
             </div>
             <button
-              onClick={() => setActiveCategory('all')}
+              onClick={() => {
+                setActiveCategory('all');
+                setMaxPrice(50000);
+              }}
               className="px-3.5 py-1.5 rounded-lg bg-amber-800 text-white font-semibold text-xs hover:bg-amber-900 transition-colors cursor-pointer self-start sm:self-auto shrink-0"
             >
               View in All Services
@@ -505,7 +673,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
                         
                         <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between text-white text-xs">
                           <span className="font-semibold text-[11px] text-[#FAF5E5] capitalize">
-                            {service.category === 'skin' ? 'Skincare' : service.category}
+                            {service.category === 'skin' ? 'Skincare' : service.category === 'hair' ? 'Hair Care' : service.category === 'bridal' ? 'Bridal' : service.category}
                           </span>
                           <span className="font-mono text-[11px] bg-black/50 backdrop-blur-xs px-2 py-0.5 rounded">
                             {service.duration}
@@ -586,31 +754,34 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
             </AnimatePresence>
           </motion.div>
         ) : (
-          /* Empty Search State */
+          /* Empty Search / Budget State */
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.2 }}
             className="mt-12 text-center py-12 px-4 bg-white rounded-2xl border border-dashed border-[#0F172A]/20 max-w-md mx-auto"
           >
-            <Search className="w-8 h-8 text-[#D09A40] mx-auto mb-3 opacity-60" />
-            <h3 className="font-serif text-lg font-bold text-[#0F172A]">No Treatments Found</h3>
+            <IndianRupee className="w-8 h-8 text-[#D09A40] mx-auto mb-3 opacity-70" />
+            <h3 className="font-serif text-lg font-bold text-[#0F172A]">No Treatments Found in this Budget</h3>
             <p className="text-xs text-[#4A4A4A] mt-1 leading-relaxed">
-              No services match "{searchQuery}" in {activeCategoryMeta.label}.
+              No services match under ₹{maxPrice.toLocaleString('en-IN')} in {activeCategoryMeta.label}.
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">
               <button
-                onClick={() => setSearchQuery('')}
+                onClick={() => setMaxPrice(50000)}
                 className="px-4 py-2 text-xs font-semibold text-[#0F172A] bg-[#FAF5E5] hover:bg-[#D09A40] hover:text-white rounded-lg transition-colors cursor-pointer"
               >
-                Clear Search Query
+                Reset Budget Filter
               </button>
               {activeCategory !== 'all' && (
                 <button
-                  onClick={() => setActiveCategory('all')}
+                  onClick={() => {
+                    setActiveCategory('all');
+                    setMaxPrice(50000);
+                  }}
                   className="px-4 py-2 text-xs font-semibold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-lg transition-colors cursor-pointer"
                 >
-                  Search in All Services
+                  View All Services
                 </button>
               )}
             </div>

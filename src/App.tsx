@@ -1,34 +1,44 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
+import { TrustHighlightsBar } from './components/TrustHighlightsBar';
+import { FeaturedReelsShowcase } from './components/FeaturedReelsShowcase';
+import { BundledServicesSection } from './components/BundledServicesSection';
 import { ServicesSection } from './components/ServicesSection';
 import { BridalSpotlight } from './components/BridalSpotlight';
+import { BookingSection } from './components/BookingSection';
+import { GallerySection } from './components/GallerySection';
+import { TestimonialsSection } from './components/TestimonialsSection';
 import { StylistsSection } from './components/StylistsSection';
 import { FoundersNote } from './components/FoundersNote';
-import { GallerySection } from './components/GallerySection';
-import { BundledServicesSection } from './components/BundledServicesSection';
-import { BookingSection } from './components/BookingSection';
 import { SalonsLocations } from './components/SalonsLocations';
-import { TestimonialsSection } from './components/TestimonialsSection';
+import { FAQSection } from './components/FAQSection';
 import { Footer } from './components/Footer';
-import { DesignSystemInspector } from './components/DesignSystemInspector';
 import { ManagementModal } from './components/ManagementModal';
-import { ServiceItem, Stylist, SalonPackage, GalleryItem } from './types';
+import { ServiceItem, Stylist, SalonPackage, GalleryItem, VideoItem } from './types';
 import { getStoredPackages, saveStoredPackages } from './data/packagesData';
 import { getStoredGallery, saveStoredGallery } from './data/galleryData';
-import { SALON_SERVICES } from './data/salonData';
-import { Sparkles, SlidersHorizontal, Settings } from 'lucide-react';
+import { getStoredServices, saveStoredServices } from './data/servicesStore';
+import { getStoredVideos, saveStoredVideos } from './data/videosData';
+import { Sparkles, SlidersHorizontal } from 'lucide-react';
 
 export default function App() {
   const [isTokensInspectorOpen, setIsTokensInspectorOpen] = useState(false);
   const [isManagementModalOpen, setIsManagementModalOpen] = useState(false);
-  const [managementInitialTab, setManagementInitialTab] = useState<'packages' | 'gallery'>('packages');
+  const [managementInitialTab, setManagementInitialTab] = useState<'services' | 'packages' | 'gallery' | 'videos'>('services');
+
+  // Module: Live Services Store
+  const [services, setServices] = useState<ServiceItem[]>(() => getStoredServices());
 
   // Module 31: Package Management Store
   const [packages, setPackages] = useState<SalonPackage[]>(() => getStoredPackages());
 
   // Module 32: Gallery Management Store
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>(() => getStoredGallery());
+
+  // Module: Video & Reels Store
+  const [videos, setVideos] = useState<VideoItem[]>(() => getStoredVideos());
+  const [galleryView, setGalleryView] = useState<'photos' | 'videos'>('photos');
 
   const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
   const [selectedBundle, setSelectedBundle] = useState<{
@@ -51,8 +61,8 @@ export default function App() {
     scrollToSection('booking');
   };
 
-  const handleBookBundle = (bundleTitle: string, price: number, services: string[]) => {
-    setSelectedBundle({ title: bundleTitle, price, services });
+  const handleBookBundle = (bundleTitle: string, price: number, servicesList: string[]) => {
+    setSelectedBundle({ title: bundleTitle, price, services: servicesList });
     setSelectedService(null);
     scrollToSection('booking');
   };
@@ -71,8 +81,7 @@ export default function App() {
   };
 
   const handleBookFromGallery = (serviceName: string) => {
-    // Try to find matching service in catalog
-    const matched = SALON_SERVICES.find(
+    const matched = services.find(
       (s) => s.title.toLowerCase().includes(serviceName.toLowerCase()) || 
              serviceName.toLowerCase().includes(s.title.toLowerCase())
     );
@@ -94,9 +103,14 @@ export default function App() {
     scrollToSection('booking');
   };
 
-  const handleOpenManagement = (tab: 'packages' | 'gallery' = 'packages') => {
+  const handleOpenManagement = (tab: 'services' | 'packages' | 'gallery' = 'services') => {
     setManagementInitialTab(tab);
     setIsManagementModalOpen(true);
+  };
+
+  const handleUpdateServices = (updatedServices: ServiceItem[]) => {
+    setServices(updatedServices);
+    saveStoredServices(updatedServices);
   };
 
   const handleUpdatePackages = (updatedPackages: SalonPackage[]) => {
@@ -109,27 +123,66 @@ export default function App() {
     saveStoredGallery(updatedGallery);
   };
 
+  const handleUpdateVideos = (updatedVideos: VideoItem[]) => {
+    setVideos(updatedVideos);
+    saveStoredVideos(updatedVideos);
+  };
+
   return (
     <div className="min-h-screen bg-[#FAF5E5] text-[#0F172A] selection:bg-[#D09A40] selection:text-white">
-      {/* Top Bar Navigation with Management Console trigger */}
+      {/* Top Bar Navigation */}
       <Navbar
         onOpenBooking={() => scrollToSection('booking')}
-        onOpenManagement={() => handleOpenManagement('packages')}
+        onOpenManagement={() => handleOpenManagement('services')}
         onToggleTokens={() => setIsTokensInspectorOpen((prev) => !prev)}
         isTokensOpen={isTokensInspectorOpen}
       />
 
       <main>
-        {/* Hero Section */}
+        {/* ========================================================
+            1. HERO BANNER & BOOKING ACTION (TOP SECTION)
+        ======================================================== */}
         <Hero
           onBookClick={handleBookFromHero}
           onExploreBridal={handleExploreBridal}
         />
 
-        {/* Curated Services Showcase */}
-        <ServicesSection onSelectService={handleSelectServiceFromList} />
+        {/* ========================================================
+            2. TRUST BAR / HIGHLIGHTS STRIP
+        ======================================================== */}
+        <TrustHighlightsBar />
 
-        {/* Bridal Studio & Heritage Destination Weddings */}
+        {/* ========================================================
+            3. TRENDING REELS & CLIENT TRANSFORMATIONS (FEATURED VIDEOS)
+        ======================================================== */}
+        <FeaturedReelsShowcase
+          videos={videos}
+          onBookService={handleBookFromGallery}
+          onExploreAllVideos={() => {
+            setGalleryView('videos');
+            scrollToSection('gallery');
+          }}
+          onOpenManagement={() => handleOpenManagement('gallery')}
+        />
+
+        {/* ========================================================
+            4. FESTIVAL OFFERS & COMBO PACKAGES BANNER
+        ======================================================== */}
+        <BundledServicesSection
+          packages={packages}
+          onBookBundle={handleBookBundle}
+          onOpenManagement={() => handleOpenManagement('packages')}
+        />
+
+        {/* ========================================================
+            5. POPULAR SALON SERVICES & CATEGORIES (RATE CARD)
+        ======================================================== */}
+        <ServicesSection 
+          services={services}
+          onSelectService={handleSelectServiceFromList} 
+        />
+
+        {/* Bridal Spotlight Showcase (Anchored to #bridal) */}
         <BridalSpotlight onBookBridal={() => {
           setSelectedService({
             id: 'b1',
@@ -144,27 +197,9 @@ export default function App() {
           scrollToSection('booking');
         }} />
 
-        {/* Meet Your Stylist - Professional Bios & Portfolios */}
-        <StylistsSection onBookWithStylist={handleBookWithStylist} />
-
-        {/* Founder's Note - Bio, Vision Statement & Heritage Philosophy */}
-        <FoundersNote onOpenBooking={() => scrollToSection('booking')} />
-
-        {/* Module 32: Couture Gallery & Transformation Lookbook */}
-        <GallerySection
-          galleryItems={galleryItems}
-          onBookService={handleBookFromGallery}
-          onOpenManagement={() => handleOpenManagement('gallery')}
-        />
-
-        {/* Module 31: Bundled Services & Package Management Integration */}
-        <BundledServicesSection
-          packages={packages}
-          onBookBundle={handleBookBundle}
-          onOpenManagement={() => handleOpenManagement('packages')}
-        />
-
-        {/* 9-Input Booking & Price Estimator Form */}
+        {/* ========================================================
+            6. INTERACTIVE PRICE ESTIMATOR / BUDGET CALCULATOR & BOOKING
+        ======================================================== */}
         <BookingSection
           selectedServicePreload={selectedService}
           selectedBundlePreload={selectedBundle}
@@ -174,56 +209,69 @@ export default function App() {
           onClearStylist={() => setSelectedStylist(null)}
         />
 
-        {/* Jaipur Branch Sanctuaries */}
+        {/* ========================================================
+            7. TRANSFORMATION GALLERY (BEFORE & AFTER PHOTOS & REELS)
+        ======================================================== */}
+        <GallerySection
+          galleryItems={galleryItems}
+          videos={videos}
+          initialView={galleryView}
+          onBookService={handleBookFromGallery}
+          onOpenManagement={() => handleOpenManagement('gallery')}
+        />
+
+        {/* ========================================================
+            8. CLIENT REVIEWS & GOOGLE RATINGS (SOCIAL PROOF)
+        ======================================================== */}
+        <TestimonialsSection />
+
+        {/* Stylists & Founder Spotlight (Social Proof & Expertise) */}
+        <StylistsSection onBookWithStylist={handleBookWithStylist} />
+        <FoundersNote onOpenBooking={() => scrollToSection('booking')} />
+
+        {/* ========================================================
+            9. SALON BRANCH LOCATIONS & DOORSTEP HOME VISIT MAP INFO
+        ======================================================== */}
         <SalonsLocations />
 
-        {/* Verified Wedding & Client Stories */}
-        <TestimonialsSection />
+        {/* ========================================================
+            10. FAQ & FOOTER SECTION
+        ======================================================== */}
+        <FAQSection onOpenBooking={() => scrollToSection('booking')} />
       </main>
 
-      {/* Quiet Footer Contract */}
+      {/* Main Footer with Social Channels & Operating Hours */}
       <Footer
         onOpenBooking={() => scrollToSection('booking')}
         onOpenTokens={() => setIsTokensInspectorOpen(true)}
         onOpenManagement={() => handleOpenManagement('packages')}
       />
 
-      {/* Floating Action Buttons (Fixed Bottom-Left) */}
+      {/* Floating Admin Dashboard Trigger Button */}
       <div className="fixed bottom-5 left-5 z-40 flex flex-col sm:flex-row items-start sm:items-center gap-2">
         <button
-          onClick={() => handleOpenManagement('packages')}
+          onClick={() => handleOpenManagement('gallery')}
           className="px-4 py-2.5 rounded-full bg-[#0F172A] text-white shadow-xl hover:bg-[#D09A40] transition-colors border border-white/20 flex items-center gap-2 text-xs font-semibold cursor-pointer group"
-          title="Admin Dashboard: Manage Packages & Real Photos"
+          title="Admin Dashboard: Manage Services, Packages, Gallery & Reels"
         >
           <SlidersHorizontal className="w-4 h-4 text-[#D09A40] group-hover:text-white transition-colors" />
           <span>Admin Dashboard</span>
         </button>
-
-        <button
-          onClick={() => setIsTokensInspectorOpen((prev) => !prev)}
-          className="px-3.5 py-2.5 rounded-full bg-white/90 text-[#0F172A] shadow-lg hover:bg-white transition-colors border border-neutral-300 flex items-center gap-1.5 text-xs font-medium cursor-pointer"
-          title="View Color & Font Details"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-[#D09A40]" />
-          <span className="hidden sm:inline">Design Details</span>
-        </button>
       </div>
 
-      {/* Module 31 & 32: Salon Management Modal Console */}
+      {/* Salon Management Console Modal */}
       <ManagementModal
         isOpen={isManagementModalOpen}
         onClose={() => setIsManagementModalOpen(false)}
+        services={services}
         packages={packages}
         galleryItems={galleryItems}
+        videos={videos}
+        onUpdateServices={handleUpdateServices}
         onUpdatePackages={handleUpdatePackages}
         onUpdateGallery={handleUpdateGallery}
+        onUpdateVideos={handleUpdateVideos}
         initialTab={managementInitialTab}
-      />
-
-      {/* Design System Token Inspector Panel */}
-      <DesignSystemInspector
-        isOpen={isTokensInspectorOpen}
-        onClose={() => setIsTokensInspectorOpen(false)}
       />
     </div>
   );

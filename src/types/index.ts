@@ -110,7 +110,9 @@ export interface Testimonial {
 export interface SalonPackage {
   id: string;
   name: string;
+  tagline?: string;
   description: string;
+  offer_name?: string;
   services: string[];
   duration: string;
   regular_price: number;
@@ -118,6 +120,8 @@ export interface SalonPackage {
   discount: number; // percentage e.g. 20
   savings: number; // regular_price - package_price
   validity: string; // e.g. '60 Days'
+  valid_from?: string;
+  valid_until?: string;
   usage_rules: string[];
   outlets: string[];
   image: string;
@@ -126,6 +130,29 @@ export interface SalonPackage {
 }
 
 export type GalleryUploadType = 'photo' | 'before_after' | 'portfolio' | 'work_showcase';
+
+export type VideoPlatform = 'youtube' | 'instagram' | 'facebook' | 'other';
+
+export interface VideoItem {
+  id: string;
+  url: string;
+  embedUrl: string;
+  platform: VideoPlatform;
+  title: string;
+  description: string;
+  category: string;
+  thumbnail?: string;
+  featured: boolean;
+  active: boolean;
+  viewsCount?: string;
+  viewsNumeric?: number;
+  pinCount?: number;
+  clicksCount?: number;
+  engagementScore?: number;
+  duration?: string;
+  created_at?: string;
+  author?: string;
+}
 
 export interface GalleryItem {
   id: string;
@@ -142,3 +169,51 @@ export interface GalleryItem {
   created_at?: string;
   artist?: string;
 }
+
+export type LoyaltyTierLevel = 'silver' | 'gold' | 'platinum';
+
+export interface LoyaltyActivity {
+  id: string;
+  date: string;
+  branch: string;
+  serviceTitle: string;
+  billAmount: number;
+  pointsEarned: number;
+  type: 'visit' | 'bonus' | 'referral';
+}
+
+export interface RedeemedReward {
+  id: string;
+  rewardTitle: string;
+  voucherCode: string;
+  pointsCost: number;
+  dateRedeemed: string;
+  validTill: string;
+  status: 'active' | 'used';
+  discountValue: string;
+}
+
+export interface RewardOffer {
+  id: string;
+  title: string;
+  description: string;
+  pointsCost: number;
+  discountValue: string;
+  category: 'discount' | 'free_service' | 'upgrade' | 'bridal';
+  badge?: string;
+  iconName?: string;
+}
+
+export interface LoyaltyCustomer {
+  phone: string;
+  name: string;
+  memberId: string;
+  tier: LoyaltyTierLevel;
+  totalPoints: number;
+  lifetimePoints: number;
+  visitsCount: number;
+  joinedDate: string;
+  activities: LoyaltyActivity[];
+  redeemedRewards: RedeemedReward[];
+}
+

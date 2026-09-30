@@ -238,9 +238,10 @@ export const Footer: React.FC<FooterProps> = ({ onOpenBooking, onOpenTokens, onO
             {/* Quick Links */}
             <div>
               <h4 className="text-xs font-semibold text-[#D09A40] uppercase tracking-wider mb-4">
-                Popular Services
+                Popular Services & Perks
               </h4>
               <ul className="space-y-2.5 text-xs text-white/70">
+                <li><a href="#rewards" className="hover:text-[#D09A40] text-[#D09A40] font-medium transition-colors">★ Beauty Rewards Club</a></li>
                 <li><a href="#services" className="hover:text-white transition-colors">HD Bridal Makeup</a></li>
                 <li><a href="#services" className="hover:text-white transition-colors">Nanoplastia & Hair Botox</a></li>
                 <li><a href="#services" className="hover:text-white transition-colors">24K Gold Leaf Facial</a></li>
