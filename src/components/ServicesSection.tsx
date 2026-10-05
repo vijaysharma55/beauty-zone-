@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { SALON_SERVICES } from '../data/salonData';
 import { ServiceItem, ServiceReview } from '../types';
@@ -24,7 +24,10 @@ import {
   Flame,
   Sliders,
   RotateCcw,
-  IndianRupee
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Tag
 } from 'lucide-react';
 
 interface ServicesSectionProps {
@@ -47,7 +50,19 @@ interface CategoryMetadata {
 }
 
 export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSelectService }) => {
-  const allServices = services && services.length > 0 ? services : SALON_SERVICES;
+  // Deduplicate raw services by unique id or normalized title
+  const rawServices = services && services.length > 0 ? services : SALON_SERVICES;
+  
+  const allServices = useMemo(() => {
+    const seen = new Set<string>();
+    return rawServices.filter((s) => {
+      const key = `${s.id}-${s.title.toLowerCase().trim()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [rawServices]);
+
   const [activeCategory, setActiveCategory] = useState<ServiceFilterCategory>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [maxPrice, setMaxPrice] = useState<number>(50000);
@@ -69,7 +84,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
 
   const [reviewModalService, setReviewModalService] = useState<ServiceItem | null>(null);
 
-  // Quick preset price brackets for instant 1-tap filtering
+  // Quick preset price brackets
   const pricePresetBrackets = [
     { label: 'All Prices', max: 50000 },
     { label: 'Under ₹3,000', max: 3000 },
@@ -100,7 +115,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
     return map;
   }, [allServices, reviews]);
 
-  // Quick trending search recommendations
+  // Trending search keywords
   const quickSearchKeywords = [
     'Bridal Airbrush',
     'Hair Botox',
@@ -112,88 +127,77 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
     'Academy'
   ];
 
-  // Comprehensive category metadata for all beauty service segments
+  // Category metadata definitions
   const categories: CategoryMetadata[] = [
-    { 
-      id: 'all', 
-      label: 'All Services', 
-      shortLabel: 'All',
-      icon: Layers, 
-      tagline: 'Complete Beauty Zone Jaipur Service List',
-      description: 'Browse all our salon treatments including bridal makeup, hair smoothening, glowing facials, nail art extensions, body spa, and certified makeup courses.', 
-      image: '/src/assets/images/hero_jaipur_salon_1790671992521.jpg',
-      altText: 'Interior view of Beauty Zone Jaipur salon',
-      features: ['3 Jaipur Salons', 'Private Bridal Suites', '100% Genuine Branded Products', 'Doorstep Home Service'],
-    },
     { 
       id: 'bridal', 
       label: 'Bridal Makeup', 
       shortLabel: 'Bridal',
       icon: Crown, 
-      tagline: 'HD Airbrush Bridal Makeup & Draping for Weddings',
-      description: 'Waterproof HD airbrush makeup, Kundan jewelry setting, and royal lehenga & dupatta draping for brides, sangeet, and destination weddings.', 
+      tagline: 'HD Airbrush Bridal Makeup & Draping',
+      description: 'Waterproof HD airbrush makeup, Kundan jewelry setting, and royal lehenga & dupatta draping.', 
       image: '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg',
       altText: 'Indian bride wearing heavy gold jewelry and red lehenga with HD makeup at Beauty Zone Jaipur',
-      features: ['Temptu HD Airbrush', 'Kundan & Borla Setting', 'Lehenga Draping Included', 'Destination Wedding Visits'],
+      features: ['Temptu HD Airbrush', 'Kundan Setting', 'Lehenga Draping', 'Wedding Visits'],
     },
     { 
       id: 'hair', 
       label: 'Hair Care & Styling', 
       shortLabel: 'Hair',
       icon: Scissors, 
-      tagline: 'Chemical-Free Hair Botox, Nanoplastia & Balayage',
-      description: '100% safe formaldehyde-free hair smoothening, Olaplex balayage hair coloring, and precision haircuts for soft, shiny, frizz-free hair.', 
+      tagline: 'Chemical-Free Hair Botox & Balayage',
+      description: '100% safe formaldehyde-free hair smoothening, Olaplex balayage coloring, and haircuts.', 
       image: '/src/assets/images/hair_styling_luxe_1790672021591.jpg',
       altText: 'Client with sleek balayage hair styled at Beauty Zone Jaipur salon',
-      features: ['Chemical-Free Nanoplastia', 'Olaplex Bond Protection', 'Custom Hair Colors', 'Relaxing Wash & Blowout'],
+      features: ['Nanoplastia', 'Olaplex Protection', 'Custom Hair Colors', 'Wash & Blowout'],
     },
     { 
       id: 'skin', 
       label: 'Skin & Facials', 
       shortLabel: 'Skin',
       icon: Droplet, 
-      tagline: '24K Gold Leaf Glow & 7-Step Hydra-Facials',
-      description: 'Deep-cleansing HydraFacials, signature 24K real gold leaf facials, and natural herbal kesar de-tan treatments for glowing, blemish-free skin.', 
+      tagline: '24K Gold Leaf Glow & Hydra-Facials',
+      description: 'Deep-cleansing HydraFacials, signature 24K real gold leaf facials, and herbal de-tan.', 
       image: '/src/assets/images/skin_spa_treatment_1790672037475.jpg',
       altText: 'Client getting a relaxing 24K gold facial at Beauty Zone Jaipur salon',
-      features: ['Real 24K Gold Leaf', 'Deep Blackhead Extraction', 'Cooling Ice Globes', 'Natural Herbal De-Tan'],
+      features: ['Real 24K Gold', 'Extraction Care', 'Cooling Ice Globes', 'Herbal De-Tan'],
     },
     { 
       id: 'nails', 
       label: 'Nails & Art', 
       shortLabel: 'Nails',
       icon: Sparkle, 
-      tagline: 'Bridal Gel Extensions & Swarovski Nail Art',
-      description: 'Chip-proof gel nail extensions, chrome finishes, Swarovski crystal stone art, and dry Russian machine manicures that last 4+ weeks.', 
+      tagline: 'Gel Extensions & Swarovski Art',
+      description: 'Chip-proof gel nail extensions, chrome finishes, Swarovski crystal art, and Russian manicures.', 
       image: '/src/assets/images/nail_art_luxe_1790676094903.jpg',
       altText: 'Bridal gel nail extensions with stone art at Beauty Zone Jaipur',
-      features: ['4-Week Chip-Free Gel', 'Real Swarovski Stones', 'Russian Manicure Care', 'Warm Paraffin Hand Spa'],
+      features: ['4-Week Gel', 'Swarovski Stones', 'Russian Manicure', 'Paraffin Spa'],
     },
     { 
       id: 'spa', 
       label: 'Spa & Body Care', 
       shortLabel: 'Spa',
       icon: Heart, 
-      tagline: 'Rose Petal Milk Baths & Full Body Polishing',
-      description: 'Indulgent body spa rituals featuring organic milk baths, fresh rose petals, almond oil massages, and herbal de-tan body scrubs.', 
+      tagline: 'Rose Petal Milk Baths & Body Polishing',
+      description: 'Indulgent body spa rituals featuring organic milk baths, fresh rose petals, and almond oil massages.', 
       image: '/src/assets/images/prebridal_spa_ritual_1790676123541.jpg',
       altText: 'Relaxing rose petal body spa treatment at Beauty Zone Jaipur',
-      features: ['Rose Petal & Milk Soak', 'Full Body Herbal Scrub', 'Warm Steam Therapy', 'Pure Essential Oils'],
+      features: ['Rose Milk Soak', 'Herbal Scrub', 'Steam Therapy', 'Essential Oils'],
     },
     { 
       id: 'academy', 
       label: 'Makeup Academy', 
       shortLabel: 'Academy',
       icon: GraduationCap, 
-      tagline: 'Govt & ISO Certified Professional Makeup Courses',
-      description: '30-day professional diploma in bridal makeup and advanced hair chemical treatments with practice on live models and 100% freelance support.', 
+      tagline: 'Govt Certified Professional Courses',
+      description: 'Diploma in bridal makeup and advanced hair chemical treatments with practice on live models.', 
       image: '/src/assets/images/academy_makeup_class_1790676134907.jpg',
       altText: 'Students practicing makeup in Beauty Zone Jaipur Academy class',
-      features: ['Govt & ISO Diploma', 'Full Vanity Kit Included', 'Practice on Live Models', 'Freelance Career Guidance'],
+      features: ['Govt & ISO Diploma', 'Full Vanity Kit', 'Live Models', 'Career Support'],
     },
   ];
 
-  // Calculate item counts per category
+  // Count per category
   const categoryCounts = useMemo(() => {
     const counts: { [key: string]: number } = { all: allServices.length };
     allServices.forEach((s) => {
@@ -202,13 +206,10 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
     return counts;
   }, [allServices]);
 
-  const activeCategoryMeta = categories.find((c) => c.id === activeCategory) || categories[0];
-
   const handleImageError = (id: string) => {
     setFailedImages((prev) => ({ ...prev, [id]: true }));
   };
 
-  // Submit and persist review
   const handleSaveReview = (newReviewData: Omit<ServiceReview, 'id' | 'date'>) => {
     const newRev: ServiceReview = {
       ...newReviewData,
@@ -224,47 +225,20 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
     }
   };
 
-  // Check matching services across the entire catalog for global search assistance
-  const globalMatchesCount = useMemo(() => {
-    if (!searchQuery.trim()) return 0;
-    const q = searchQuery.toLowerCase();
-    return allServices.filter(
-      (s) =>
-        s.title.toLowerCase().includes(q) ||
-        s.category.toLowerCase().includes(q) ||
-        (s.category === 'skin' && (q.includes('skin') || q.includes('facial'))) ||
-        (s.category === 'hair' && (q.includes('hair') || q.includes('cut'))) ||
-        (s.category === 'bridal' && (q.includes('bride') || q.includes('bridal') || q.includes('wedding'))) ||
-        (s.category === 'nails' && (q.includes('nail') || q.includes('manicure'))) ||
-        (s.category === 'spa' && (q.includes('spa') || q.includes('body') || q.includes('massage'))) ||
-        (s.category === 'academy' && (q.includes('course') || q.includes('class') || q.includes('academy') || q.includes('learn'))) ||
-        s.description.toLowerCase().includes(q) ||
-        s.highlights.some((h) => h.toLowerCase().includes(q))
-    ).length;
-  }, [allServices, searchQuery]);
+  // Filter & sort deduplicated services
+  const filteredServices = useMemo(() => {
+    let result = [...allServices];
 
-  // Dynamic filter & search logic with Price Range filtering
-  const filteredAndSortedServices = useMemo(() => {
-    let result = activeCategory === 'all'
-      ? [...allServices]
-      : allServices.filter((s) => s.category === activeCategory);
-
-    // Apply Price Budget Filter
+    // Filter by Price Budget
     result = result.filter((s) => s.price <= maxPrice);
 
-    // Apply Search Query Filter
+    // Filter by Search Query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
         (s) =>
           s.title.toLowerCase().includes(q) ||
           s.category.toLowerCase().includes(q) ||
-          (s.category === 'skin' && (q.includes('skin') || q.includes('facial'))) ||
-          (s.category === 'hair' && (q.includes('hair') || q.includes('cut'))) ||
-          (s.category === 'bridal' && (q.includes('bride') || q.includes('bridal') || q.includes('wedding'))) ||
-          (s.category === 'nails' && (q.includes('nail') || q.includes('manicure'))) ||
-          (s.category === 'spa' && (q.includes('spa') || q.includes('body') || q.includes('massage'))) ||
-          (s.category === 'academy' && (q.includes('course') || q.includes('class') || q.includes('academy') || q.includes('learn'))) ||
           s.description.toLowerCase().includes(q) ||
           s.highlights.some((h) => h.toLowerCase().includes(q))
       );
@@ -284,66 +258,87 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
     }
 
     return result;
-  }, [allServices, activeCategory, searchQuery, maxPrice, sortBy, serviceRatingsMap]);
+  }, [allServices, searchQuery, maxPrice, sortBy, serviceRatingsMap]);
+
+  // Group filtered services by category
+  const categorizedFilteredServices = useMemo(() => {
+    const map: { [catId: string]: ServiceItem[] } = {};
+    categories.forEach((cat) => {
+      map[cat.id] = [];
+    });
+
+    filteredServices.forEach((service) => {
+      if (map[service.category]) {
+        map[service.category].push(service);
+      } else {
+        map[service.category] = [service];
+      }
+    });
+
+    return map;
+  }, [filteredServices, categories]);
+
+  // Determine active display categories based on tab filter
+  const displayCategories = useMemo(() => {
+    if (activeCategory === 'all') {
+      return categories.filter((cat) => (categorizedFilteredServices[cat.id] || []).length > 0);
+    }
+    return categories.filter((cat) => cat.id === activeCategory);
+  }, [activeCategory, categories, categorizedFilteredServices]);
 
   return (
-    <section id="services" className="py-16 md:py-24 bg-white/70 border-y border-[#0F172A]/10">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="services" className="py-6 sm:py-10 md:py-14 bg-white/80 border-y border-[#0F172A]/10 w-full max-w-full">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         
-        {/* Editorial Section Header */}
-        <RevealOnScroll duration={0.6}>
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-[#0F172A]/10">
-            <div className="max-w-2xl">
-              <div className="flex items-center gap-2 text-xs font-semibold text-[#D09A40] tracking-wider uppercase mb-2">
-                <span>Services & Treatments</span>
+        {/* Compact Header & Controls */}
+        <RevealOnScroll duration={0.5}>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[#0F172A]/10">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-[#D09A40] tracking-wider uppercase mb-1">
+                <span>Salon Rate Card</span>
                 <span aria-hidden="true">·</span>
-                <span>Jaipur Salon Rate Card & Price Range Filter</span>
+                <span>Jaipur</span>
               </div>
               <h2
-                className="text-3xl sm:text-4xl font-bold text-[#0F172A] tracking-tight"
+                className="text-2xl sm:text-3xl font-bold text-[#0F172A] tracking-tight"
                 style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
               >
-                Our Best Beauty & Hair Services
+                Our Services & Treatments
               </h2>
-              <p className="mt-2 text-sm sm:text-base text-[#4A4A4A] leading-relaxed font-light">
-                Use the category tabs and price range slider below to quickly find beauty treatments, 
-                nail extensions, and bridal makeovers that fit your exact budget.
-              </p>
             </div>
 
             {/* Quick Search & Sort Bar */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              {/* Search Input with Clear Button */}
-              <div className="relative min-w-[260px] sm:min-w-[280px]">
-                <Search className="w-4 h-4 text-[#D09A40] absolute left-3 top-3 pointer-events-none" />
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              {/* Search Input */}
+              <div className="relative flex-1 sm:w-64">
+                <Search className="w-3.5 h-3.5 text-[#D09A40] absolute left-3 top-2.5 pointer-events-none" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search service e.g. facial, hair botox, bridal..."
-                  className="w-full pl-9 pr-8 py-2.5 text-xs border border-[#0F172A]/15 rounded-xl focus:outline-none focus:border-[#D09A40] focus:ring-1 focus:ring-[#D09A40] bg-white text-[#0F172A] transition-all shadow-xs"
+                  placeholder="Search service e.g. facial, botox..."
+                  className="w-full pl-8 pr-7 py-1.5 text-xs border border-[#0F172A]/15 rounded-lg focus:outline-none focus:border-[#D09A40] bg-white text-[#0F172A]"
                 />
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-2.5 top-3 text-[#4A4A4A] hover:text-[#0F172A] p-0.5 cursor-pointer"
-                    title="Clear search"
+                    className="absolute right-2 top-2 text-[#4A4A4A] hover:text-[#0F172A] p-0.5 cursor-pointer"
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <X className="w-3 h-3" />
                   </button>
                 )}
               </div>
 
               {/* Sort Dropdown */}
-              <div className="flex items-center gap-1.5 bg-white border border-[#0F172A]/15 rounded-xl px-3 py-2 text-xs text-[#4A4A4A] shadow-xs">
-                <ArrowUpDown className="w-3.5 h-3.5 text-[#D09A40]" />
+              <div className="flex items-center gap-1 bg-white border border-[#0F172A]/15 rounded-lg px-2.5 py-1.5 text-xs text-[#4A4A4A]">
+                <ArrowUpDown className="w-3 h-3 text-[#D09A40]" />
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
                   className="bg-transparent focus:outline-none cursor-pointer text-[#0F172A] font-medium"
                 >
-                  <option value="featured">Featured Order</option>
-                  <option value="rating-desc">Highest Rated (★ 5.0)</option>
+                  <option value="featured">Featured</option>
+                  <option value="rating-desc">Highest Rated</option>
                   <option value="price-asc">Price: Low to High</option>
                   <option value="price-desc">Price: High to Low</option>
                 </select>
@@ -352,454 +347,331 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
           </div>
         </RevealOnScroll>
 
-        {/* Price Range Slider & Budget Filter Control Panel */}
-        <div className="mt-6 p-4 sm:p-5 rounded-2xl bg-[#FAF5E5] border border-[#D09A40]/30 shadow-xs">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            
-            {/* Left: Slider Input with Real-Time Ceiling Display */}
-            <div className="flex-1 max-w-xl">
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-[#0F172A]">
-                  <Sliders className="w-3.5 h-3.5 text-[#D09A40]" />
-                  <span>Filter by Budget (Price Range):</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-[#4A4A4A]">Up to:</span>
-                  <span className="text-sm font-bold font-mono text-[#0F172A] bg-white px-2.5 py-0.5 rounded-lg border border-[#D09A40]/40 shadow-2xs">
-                    {maxPrice >= 50000 ? 'All Prices (₹50,000+)' : `₹${maxPrice.toLocaleString('en-IN')}`}
-                  </span>
-                </div>
-              </div>
-
-              {/* Range Slider Track */}
-              <div className="space-y-1">
-                <input
-                  type="range"
-                  min="1499"
-                  max="50000"
-                  step="500"
-                  value={maxPrice}
-                  onChange={(e) => setMaxPrice(Number(e.target.value))}
-                  className="w-full accent-[#D09A40] cursor-pointer h-2 bg-neutral-200 rounded-lg appearance-none"
-                  aria-label="Price range filter slider"
-                />
-                <div className="flex items-center justify-between text-[10px] text-[#4A4A4A] font-mono">
-                  <span>Min: ₹1,499 (Haircut/Wash)</span>
-                  <span>₹7,500</span>
-                  <span>₹15,000</span>
-                  <span>₹35,000</span>
-                  <span>Max: ₹50,000+</span>
-                </div>
-              </div>
+        {/* Compact Price Range & Preset Chips */}
+        <div className="mt-3 p-3 sm:p-4 rounded-xl bg-[#FAF5E5] border border-[#D09A40]/30 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            {/* Slider */}
+            <div className="flex items-center gap-3 flex-1">
+              <span className="font-bold text-[#0F172A] whitespace-nowrap flex items-center gap-1 shrink-0">
+                <Sliders className="w-3.5 h-3.5 text-[#D09A40]" />
+                <span>Max Budget:</span>
+              </span>
+              <input
+                type="range"
+                min="1499"
+                max="50000"
+                step="500"
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(Number(e.target.value))}
+                className="w-full accent-[#D09A40] cursor-pointer h-1.5 bg-neutral-200 rounded-lg"
+              />
+              <span className="font-bold font-mono text-[#0F172A] bg-white px-2 py-0.5 rounded border border-[#D09A40]/40 shrink-0">
+                {maxPrice >= 50000 ? 'All Prices' : `₹${maxPrice.toLocaleString('en-IN')}`}
+              </span>
             </div>
 
-            {/* Right: Quick Budget Chips & Reset Button */}
-            <div className="flex flex-wrap items-center gap-1.5 pt-2 lg:pt-0 lg:border-l lg:border-[#0F172A]/10 lg:pl-6">
-              <span className="text-[11px] font-semibold text-[#4A4A4A] uppercase tracking-wider block w-full sm:w-auto mr-1">
-                Quick Budget:
-              </span>
-              {pricePresetBrackets.map((bracket) => {
-                const isSelected = maxPrice === bracket.max;
-                return (
-                  <button
-                    key={bracket.label}
-                    onClick={() => setMaxPrice(bracket.max)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shadow-2xs ${
-                      isSelected
-                        ? 'bg-[#0F172A] text-white'
-                        : 'bg-white hover:bg-neutral-100 text-[#0F172A] border border-[#0F172A]/15'
-                    }`}
-                  >
-                    {bracket.label}
-                  </button>
-                );
-              })}
-
+            {/* Quick Brackets */}
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none no-scrollbar pt-1 sm:pt-0">
+              {pricePresetBrackets.map((bracket) => (
+                <button
+                  key={bracket.label}
+                  onClick={() => setMaxPrice(bracket.max)}
+                  className={`px-2 py-0.5 rounded text-[11px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${
+                    maxPrice === bracket.max
+                      ? 'bg-[#0F172A] text-white'
+                      : 'bg-white text-[#0F172A] border border-[#0F172A]/15 hover:bg-neutral-100'
+                  }`}
+                >
+                  {bracket.label}
+                </button>
+              ))}
               {maxPrice < 50000 && (
                 <button
                   onClick={() => setMaxPrice(50000)}
-                  className="px-2 py-1 text-xs text-[#D09A40] hover:text-[#0F172A] font-bold flex items-center gap-1 transition-colors cursor-pointer ml-1"
-                  title="Reset price filter to show all services"
+                  className="px-1.5 py-0.5 text-[11px] text-[#D09A40] font-bold hover:underline cursor-pointer flex items-center gap-0.5 shrink-0"
                 >
-                  <RotateCcw className="w-3 h-3" />
-                  <span>Reset Price</span>
+                  <RotateCcw className="w-2.5 h-2.5" />
+                  <span>Reset</span>
                 </button>
               )}
             </div>
           </div>
         </div>
 
-        {/* Quick Search Trending Tags Strip */}
-        <div className="mt-4 flex items-center gap-2 overflow-x-auto pb-1 text-xs text-[#4A4A4A]">
-          <span className="font-semibold text-[11px] text-[#0F172A] whitespace-nowrap uppercase tracking-wider flex items-center gap-1">
-            <Flame className="w-3 h-3 text-[#D09A40]" />
-            <span>Popular:</span>
-          </span>
-          <div className="flex items-center gap-1.5 flex-nowrap">
-            {quickSearchKeywords.map((kw) => (
+        {/* Category Navigation Pills */}
+        <div className="mt-4 flex items-center gap-1.5 overflow-x-auto scrollbar-none no-scrollbar pb-1">
+          <button
+            onClick={() => setActiveCategory('all')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-all flex items-center gap-1.5 shrink-0 ${
+              activeCategory === 'all'
+                ? 'bg-[#0F172A] text-white shadow-xs'
+                : 'bg-white text-[#4A4A4A] border border-[#0F172A]/10 hover:text-[#0F172A]'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5 text-[#D09A40]" />
+            <span>All Categories ({allServices.length})</span>
+          </button>
+
+          {categories.map((cat) => {
+            const Icon = cat.icon;
+            const count = (categorizedFilteredServices[cat.id] || []).length;
+            const isSelected = activeCategory === cat.id;
+
+            return (
               <button
-                key={kw}
-                onClick={() => setSearchQuery(kw)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] transition-colors cursor-pointer whitespace-nowrap ${
-                  searchQuery.toLowerCase() === kw.toLowerCase()
-                    ? 'bg-[#0F172A] text-white font-medium'
-                    : 'bg-white/80 hover:bg-white text-[#4A4A4A] hover:text-[#0F172A] border border-[#0F172A]/10'
+                key={cat.id}
+                onClick={() => setActiveCategory(cat.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-all flex items-center gap-1.5 shrink-0 ${
+                  isSelected
+                    ? 'bg-[#0F172A] text-white shadow-xs'
+                    : 'bg-white text-[#4A4A4A] border border-[#0F172A]/10 hover:text-[#0F172A]'
                 }`}
               >
-                {kw}
+                <Icon className={`w-3.5 h-3.5 ${isSelected ? 'text-[#D09A40]' : 'text-[#4A4A4A]'}`} />
+                <span>{cat.label}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${isSelected ? 'bg-white/20 text-[#FAF5E5]' : 'bg-neutral-100 text-[#4A4A4A]'}`}>
+                  {count}
+                </span>
               </button>
-            ))}
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="px-2 py-1 text-[11px] text-[#D09A40] hover:underline font-semibold cursor-pointer whitespace-nowrap"
-              >
-                Reset Search
-              </button>
-            )}
-          </div>
+            );
+          })}
         </div>
 
-        {/* Category Filter Tabs with Active Indicators and Counts */}
-        <div className="mt-6">
-          <div className="flex items-center justify-between gap-3 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
-              Filter by Service Category:
-            </span>
-            <span className="text-xs text-[#4A4A4A] font-mono">
-              Showing {filteredAndSortedServices.length} {filteredAndSortedServices.length === 1 ? 'Service' : 'Services'} 
-              {maxPrice < 50000 && ` (under ₹${maxPrice.toLocaleString('en-IN')})`}
-            </span>
-          </div>
-
-          <div 
-            role="tablist" 
-            aria-label="Beauty Service Categories" 
-            className="flex items-center gap-2 p-1.5 bg-[#FAF5E5] rounded-2xl border border-[#0F172A]/10 w-full overflow-x-auto scrollbar-none shadow-2xs"
-          >
-            {categories.map((cat) => {
-              const Icon = cat.icon;
-              const isSelected = activeCategory === cat.id;
-              const count = categoryCounts[cat.id] || 0;
-
-              return (
-                <button
-                  key={cat.id}
-                  role="tab"
-                  id={`tab-${cat.id}`}
-                  aria-selected={isSelected}
-                  aria-controls={`panel-${cat.id}`}
-                  onClick={() => setActiveCategory(cat.id)}
-                  className={`px-4 py-2.5 text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shrink-0 relative ${
-                    isSelected
-                      ? 'bg-[#0F172A] text-white shadow-md'
-                      : 'text-[#4A4A4A] hover:text-[#0F172A] hover:bg-white/80'
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 ${isSelected ? 'text-[#D09A40]' : 'text-[#4A4A4A]'}`} />
-                  <span>{cat.label}</span>
-                  <span className={`text-[11px] px-1.5 py-0.2 rounded-md font-mono ${isSelected ? 'bg-white/20 text-[#FAF5E5]' : 'bg-neutral-200/80 text-[#4A4A4A]'}`}>
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Active Category Hero Spotlight Banner with High-Quality Imagery */}
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeCategory}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-              id={`panel-${activeCategory}`}
-              role="tabpanel"
-              aria-labelledby={`tab-${activeCategory}`}
-              className="mt-6 rounded-2xl overflow-hidden border border-[#D09A40]/30 bg-white shadow-sm"
-            >
-              <div className="grid grid-cols-1 md:grid-cols-12 items-center">
-                {/* Visual Imagery Carrier */}
-                <div className="md:col-span-5 relative aspect-[16/10] md:aspect-[4/3] overflow-hidden bg-neutral-100 group">
-                  <img
-                    src={activeCategoryMeta.image}
-                    alt={activeCategoryMeta.altText}
-                    referrerPolicy="no-referrer"
-                    onError={() => handleImageError(`cat-${activeCategory}`)}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
-                  <div className="absolute bottom-3 left-4 right-4 text-white">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#FAF5E5] bg-[#0F172A]/70 px-2 py-0.5 rounded backdrop-blur-xs">
-                      {activeCategoryMeta.label}
-                    </span>
-                    <p className="text-xs font-serif font-bold mt-1 text-white/95">
-                      Beauty Zone Signature Quality
-                    </p>
-                  </div>
-                </div>
-
-                {/* Text & Feature Highlights */}
-                <div className="md:col-span-7 p-6 sm:p-8 space-y-4">
-                  <div>
-                    <span className="text-xs font-semibold uppercase tracking-wider text-[#D09A40]">
-                      {activeCategoryMeta.tagline}
-                    </span>
-                    <h3 
-                      className="text-xl sm:text-2xl font-bold text-[#0F172A] tracking-tight mt-1"
-                      style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-                    >
-                      {activeCategoryMeta.id === 'all' ? 'All Beauty Zone Services' : `Special ${activeCategoryMeta.label} Services`}
-                    </h3>
-                  </div>
-
-                  <p className="text-xs sm:text-sm text-[#4A4A4A] leading-relaxed font-light">
-                    {activeCategoryMeta.description}
-                  </p>
-
-                  {/* Highlights Grid */}
-                  <div className="grid grid-cols-2 gap-2.5 pt-2">
-                    {activeCategoryMeta.features.map((feat, idx) => (
-                      <div key={idx} className="flex items-center gap-2 text-xs text-[#0F172A]/90">
-                        <Check className="w-3.5 h-3.5 text-[#D09A40] shrink-0" />
-                        <span>{feat}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Active Search & Price Context Indicator */}
-                  <div className="pt-2 text-[11px] text-[#4A4A4A] flex flex-wrap items-center justify-between gap-2 border-t border-neutral-100">
-                    <div className="flex items-center gap-2">
-                      <span className="text-emerald-700 font-medium">✓ Done by certified senior specialists</span>
-                      {maxPrice < 50000 && (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span className="text-[#0F172A] font-semibold">
-                            Budget limit: ≤ ₹{maxPrice.toLocaleString('en-IN')}
-                          </span>
-                        </>
-                      )}
-                      {searchQuery && (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span className="text-[#0F172A] font-semibold">
-                            Filtered by: "{searchQuery}"
-                          </span>
-                        </>
-                      )}
-                    </div>
-                    <span className="font-mono text-neutral-500 tabular-nums">
-                      {filteredAndSortedServices.length} {filteredAndSortedServices.length === 1 ? 'treatment listed' : 'treatments listed'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </AnimatePresence>
-        </div>
-
-        {/* Global Match Assist Prompt */}
-        {filteredAndSortedServices.length === 0 && globalMatchesCount > 0 && activeCategory !== 'all' && (
-          <div className="mt-6 p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <span className="font-bold">No results in {activeCategoryMeta.label}, </span>
-              <span>but found <strong className="tabular-nums">{globalMatchesCount}</strong> matching services in other categories.</span>
-            </div>
-            <button
-              onClick={() => {
-                setActiveCategory('all');
-                setMaxPrice(50000);
-              }}
-              className="px-3.5 py-1.5 rounded-lg bg-amber-800 text-white font-semibold text-xs hover:bg-amber-900 transition-colors cursor-pointer self-start sm:self-auto shrink-0"
-            >
-              View in All Services
-            </button>
-          </div>
-        )}
-
-        {/* Dynamic Services Bento Grid with Aggregate Star Ratings */}
-        {filteredAndSortedServices.length > 0 ? (
-          <motion.div 
-            layout
-            className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-          >
-            <AnimatePresence mode="popLayout">
-              {filteredAndSortedServices.map((service, index) => {
-                const hasFailed = failedImages[service.id];
-                const ratingData = serviceRatingsMap[service.id] || { rating: 4.9, count: 25 };
-
-                return (
-                  <motion.div
-                    key={service.id}
-                    layout
-                    initial={{ opacity: 0, y: 18 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: 8 }}
-                    transition={{ 
-                      duration: 0.24, 
-                      delay: Math.min(index * 0.04, 0.2),
-                      ease: [0.16, 1, 0.3, 1] 
-                    }}
-                    className="bg-white rounded-2xl border border-[#0F172A]/10 p-5 sm:p-6 flex flex-col justify-between hover:border-[#D09A40] luxe-card-hover group overflow-hidden"
-                  >
-                    <div>
-                      {/* High-Resolution Service Image with Strict Fallback Container */}
-                      <div className="relative aspect-[16/10] -mx-5 -mt-5 sm:-mx-6 sm:-mt-6 mb-4 overflow-hidden rounded-t-2xl bg-[#FAF5E5]/70">
-                        {!hasFailed && service.image ? (
-                          <img
-                            src={service.image}
-                            alt={`${service.title} - Beauty Zone Jaipur ${service.category} service`}
-                            referrerPolicy="no-referrer"
-                            onError={() => handleImageError(service.id)}
-                            className="w-full h-full object-cover luxe-img-zoom"
-                          />
-                        ) : (
-                          /* Resilient Stylized Fallback Container */
-                          <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-gradient-to-br from-[#FAF5E5] to-[#EBECEF] text-center">
-                            <Sparkles className="w-8 h-8 text-[#D09A40] mb-1.5 opacity-80" />
-                            <span className="font-serif text-sm font-bold text-[#0F172A]">{service.title}</span>
-                            <span className="text-[10px] text-[#4A4A4A] uppercase tracking-wider mt-0.5">Beauty Zone Signature Service</span>
-                          </div>
-                        )}
-
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-80 pointer-events-none" />
-                        
-                        {service.popular && (
-                          <span className="absolute top-3 left-3 text-[10px] font-bold text-[#0F172A] bg-[#FAF5E5] px-2.5 py-1 rounded-md shadow-xs uppercase tracking-wider">
-                            ★ Most Requested
-                          </span>
-                        )}
-                        
-                        <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between text-white text-xs">
-                          <span className="font-semibold text-[11px] text-[#FAF5E5] capitalize">
-                            {service.category === 'skin' ? 'Skincare' : service.category === 'hair' ? 'Hair Care' : service.category === 'bridal' ? 'Bridal' : service.category}
-                          </span>
-                          <span className="font-mono text-[11px] bg-black/50 backdrop-blur-xs px-2 py-0.5 rounded">
-                            {service.duration}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Card Header Row */}
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <h3 className="font-serif text-lg sm:text-xl font-bold text-[#0F172A] group-hover:text-[#D09A40] transition-colors leading-snug">
-                            {service.title}
-                          </h3>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <span className="text-lg sm:text-xl font-bold text-[#0F172A] tabular-nums">
-                            ₹{service.price.toLocaleString('en-IN')}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Aggregate Star Rating & Reviews Trigger */}
-                      <div className="mt-2 flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setReviewModalService(service)}
-                          className="inline-flex items-center gap-1.5 text-xs text-[#0F172A] hover:text-[#D09A40] transition-colors cursor-pointer group/rate py-0.5"
-                          title={`Click to view ${ratingData.count} client reviews and rate`}
-                        >
-                          <Star className="w-3.5 h-3.5 fill-[#D09A40] text-[#D09A40]" />
-                          <span className="font-bold tabular-nums text-xs">{ratingData.rating.toFixed(1)}</span>
-                          <span className="text-[#4A4A4A] text-[11px] group-hover/rate:underline underline-offset-2">
-                            ({ratingData.count} reviews)
-                          </span>
-                          <span className="text-[10px] text-[#D09A40] font-semibold ml-0.5">· Feedback</span>
-                        </button>
-                      </div>
-
-                      {/* Description */}
-                      <p className="mt-2.5 text-xs sm:text-sm text-[#4A4A4A] leading-relaxed font-light">
-                        {service.description}
-                      </p>
-
-                      {/* Highlights List */}
-                      <ul className="mt-4 space-y-1.5">
-                        {service.highlights.map((h, i) => (
-                          <li key={i} className="flex items-center gap-2 text-xs text-[#0F172A]/85">
-                            <Check className="w-3.5 h-3.5 text-[#D09A40] shrink-0" />
-                            <span>{h}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {/* Card Action Row with Review and Booking Actions */}
-                    <div className="pt-5 mt-5 border-t border-[#0F172A]/10 flex items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setReviewModalService(service)}
-                        className="px-2.5 py-1.5 text-xs font-medium text-[#4A4A4A] hover:text-[#0F172A] hover:bg-[#FAF5E5] rounded-lg transition-colors flex items-center gap-1 cursor-pointer border border-[#0F172A]/10 shrink-0"
-                        title="Read verified reviews or leave feedback"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5 text-[#D09A40]" />
-                        <span>Rate & Reviews</span>
-                      </button>
-
-                      <button
-                        onClick={() => onSelectService(service)}
-                        className="px-3.5 py-1.5 text-xs font-semibold text-[#0F172A] bg-[#FAF5E5] hover:bg-[#D09A40] hover:text-white rounded-lg luxe-btn flex items-center gap-1.5 cursor-pointer shadow-2xs shrink-0"
-                      >
-                        <span>Select & Book</span>
-                        <ArrowUpRight className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
-          </motion.div>
-        ) : (
-          /* Empty Search / Budget State */
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.2 }}
-            className="mt-12 text-center py-12 px-4 bg-white rounded-2xl border border-dashed border-[#0F172A]/20 max-w-md mx-auto"
-          >
-            <IndianRupee className="w-8 h-8 text-[#D09A40] mx-auto mb-3 opacity-70" />
-            <h3 className="font-serif text-lg font-bold text-[#0F172A]">No Treatments Found in this Budget</h3>
-            <p className="text-xs text-[#4A4A4A] mt-1 leading-relaxed">
-              No services match under ₹{maxPrice.toLocaleString('en-IN')} in {activeCategoryMeta.label}.
+        {/* Empty State */}
+        {filteredServices.length === 0 && (
+          <div className="mt-8 p-8 text-center bg-white rounded-2xl border border-[#0F172A]/10 max-w-md mx-auto">
+            <Search className="w-10 h-10 text-[#D09A40] mx-auto mb-3 opacity-60" />
+            <h3 className="text-lg font-bold text-[#0F172A]">No Services Found</h3>
+            <p className="text-xs text-[#4A4A4A] mt-1 mb-4">
+              Try adjusting your price filter or search query to explore our beauty catalog.
             </p>
-            <div className="mt-4 flex flex-wrap justify-center gap-2">
+            <div className="flex items-center justify-center gap-2">
               <button
-                onClick={() => setMaxPrice(50000)}
-                className="px-4 py-2 text-xs font-semibold text-[#0F172A] bg-[#FAF5E5] hover:bg-[#D09A40] hover:text-white rounded-lg transition-colors cursor-pointer"
+                onClick={() => {
+                  setSearchQuery('');
+                  setMaxPrice(50000);
+                  setActiveCategory('all');
+                }}
+                className="px-4 py-2 bg-[#0F172A] text-white rounded-xl text-xs font-bold hover:bg-[#D09A40] transition-colors cursor-pointer"
               >
-                Reset Budget Filter
+                Reset All Filters
               </button>
-              {activeCategory !== 'all' && (
-                <button
-                  onClick={() => {
-                    setActiveCategory('all');
-                    setMaxPrice(50000);
-                  }}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-lg transition-colors cursor-pointer"
-                >
-                  View All Services
-                </button>
-              )}
             </div>
-          </motion.div>
+          </div>
         )}
+
+        {/* Render Single-Line Horizontal Side-Scrolling Rows for Each Category */}
+        <div className="mt-6 space-y-6">
+          {displayCategories.map((cat) => {
+            const catServices = categorizedFilteredServices[cat.id] || [];
+            if (catServices.length === 0) return null;
+
+            return (
+              <CategoryHorizontalRow
+                key={cat.id}
+                category={cat}
+                services={catServices}
+                serviceRatingsMap={serviceRatingsMap}
+                failedImages={failedImages}
+                onSelectService={onSelectService}
+                onOpenReviewModal={(svc) => setReviewModalService(svc)}
+                onImageError={handleImageError}
+              />
+            );
+          })}
+        </div>
+
       </div>
 
-      {/* Verified Star Rating & Review Submission Modal */}
+      {/* Service Review Modal */}
       {reviewModalService && (
         <ServiceReviewModal
           service={reviewModalService}
           reviews={reviews.filter((r) => r.serviceId === reviewModalService.id)}
-          aggregateRating={serviceRatingsMap[reviewModalService.id]?.rating || 5.0}
-          reviewCount={serviceRatingsMap[reviewModalService.id]?.count || 1}
+          aggregateRating={serviceRatingsMap[reviewModalService.id]?.rating || 4.9}
+          reviewCount={serviceRatingsMap[reviewModalService.id]?.count || 18}
           onClose={() => setReviewModalService(null)}
           onSubmitReview={handleSaveReview}
         />
       )}
     </section>
+  );
+};
+
+// Sub-Component: Single-Line Horizontal Row for a Category
+interface CategoryHorizontalRowProps {
+  category: CategoryMetadata;
+  services: ServiceItem[];
+  serviceRatingsMap: { [serviceId: string]: { rating: number; count: number } };
+  failedImages: { [key: string]: boolean };
+  onSelectService: (service: ServiceItem) => void;
+  onOpenReviewModal: (service: ServiceItem) => void;
+  onImageError: (id: string) => void;
+}
+
+const CategoryHorizontalRow: React.FC<CategoryHorizontalRowProps> = ({
+  category,
+  services,
+  serviceRatingsMap,
+  failedImages,
+  onSelectService,
+  onOpenReviewModal,
+  onImageError,
+}) => {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const Icon = category.icon;
+
+  const handleScroll = (direction: 'left' | 'right') => {
+    if (rowRef.current) {
+      const scrollAmount = direction === 'left' ? -280 : 280;
+      rowRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-[#0F172A]/10 p-3.5 sm:p-5 shadow-2xs relative group">
+      {/* Category Row Header */}
+      <div className="flex items-center justify-between pb-3 mb-2 border-b border-[#0F172A]/5">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 rounded-lg bg-[#FAF5E5] text-[#D09A40]">
+            <Icon className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base sm:text-lg font-bold text-[#0F172A] tracking-tight">
+                {category.label}
+              </h3>
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-neutral-100 font-semibold text-[#4A4A4A]">
+                {services.length} {services.length === 1 ? 'Item' : 'Items'}
+              </span>
+            </div>
+            <p className="text-[11px] text-[#4A4A4A] hidden sm:block">
+              {category.tagline}
+            </p>
+          </div>
+        </div>
+
+        {/* Sleek Overlay Navigation Arrow Controls */}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => handleScroll('left')}
+            aria-label={`Scroll ${category.label} left`}
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white border border-[#0F172A]/15 hover:border-[#D09A40] text-[#0F172A] hover:bg-[#FAF5E5] flex items-center justify-center transition-all shadow-2xs cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4 text-[#0F172A]" />
+          </button>
+          <button
+            onClick={() => handleScroll('right')}
+            aria-label={`Scroll ${category.label} right`}
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white border border-[#0F172A]/15 hover:border-[#D09A40] text-[#0F172A] hover:bg-[#FAF5E5] flex items-center justify-center transition-all shadow-2xs cursor-pointer"
+          >
+            <ChevronRight className="w-4 h-4 text-[#0F172A]" />
+          </button>
+        </div>
+      </div>
+
+      {/* Single-Line Horizontal Side-Scrolling Row Container with Side Overlay Chevrons */}
+      <div className="relative group/row">
+        <button
+          type="button"
+          onClick={() => handleScroll('left')}
+          aria-label={`Scroll ${category.label} left`}
+          className="hidden sm:flex absolute -left-2 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover/row:opacity-100"
+        >
+          <ChevronLeft className="w-4 h-4 text-[#0F172A]" />
+        </button>
+        <button
+          type="button"
+          onClick={() => handleScroll('right')}
+          aria-label={`Scroll ${category.label} right`}
+          className="hidden sm:flex absolute -right-2 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover/row:opacity-100"
+        >
+          <ChevronRight className="w-4 h-4 text-[#0F172A]" />
+        </button>
+
+        <div
+          ref={rowRef}
+          className="flex flex-row overflow-x-auto snap-x snap-mandatory scrollbar-none no-scrollbar gap-3 sm:gap-4 py-1.5 flex-nowrap scroll-smooth scroll-pl-1"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+        {services.map((service) => {
+          const ratingData = serviceRatingsMap[service.id] || { rating: 4.8, count: 18 };
+          const hasFailed = failedImages[service.id];
+
+          return (
+            <div
+              key={service.id}
+              className="w-[180px] sm:w-[210px] min-w-[170px] max-w-[220px] shrink-0 snap-start bg-[#FAF5E5]/40 hover:bg-white rounded-xl border border-[#0F172A]/10 hover:border-[#D09A40] p-3 flex flex-col justify-between transition-all group/card shadow-2xs"
+            >
+              <div>
+                {/* Compact Service Image Header */}
+                <div className="relative aspect-[16/10] -mx-3 -mt-3 mb-2.5 overflow-hidden rounded-t-xl bg-neutral-200">
+                  {!hasFailed && service.image ? (
+                    <img
+                      src={service.image}
+                      alt={service.title}
+                      loading="lazy"
+                      onError={() => onImageError(service.id)}
+                      className="w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-500"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-[#FAF5E5] text-[#D09A40]">
+                      <Sparkles className="w-6 h-6 opacity-60" />
+                    </div>
+                  )}
+
+                  {/* Rating Tag */}
+                  <div className="absolute top-1.5 left-1.5 bg-[#0F172A]/85 text-white px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 backdrop-blur-xs">
+                    <Star className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
+                    <span>{ratingData.rating}</span>
+                  </div>
+
+                  {service.popular && (
+                    <div className="absolute top-1.5 right-1.5 bg-[#D09A40] text-white px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase">
+                      Popular
+                    </div>
+                  )}
+                </div>
+
+                {/* Service Title */}
+                <h4 className="text-xs sm:text-sm font-bold text-[#0F172A] line-clamp-2 leading-snug group-hover/card:text-[#D09A40] transition-colors">
+                  {service.title}
+                </h4>
+
+                {/* Duration & Highlights */}
+                <div className="flex items-center gap-1.5 text-[11px] text-[#4A4A4A] mt-1 font-mono">
+                  <Clock className="w-3 h-3 text-[#D09A40]" />
+                  <span>{service.duration}</span>
+                </div>
+
+                {service.highlights && service.highlights.length > 0 && (
+                  <p className="text-[10px] text-neutral-500 mt-1 line-clamp-1 italic">
+                    ✓ {service.highlights[0]}
+                  </p>
+                )}
+              </div>
+
+              {/* Card Footer: Price & Quick Book */}
+              <div className="mt-3 pt-2 border-t border-[#0F172A]/10 flex items-center justify-between gap-1.5">
+                <div>
+                  <span className="text-[9px] uppercase tracking-wider text-neutral-400 block leading-none">Starting</span>
+                  <span className="text-xs sm:text-sm font-bold font-mono text-[#0F172A]">
+                    ₹{service.price.toLocaleString('en-IN')}
+                  </span>
+                </div>
+
+                <button
+                  onClick={() => onSelectService(service)}
+                  className="px-2.5 py-1 text-[11px] font-bold bg-[#0F172A] hover:bg-[#D09A40] text-white rounded-lg transition-colors cursor-pointer whitespace-nowrap shadow-2xs"
+                >
+                  Book
+                </button>
+              </div>
+            </div>
+          );
+        })}
+        </div>
+      </div>
+    </div>
   );
 };

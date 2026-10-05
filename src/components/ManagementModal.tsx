@@ -913,6 +913,10 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
         author: vidAuthor.trim(),
         duration: vidDuration.trim(),
         viewsCount: vidViewsCount.trim(),
+        viewsNumeric: 25000,
+        pinCount: vidFeatured ? 1 : 0,
+        clicksCount: 1850,
+        engagementScore: 89,
         created_at: 'Just now',
       };
       if (onUpdateVideos) {

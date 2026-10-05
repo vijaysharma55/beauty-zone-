@@ -54,8 +54,8 @@ export const FAQSection: React.FC<FAQSectionProps> = ({ onOpenBooking }) => {
   };
 
   return (
-    <section id="faq" className="py-16 md:py-24 bg-[#FAF5E5]/70 border-t border-[#0F172A]/10">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="faq" className="py-8 sm:py-16 md:py-24 bg-[#FAF5E5]/70 border-t border-[#0F172A]/10 w-full max-w-full">
+      <div className="max-w-4xl mx-auto px-3 sm:px-6 lg:px-8">
         
         {/* Section Header */}
         <RevealOnScroll duration={0.6}>

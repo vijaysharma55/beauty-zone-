@@ -5,8 +5,8 @@ import { RevealOnScroll } from './RevealOnScroll';
 
 export const SalonsLocations: React.FC = () => {
   return (
-    <section id="locations" className="py-16 md:py-24">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="locations" className="py-8 sm:py-16 md:py-24 w-full max-w-full">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         <RevealOnScroll duration={0.6}>
           <div className="max-w-2xl">
             <div className="flex items-center gap-2 text-xs font-semibold text-[#D09A40] tracking-wider uppercase mb-2">
@@ -27,11 +27,11 @@ export const SalonsLocations: React.FC = () => {
           </div>
         </RevealOnScroll>
 
-        <div className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="mt-6 flex overflow-x-auto gap-3.5 pb-3 scrollbar-none snap-x snap-mandatory -mx-3 px-3 md:grid md:grid-cols-3 md:gap-8 md:mx-0 md:px-0 scroll-smooth scroll-pl-3 md:scroll-pl-0">
           {SALON_BRANCHES.map((branch, index) => (
             <RevealOnScroll key={branch.id} delay={index * 0.1} duration={0.6}>
               <div
-                className={`rounded-2xl p-6 sm:p-8 flex flex-col justify-between transition-all bg-white border h-full luxe-card-hover ${
+                className={`w-[85vw] max-w-[300px] shrink-0 snap-start md:w-auto rounded-2xl p-5 sm:p-8 flex flex-col justify-between transition-all bg-white border h-full luxe-card-hover ${
                   branch.isFlagship
                     ? 'border-[#D09A40] shadow-md ring-1 ring-[#D09A40]/30'
                     : 'border-[#0F172A]/10 hover:border-[#D09A40]/50'

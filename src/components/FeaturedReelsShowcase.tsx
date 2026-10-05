@@ -52,8 +52,8 @@ export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
   if (featuredVideos.length === 0) return null;
 
   return (
-    <section id="featured-reels" className="py-14 md:py-20 bg-white border-t border-[#0F172A]/10 overflow-hidden">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="featured-reels" className="py-8 sm:py-16 md:py-20 bg-white border-t border-[#0F172A]/10 overflow-hidden w-full max-w-full">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         
         {/* Section Header */}
         <RevealOnScroll duration={0.6}>
@@ -122,11 +122,31 @@ export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
           </div>
         </RevealOnScroll>
 
-        {/* Horizontal Reels Carousel / Grid */}
-        <div 
-          ref={scrollContainerRef}
-          className="mt-6 flex gap-5 overflow-x-auto pb-4 scrollbar-none snap-x snap-mandatory -mx-4 px-4 sm:mx-0 sm:px-0"
-        >
+        {/* Horizontal Reels Carousel Container with Overlay Chevrons */}
+        <div className="relative group mt-6">
+          <button
+            type="button"
+            onClick={() => handleScroll('left')}
+            className="hidden sm:flex absolute -left-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover:opacity-100"
+            title="Previous Reels"
+            aria-label="Previous Reels"
+          >
+            <ChevronLeft className="w-5 h-5 text-[#0F172A]" />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleScroll('right')}
+            className="hidden sm:flex absolute -right-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover:opacity-100"
+            title="Next Reels"
+            aria-label="Next Reels"
+          >
+            <ChevronRight className="w-5 h-5 text-[#0F172A]" />
+          </button>
+
+          <div 
+            ref={scrollContainerRef}
+            className="flex gap-5 overflow-x-auto pb-4 scrollbar-none snap-x snap-mandatory -mx-4 px-4 sm:mx-0 sm:px-0 scroll-smooth scroll-pl-4 sm:scroll-pl-0"
+          >
           {featuredVideos.map((video, idx) => {
             const platformBadge = 
               video.platform === 'youtube'
@@ -138,7 +158,7 @@ export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
             return (
               <div
                 key={video.id}
-                className="w-[280px] sm:w-[320px] shrink-0 snap-start bg-white rounded-2xl border border-[#0F172A]/10 hover:border-[#D09A40] shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden group"
+                className="w-[80vw] max-w-[290px] sm:w-[320px] shrink-0 snap-start bg-white rounded-2xl border border-[#0F172A]/10 hover:border-[#D09A40] shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden group"
               >
                 <div>
                   {/* Video Thumbnail with Play Button */}
@@ -229,6 +249,7 @@ export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
             );
           })}
         </div>
+      </div>
 
         {/* Video Lightbox Player Modal */}
         {activePlayVideo && (

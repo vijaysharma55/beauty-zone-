@@ -46,8 +46,8 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
   };
 
   return (
-    <section id="stylists" className="py-16 md:py-24 bg-white/70 border-t border-[#0F172A]/10">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="stylists" className="py-8 sm:py-16 md:py-24 bg-white/70 border-t border-[#0F172A]/10 w-full max-w-full">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         {/* Section Header */}
         <RevealOnScroll duration={0.6}>
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-[#0F172A]/10">
@@ -89,12 +89,12 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
           </div>
         </RevealOnScroll>
 
-        {/* Stylists Grid */}
-        <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* Stylists Grid / Mobile Horizontal Swipe Carousel */}
+        <div className="mt-6 flex overflow-x-auto gap-3.5 pb-3 scrollbar-none snap-x snap-mandatory -mx-3 px-3 md:grid md:grid-cols-2 gap-8 md:mx-0 md:px-0 scroll-smooth scroll-pl-3 md:scroll-pl-0">
           {filteredStylists.map((stylist, index) => (
             <RevealOnScroll key={stylist.id} delay={index * 0.1} duration={0.6}>
               <div
-                className="bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] luxe-card-hover flex flex-col justify-between group h-full"
+                className="w-[82vw] max-w-[290px] shrink-0 snap-start md:w-auto bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] luxe-card-hover flex flex-col justify-between group h-full shadow-2xs"
               >
                 <div className="p-6 sm:p-7 space-y-5">
                   {/* Header: Avatar, Name, Role, Rating */}

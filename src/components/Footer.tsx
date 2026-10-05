@@ -12,7 +12,7 @@ interface FooterProps {
 
 export const Footer: React.FC<FooterProps> = ({ onOpenBooking, onOpenTokens, onOpenManagement }) => {
   return (
-    <footer className="bg-[#0F172A] text-white border-t border-[#D09A40]/20 pt-16 pb-12">
+    <footer className="hidden md:block bg-[#0F172A] text-white border-t border-[#D09A40]/20 pt-16 pb-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Dedicated Social Media Highlight Section */}

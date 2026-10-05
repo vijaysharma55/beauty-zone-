@@ -236,8 +236,8 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   };
 
   return (
-    <section id="booking" className="py-16 md:py-24 bg-white/70 border-t border-[#0F172A]/10">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="booking" className="py-8 sm:py-16 md:py-24 bg-white/70 border-t border-[#0F172A]/10 w-full max-w-full">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         <RevealOnScroll duration={0.6}>
           <div className="max-w-2xl mx-auto text-center mb-10">
             <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#D09A40] tracking-wider uppercase mb-2">
@@ -258,7 +258,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
 
         {/* Main Central Booking Card with Glassmorphism & Hover Animations */}
         <RevealOnScroll delay={0.1} duration={0.65}>
-          <div className="max-w-4xl mx-auto bg-white/80 backdrop-blur-md rounded-2xl border border-white/60 p-6 sm:p-10 shadow-xl luxe-card-hover">
+          <div className="max-w-4xl mx-auto bg-white/80 backdrop-blur-md rounded-2xl border border-white/60 p-4 sm:p-10 shadow-xl luxe-card-hover">
           {/* Active Preloaded Bundle Banner */}
           {selectedBundlePreload && (
             <div className="mb-8 p-4 rounded-xl bg-[#FAF5E5] border border-[#D09A40] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">

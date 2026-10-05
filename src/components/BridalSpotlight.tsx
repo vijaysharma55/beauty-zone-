@@ -8,10 +8,10 @@ interface BridalSpotlightProps {
 
 export const BridalSpotlight: React.FC<BridalSpotlightProps> = ({ onBookBridal }) => {
   return (
-    <section id="bridal" className="py-16 md:py-24 overflow-hidden">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="bridal" className="py-8 sm:py-16 md:py-24 overflow-hidden w-full max-w-full">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         <RevealOnScroll duration={0.65} yOffset={20}>
-          <div className="bg-[#0F172A] text-white rounded-2xl p-8 sm:p-12 lg:p-16 relative overflow-hidden shadow-2xl">
+          <div className="bg-[#0F172A] text-white rounded-2xl p-4 sm:p-12 lg:p-16 relative overflow-hidden shadow-2xl">
             {/* Subtle decorative gold glow */}
             <div className="absolute top-0 right-0 w-96 h-96 bg-[#D09A40]/10 rounded-full blur-3xl pointer-events-none" />
 

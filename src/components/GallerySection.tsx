@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { GalleryItem, GalleryUploadType, VideoItem } from '../types';
 import { BeforeAfterSlider } from './BeforeAfterSlider';
 import { RevealOnScroll } from './RevealOnScroll';
@@ -19,7 +19,9 @@ import {
   Play,
   ExternalLink,
   Eye,
-  CheckCircle2
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 interface GallerySectionProps {
@@ -47,6 +49,21 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
   const [selectedVideoCategory, setSelectedVideoCategory] = useState<string>('all');
   const [activePlayVideo, setActivePlayVideo] = useState<VideoItem | null>(null);
   const [embedLoadError, setEmbedLoadError] = useState(false);
+
+  const photosScrollRef = useRef<HTMLDivElement>(null);
+  const videosScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollPhotos = (dir: 'left' | 'right') => {
+    if (photosScrollRef.current) {
+      photosScrollRef.current.scrollBy({ left: dir === 'left' ? -300 : 300, behavior: 'smooth' });
+    }
+  };
+
+  const scrollVideos = (dir: 'left' | 'right') => {
+    if (videosScrollRef.current) {
+      videosScrollRef.current.scrollBy({ left: dir === 'left' ? -300 : 300, behavior: 'smooth' });
+    }
+  };
 
   // Keep synced if initialView changes externally
   useEffect(() => {
@@ -108,8 +125,8 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
   ];
 
   return (
-    <section id="gallery" className="py-16 md:py-24 bg-[#FAF5E5]/60 border-t border-[#0F172A]/10">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="gallery" className="py-8 sm:py-16 md:py-24 bg-[#FAF5E5]/60 border-t border-[#0F172A]/10 w-full max-w-full">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         
         {/* Section Header */}
         <RevealOnScroll duration={0.6}>
@@ -237,11 +254,31 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
               </div>
             </RevealOnScroll>
 
-            {/* Photos Grid */}
-            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Photos Grid / Mobile Horizontal Swipe Carousel Container with Overlay Chevrons */}
+            <div className="relative group/photos mt-6">
+              <button
+                type="button"
+                onClick={() => scrollPhotos('left')}
+                className="hidden sm:flex absolute -left-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover/photos:opacity-100"
+                title="Previous Photos"
+                aria-label="Previous Photos"
+              >
+                <ChevronLeft className="w-5 h-5 text-[#0F172A]" />
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollPhotos('right')}
+                className="hidden sm:flex absolute -right-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover/photos:opacity-100"
+                title="Next Photos"
+                aria-label="Next Photos"
+              >
+                <ChevronRight className="w-5 h-5 text-[#0F172A]" />
+              </button>
+
+              <div ref={photosScrollRef} className="flex overflow-x-auto gap-3.5 pb-3 scrollbar-none snap-x snap-mandatory -mx-3 px-3 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6 md:mx-0 md:px-0 scroll-smooth scroll-pl-3 md:scroll-pl-0">
               {filteredItems.map((item, index) => (
                 <RevealOnScroll key={item.id} delay={index * 0.05} duration={0.5}>
-                  <div className="bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] luxe-card-hover flex flex-col justify-between group h-full">
+                  <div className="w-[82vw] max-w-[290px] shrink-0 snap-start md:w-auto bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] luxe-card-hover flex flex-col justify-between group h-full shadow-2xs">
                     <div>
                       {item.type === 'before_after' && item.before_image ? (
                         <div className="p-3 bg-neutral-100/50">
@@ -329,6 +366,7 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
                 </RevealOnScroll>
               ))}
             </div>
+          </div>
 
             {filteredItems.length === 0 && (
               <div className="mt-12 text-center py-16 bg-white rounded-2xl border border-dashed border-[#0F172A]/20">
@@ -424,8 +462,28 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
               </div>
             </RevealOnScroll>
 
-            {/* Video Cards Responsive Grid */}
-            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Video Cards Responsive Grid / Mobile Horizontal Swipe Carousel Container with Overlay Chevrons */}
+            <div className="relative group/videos mt-6">
+              <button
+                type="button"
+                onClick={() => scrollVideos('left')}
+                className="hidden sm:flex absolute -left-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover/videos:opacity-100"
+                title="Previous Videos"
+                aria-label="Previous Videos"
+              >
+                <ChevronLeft className="w-5 h-5 text-[#0F172A]" />
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollVideos('right')}
+                className="hidden sm:flex absolute -right-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover/videos:opacity-100"
+                title="Next Videos"
+                aria-label="Next Videos"
+              >
+                <ChevronRight className="w-5 h-5 text-[#0F172A]" />
+              </button>
+
+              <div ref={videosScrollRef} className="flex overflow-x-auto gap-3.5 pb-3 scrollbar-none snap-x snap-mandatory -mx-3 px-3 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6 md:mx-0 md:px-0 scroll-smooth scroll-pl-3 md:scroll-pl-0">
               {filteredVideos.map((video, index) => {
                 const platformBadge = 
                   video.platform === 'youtube'
@@ -436,7 +494,7 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
 
                 return (
                   <RevealOnScroll key={video.id} delay={index * 0.05} duration={0.5}>
-                    <div className="bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] luxe-card-hover flex flex-col justify-between group h-full shadow-xs">
+                    <div className="w-[82vw] max-w-[290px] shrink-0 snap-start md:w-auto bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] luxe-card-hover flex flex-col justify-between group h-full shadow-2xs">
                       <div>
                         {/* Video Thumbnail with Play Button */}
                         <div 
@@ -532,6 +590,7 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
                 );
               })}
             </div>
+          </div>
 
             {filteredVideos.length === 0 && (
               <div className="mt-12 text-center py-16 bg-white rounded-2xl border border-dashed border-[#0F172A]/20">

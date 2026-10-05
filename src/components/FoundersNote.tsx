@@ -8,12 +8,12 @@ interface FoundersNoteProps {
 
 export const FoundersNote: React.FC<FoundersNoteProps> = ({ onOpenBooking }) => {
   return (
-    <section id="founder" className="py-16 md:py-24 bg-[#FAF5E5] border-t border-[#0F172A]/10 relative overflow-hidden">
+    <section id="founder" className="py-8 sm:py-16 md:py-24 bg-[#FAF5E5] border-t border-[#0F172A]/10 relative overflow-hidden w-full max-w-full">
       {/* Subtle decorative background watermarks */}
       <div className="absolute top-1/2 -left-20 w-80 h-80 bg-[#D09A40]/5 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-[#0F172A]/5 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">
           
           {/* Left Column: Founder Portrait & Credential Badge */}

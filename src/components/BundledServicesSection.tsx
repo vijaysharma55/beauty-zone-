@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CURATED_BUNDLES } from '../data/bundlesData';
 import { SALON_SERVICES } from '../data/salonData';
@@ -19,7 +19,9 @@ import {
   MapPin,
   CalendarCheck,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 interface BundledServicesSectionProps {
@@ -35,6 +37,13 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'curated' | 'custom'>('curated');
   const [expandedRulesId, setExpandedRulesId] = useState<string | null>(null);
+  const packagesScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollPackages = (dir: 'left' | 'right') => {
+    if (packagesScrollRef.current) {
+      packagesScrollRef.current.scrollBy({ left: dir === 'left' ? -320 : 320, behavior: 'smooth' });
+    }
+  };
   
   // Custom Bundle Builder state
   const [selectedCustomServiceIds, setSelectedCustomServiceIds] = useState<string[]>([
@@ -117,8 +126,8 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
   };
 
   return (
-    <section id="bundles" className="py-16 md:py-24 bg-[#FAF5E5]/60 border-t border-[#0F172A]/10">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="bundles" className="py-8 sm:py-16 md:py-24 bg-[#FAF5E5]/60 border-t border-[#0F172A]/10 w-full max-w-full">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         {/* Section Header in Simple Indian English */}
         <RevealOnScroll duration={0.6}>
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-[#0F172A]/10">
@@ -185,14 +194,34 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
           </div>
         </RevealOnScroll>
 
-        {/* Tab 1: Signature Curated Packages Grid */}
+        {/* Tab 1: Signature Curated Packages Grid / Mobile Horizontal Swipe Carousel Container with Overlay Chevrons */}
         {activeTab === 'curated' && (
-          <div className="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="relative group/packages mt-6">
+            <button
+              type="button"
+              onClick={() => scrollPackages('left')}
+              className="hidden sm:flex absolute -left-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover/packages:opacity-100"
+              title="Previous Packages"
+              aria-label="Previous Packages"
+            >
+              <ChevronLeft className="w-5 h-5 text-[#0F172A]" />
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollPackages('right')}
+              className="hidden sm:flex absolute -right-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover/packages:opacity-100"
+              title="Next Packages"
+              aria-label="Next Packages"
+            >
+              <ChevronRight className="w-5 h-5 text-[#0F172A]" />
+            </button>
+
+            <div ref={packagesScrollRef} className="flex overflow-x-auto gap-4 pb-3 scrollbar-none snap-x snap-mandatory -mx-3 px-3 lg:grid lg:grid-cols-2 lg:gap-8 lg:mx-0 lg:px-0 scroll-smooth scroll-pl-3 lg:scroll-pl-0">
             {displayPackages.map((pkg, index) => {
               const isRulesOpen = expandedRulesId === pkg.id;
               return (
                 <RevealOnScroll key={pkg.id} delay={index * 0.1} duration={0.6}>
-                  <div className="bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] luxe-card-hover flex flex-col justify-between group h-full">
+                  <div className="w-[85vw] max-w-[320px] shrink-0 snap-start lg:w-auto bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] luxe-card-hover flex flex-col justify-between group h-full shadow-2xs">
                     <div>
                       {/* Photo & Badge Carrier */}
                       <div className="relative aspect-[16/9] w-full overflow-hidden bg-neutral-100">
@@ -217,9 +246,9 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
 
                         {/* Bottom Title in Scrim */}
                         <div className="absolute bottom-3 left-4 right-4 text-white">
-                          <div className="flex items-center gap-2 text-xs font-mono text-[#FAF5E5]/90 uppercase">
+                          <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-[#FAF5E5]/90 uppercase">
                             {pkg.offer_name && (
-                              <span className="px-2 py-0.5 bg-[#D09A40] text-[#0F172A] font-bold rounded text-[10px]">
+                              <span className="px-2 py-0.5 bg-[#D09A40] text-[#0F172A] font-bold rounded text-[10px] shadow-xs">
                                 {pkg.offer_name}
                               </span>
                             )}
@@ -227,6 +256,12 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
                               <Tag className="w-3.5 h-3.5 text-[#D09A40]" />
                               <span>Validity: {pkg.validity}</span>
                             </div>
+                            {pkg.valid_until && (
+                              <span className="px-2 py-0.5 bg-rose-600/90 text-white font-bold rounded text-[10px] shadow-xs flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-white" />
+                                <span>Till {pkg.valid_until}</span>
+                              </span>
+                            )}
                           </div>
                           <h3 className="font-serif text-xl sm:text-2xl font-bold text-white mt-1">
                             {pkg.name}
@@ -320,6 +355,7 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
                 </RevealOnScroll>
               );
             })}
+            </div>
           </div>
         )}
 

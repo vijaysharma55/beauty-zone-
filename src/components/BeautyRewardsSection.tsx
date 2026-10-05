@@ -192,12 +192,12 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
   const estimatedPoints = Math.round((calcBillAmount / 10) * currentTierConfig.multiplier);
 
   return (
-    <section id="rewards" className="py-16 md:py-24 bg-[#FAF5E5] relative overflow-hidden border-t border-[#0F172A]/10">
+    <section id="rewards" className="py-8 sm:py-16 md:py-24 bg-[#FAF5E5] relative overflow-hidden border-t border-[#0F172A]/10 w-full max-w-full">
       {/* Decorative background glow */}
       <div className="absolute top-0 right-1/4 w-96 h-96 bg-[#D09A40]/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 relative z-10">
         
         {/* Section Header in Everyday Indian English */}
         <RevealOnScroll duration={0.6}>
@@ -527,14 +527,14 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
           </button>
         </div>
 
-        {/* Tab 1: Available Rewards to Redeem */}
+        {/* Tab 1: Available Rewards to Redeem / Mobile Horizontal Swipe Carousel */}
         {activeTab === 'rewards' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="flex overflow-x-auto gap-3.5 pb-3 scrollbar-none snap-x snap-mandatory -mx-3 px-3 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6 md:mx-0 md:px-0">
             {REWARD_OFFERS.map((offer, idx) => {
               const canAfford = customer.totalPoints >= offer.pointsCost;
               return (
                 <RevealOnScroll key={offer.id} delay={idx * 0.08} duration={0.5}>
-                  <div className="h-full rounded-2xl bg-white p-6 border border-neutral-200 hover:border-[#D09A40] transition-all duration-300 shadow-sm hover:shadow-md flex flex-col justify-between group">
+                  <div className="w-[82vw] max-w-[290px] shrink-0 snap-start md:w-auto h-full rounded-2xl bg-white p-5 sm:p-6 border border-neutral-200 hover:border-[#D09A40] transition-all duration-300 shadow-2xs hover:shadow-md flex flex-col justify-between group">
                     <div>
                       {/* Top Header */}
                       <div className="flex items-start justify-between gap-3 mb-3">

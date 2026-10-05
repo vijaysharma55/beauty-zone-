@@ -11,16 +11,19 @@ import { GallerySection } from './components/GallerySection';
 import { TestimonialsSection } from './components/TestimonialsSection';
 import { StylistsSection } from './components/StylistsSection';
 import { FoundersNote } from './components/FoundersNote';
+import { BeautyRewardsSection } from './components/BeautyRewardsSection';
 import { SalonsLocations } from './components/SalonsLocations';
 import { FAQSection } from './components/FAQSection';
 import { Footer } from './components/Footer';
 import { ManagementModal } from './components/ManagementModal';
+import { DesignSystemInspector } from './components/DesignSystemInspector';
+import { FloatingActions } from './components/FloatingActions';
+import { MobileBottomDock } from './components/MobileBottomDock';
 import { ServiceItem, Stylist, SalonPackage, GalleryItem, VideoItem } from './types';
 import { getStoredPackages, saveStoredPackages } from './data/packagesData';
 import { getStoredGallery, saveStoredGallery } from './data/galleryData';
 import { getStoredServices, saveStoredServices } from './data/servicesStore';
 import { getStoredVideos, saveStoredVideos } from './data/videosData';
-import { Sparkles, SlidersHorizontal } from 'lucide-react';
 
 export default function App() {
   const [isTokensInspectorOpen, setIsTokensInspectorOpen] = useState(false);
@@ -30,10 +33,10 @@ export default function App() {
   // Module: Live Services Store
   const [services, setServices] = useState<ServiceItem[]>(() => getStoredServices());
 
-  // Module 31: Package Management Store
+  // Module: Package Management Store
   const [packages, setPackages] = useState<SalonPackage[]>(() => getStoredPackages());
 
-  // Module 32: Gallery Management Store
+  // Module: Gallery Management Store
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>(() => getStoredGallery());
 
   // Module: Video & Reels Store
@@ -103,7 +106,7 @@ export default function App() {
     scrollToSection('booking');
   };
 
-  const handleOpenManagement = (tab: 'services' | 'packages' | 'gallery' = 'services') => {
+  const handleOpenManagement = (tab: 'services' | 'packages' | 'gallery' | 'videos' = 'services') => {
     setManagementInitialTab(tab);
     setIsManagementModalOpen(true);
   };
@@ -129,7 +132,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF5E5] text-[#0F172A] selection:bg-[#D09A40] selection:text-white">
+    <div className="min-h-screen bg-[#FAF5E5] text-[#0F172A] selection:bg-[#D09A40] selection:text-white pb-16 md:pb-0">
       {/* Top Bar Navigation */}
       <Navbar
         onOpenBooking={() => scrollToSection('booking')}
@@ -162,7 +165,7 @@ export default function App() {
             setGalleryView('videos');
             scrollToSection('gallery');
           }}
-          onOpenManagement={() => handleOpenManagement('gallery')}
+          onOpenManagement={() => handleOpenManagement('videos')}
         />
 
         {/* ========================================================
@@ -190,8 +193,8 @@ export default function App() {
             category: 'bridal',
             price: 24999,
             duration: '210 mins',
-            description: '',
-            highlights: [],
+            description: 'Flawless HD airbrush bridal makeup with traditional jewelry setting, luxury hair styling, and complimentary touch-up kit.',
+            highlights: ['HD Airbrush Waterproof Base', 'Kundan & Borla Jewelry Setting', 'Senior Makeup Master'],
           });
           setSelectedBundle(null);
           scrollToSection('booking');
@@ -225,9 +228,14 @@ export default function App() {
         ======================================================== */}
         <TestimonialsSection />
 
-        {/* Stylists & Founder Spotlight (Social Proof & Expertise) */}
+        {/* Stylists & Founder Spotlight */}
         <StylistsSection onBookWithStylist={handleBookWithStylist} />
         <FoundersNote onOpenBooking={() => scrollToSection('booking')} />
+
+        {/* ========================================================
+            8B. BEAUTY REWARDS CLUB & LOYALTY TRACKER
+        ======================================================== */}
+        <BeautyRewardsSection onBookAppointment={() => scrollToSection('booking')} />
 
         {/* ========================================================
             9. SALON BRANCH LOCATIONS & DOORSTEP HOME VISIT MAP INFO
@@ -244,20 +252,21 @@ export default function App() {
       <Footer
         onOpenBooking={() => scrollToSection('booking')}
         onOpenTokens={() => setIsTokensInspectorOpen(true)}
-        onOpenManagement={() => handleOpenManagement('packages')}
+        onOpenManagement={() => handleOpenManagement('services')}
       />
 
-      {/* Floating Admin Dashboard Trigger Button */}
-      <div className="fixed bottom-5 left-5 z-40 flex flex-col sm:flex-row items-start sm:items-center gap-2">
-        <button
-          onClick={() => handleOpenManagement('gallery')}
-          className="px-4 py-2.5 rounded-full bg-[#0F172A] text-white shadow-xl hover:bg-[#D09A40] transition-colors border border-white/20 flex items-center gap-2 text-xs font-semibold cursor-pointer group"
-          title="Admin Dashboard: Manage Services, Packages, Gallery & Reels"
-        >
-          <SlidersHorizontal className="w-4 h-4 text-[#D09A40] group-hover:text-white transition-colors" />
-          <span>Admin Dashboard</span>
-        </button>
-      </div>
+      {/* Universal Floating Actions: WhatsApp, Scroll-to-Top & Admin Dashboard (Desktop) */}
+      <FloatingActions
+        onOpenBooking={() => scrollToSection('booking')}
+        onOpenManagement={() => handleOpenManagement('services')}
+      />
+
+      {/* Fixed Mobile Bottom Application Dock (Mobile Only) */}
+      <MobileBottomDock
+        onOpenBooking={() => scrollToSection('booking')}
+        onOpenManagement={() => handleOpenManagement('services')}
+        onSelectSection={(sectionId) => scrollToSection(sectionId)}
+      />
 
       {/* Salon Management Console Modal */}
       <ManagementModal
@@ -272,6 +281,12 @@ export default function App() {
         onUpdateGallery={handleUpdateGallery}
         onUpdateVideos={handleUpdateVideos}
         initialTab={managementInitialTab}
+      />
+
+      {/* Design System Inspector Modal / Drawer */}
+      <DesignSystemInspector
+        isOpen={isTokensInspectorOpen}
+        onClose={() => setIsTokensInspectorOpen(false)}
       />
     </div>
   );

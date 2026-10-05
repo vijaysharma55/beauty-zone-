@@ -16,20 +16,39 @@
   --shadow-sm-token: rgba(10, 13, 18, 0.04) 0px 3px 3px -1.5px, rgba(10, 13, 18, 0.03) 0px 8px 8px -4px, rgba(10, 13, 18, 0.08) 0px 20px 24px -4px;
 }
 
-html {
-  scroll-behavior: smooth;
+html, body, #root {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100%;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
+  margin: 0;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   font-family: var(--font-sans);
   background-color: #FAF5E5;
   color: #0F172A;
 }
 
-/* Custom scrollbar for sleek design system panels */
+/* Safe area padding utilities */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Custom scrollbar for sleek panels */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -42,62 +61,69 @@ body {
   background: rgba(208, 154, 64, 0.6);
 }
 
-/* ========================================================
-   LUXURY HOVER & MICRO-INTERACTIONS
-   ======================================================== */
+/* Hide scrollbar for clean horizontal carousels */
+.scrollbar-none,
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar,
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
 
-/* Major Cards: scale(1.03) and 0 18px 45px rgba(0,0,0,0.12) */
+/* Disable desktop hover transforms on mobile touch devices */
+@media (max-width: 767px) {
+  .luxe-card-hover:hover,
+  .luxe-card-lift:hover {
+    transform: none !important;
+  }
+}
+
+/* Major Cards micro-interactions */
 .luxe-card-hover {
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease;
   will-change: transform, box-shadow;
 }
-.luxe-card-hover:hover {
-  transform: scale(1.03);
-  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.12);
+@media (min-width: 768px) {
+  .luxe-card-hover:hover {
+    transform: scale(1.02);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.1);
+  }
 }
 
-/* Major Cards with subtle lift: scale(1.03) translateY(-4px) */
 .luxe-card-lift {
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease;
   will-change: transform, box-shadow;
 }
-.luxe-card-lift:hover {
-  transform: scale(1.03) translateY(-4px);
-  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.12);
+@media (min-width: 768px) {
+  .luxe-card-lift:hover {
+    transform: scale(1.02) translateY(-3px);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.1);
+  }
 }
 
-/* Logo Hover: scale(1.05) */
 .luxe-logo-hover {
-  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: transform;
 }
 .luxe-logo-hover:hover {
-  transform: scale(1.05);
+  transform: scale(1.03);
 }
 
 /* Button Hover Animations */
 .luxe-btn {
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
   will-change: transform, box-shadow;
 }
-.luxe-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.16);
+@media (min-width: 768px) {
+  .luxe-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.14);
+  }
 }
 .luxe-btn:active {
-  transform: translateY(0);
-}
-
-.luxe-btn-gold {
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.25s ease, color 0.25s ease;
-  will-change: transform, box-shadow;
-}
-.luxe-btn-gold:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(208, 154, 64, 0.35);
-}
-.luxe-btn-gold:active {
-  transform: translateY(0);
+  transform: translateY(0) scale(0.98);
 }
 
 /* Navigation Underline Animation */
@@ -116,7 +142,7 @@ body {
   height: 2px;
   background-color: #D09A40;
   border-radius: 9999px;
-  transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1), left 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), left 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .nav-link-underline:hover::after {
   width: 100%;
@@ -125,11 +151,11 @@ body {
 
 /* Luxury Image Zoom on Hover */
 .luxe-img-zoom {
-  transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: transform;
 }
 .group:hover .luxe-img-zoom {
-  transform: scale(1.08);
+  transform: scale(1.05);
 }
 
 /* Subtle Floating Effects */
@@ -138,30 +164,18 @@ body {
     transform: translateY(0px);
   }
   50% {
-    transform: translateY(-5px);
+    transform: translateY(-4px);
   }
 }
 .animate-float-subtle {
   animation: floatSubtle 4.5s ease-in-out infinite;
 }
 
-@keyframes floatSubtleSlow {
-  0%, 100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-6px);
-  }
-}
-.animate-float-slow {
-  animation: floatSubtleSlow 6s ease-in-out infinite;
-}
-
 /* Modal Entrance Animation */
 @keyframes modalEnter {
   from {
     opacity: 0;
-    transform: scale(0.96) translateY(8px);
+    transform: scale(0.97) translateY(10px);
   }
   to {
     opacity: 1;
@@ -169,25 +183,18 @@ body {
   }
 }
 .animate-modal-enter {
-  animation: modalEnter 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: modalEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Success Confirmation Animation */
-@keyframes successPop {
-  0% {
-    transform: scale(0.6);
-    opacity: 0;
+/* Slide Up Drawer Animation */
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
   }
-  60% {
-    transform: scale(1.12);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
+  to {
+    transform: translateY(0);
   }
 }
-.animate-success-pop {
-  animation: successPop 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+.animate-slide-up {
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
-
