@@ -38,6 +38,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const navLinks = [
     { label: 'Trending Reels', targetId: 'featured-reels', badge: true },
     { label: 'Deals & Offers', targetId: 'bundles', highlight: true },
+    { label: 'Gift Cards', targetId: 'gift-cards', highlight: true },
     { label: 'Services & Rates', targetId: 'services' },
     { label: 'Price Calculator', targetId: 'booking' },
     { label: 'Transformations', targetId: 'gallery' },

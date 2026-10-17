@@ -24,6 +24,29 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [activePortfolioModal, setActivePortfolioModal] = useState<Stylist | null>(null);
 
+  // Live Availability State per stylist ID
+  const [stylistAvailabilities, setStylistAvailabilities] = useState<{ [id: string]: boolean }>(() => {
+    const initial: { [id: string]: boolean } = {};
+    SALON_STYLISTS.forEach((s, idx) => {
+      initial[s.id] = idx % 3 !== 0; // true = Available Now, false = Booked
+    });
+    return initial;
+  });
+
+  // Periodically toggle status for live urgency simulation
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      const randomStylist = SALON_STYLISTS[Math.floor(Math.random() * SALON_STYLISTS.length)];
+      if (randomStylist) {
+        setStylistAvailabilities((prev) => ({
+          ...prev,
+          [randomStylist.id]: !prev[randomStylist.id],
+        }));
+      }
+    }, 12000);
+    return () => clearInterval(timer);
+  }, []);
+
   const categories = [
     { id: 'all', label: 'All Stylists' },
     { id: 'bridal', label: 'Bridal Artists' },
@@ -136,6 +159,19 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
                         <MapPin className="w-3 h-3 text-[#D09A40]" />
                         <span>{stylist.branch}</span>
                       </div>
+
+                      {/* Live Availability Badge */}
+                      {(() => {
+                        const isAvailable = stylistAvailabilities[stylist.id] ?? true;
+                        return (
+                          <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold font-mono border shadow-2xs transition-all duration-300">
+                            <span className={`w-2 h-2 rounded-full ${isAvailable ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                            <span className={isAvailable ? 'text-emerald-700' : 'text-amber-700'}>
+                              {isAvailable ? 'Available Now (Book Slot)' : 'Currently Booked (Next Free in 35m)'}
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 

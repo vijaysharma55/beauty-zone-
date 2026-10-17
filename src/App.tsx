@@ -12,6 +12,7 @@ import { TestimonialsSection } from './components/TestimonialsSection';
 import { StylistsSection } from './components/StylistsSection';
 import { FoundersNote } from './components/FoundersNote';
 import { BeautyRewardsSection } from './components/BeautyRewardsSection';
+import { DigitalGiftCardSection } from './components/DigitalGiftCardSection';
 import { SalonsLocations } from './components/SalonsLocations';
 import { FAQSection } from './components/FAQSection';
 import { Footer } from './components/Footer';
@@ -236,6 +237,11 @@ export default function App() {
             8B. BEAUTY REWARDS CLUB & LOYALTY TRACKER
         ======================================================== */}
         <BeautyRewardsSection onBookAppointment={() => scrollToSection('booking')} />
+
+        {/* ========================================================
+            8C. DIGITAL GIFT CARDS PURCHASE & GENERATOR
+        ======================================================== */}
+        <DigitalGiftCardSection />
 
         {/* ========================================================
             9. SALON BRANCH LOCATIONS & DOORSTEP HOME VISIT MAP INFO

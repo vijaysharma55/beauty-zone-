@@ -93,7 +93,7 @@ export const SALON_SERVICES: ServiceItem[] = [
     id: 's1',
     title: '24K Gold Leaf Glow Facial',
     category: 'skin',
-    price: 4999,
+    price: 3299,
     duration: '90 mins',
     description: 'Special facial using real 24K gold foil, pure kesar, and sandalwood cream with ultrasound massage for instant bride-like shine.',
     highlights: ['Real 24K Gold Leaves', 'Pure Kesar & Sandalwood', 'Relaxing Face Massage', 'Instant Bright Glow'],
