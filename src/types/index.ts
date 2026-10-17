@@ -142,6 +142,7 @@ export interface VideoItem {
   description: string;
   category: string;
   thumbnail?: string;
+  videoUrl?: string;
   featured: boolean;
   active: boolean;
   viewsCount?: string;

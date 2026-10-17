@@ -277,7 +277,7 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
 
               <div ref={photosScrollRef} className="flex overflow-x-auto gap-3.5 pb-3 scrollbar-none snap-x snap-mandatory -mx-3 px-3 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6 md:mx-0 md:px-0 scroll-smooth scroll-pl-3 md:scroll-pl-0">
               {filteredItems.map((item, index) => (
-                <RevealOnScroll key={item.id} delay={index * 0.05} duration={0.5}>
+                <RevealOnScroll key={item.id} delay={index * 0.05} duration={0.5} className="shrink-0 snap-start h-full md:w-auto">
                   <div className="w-[82vw] max-w-[290px] shrink-0 snap-start md:w-auto bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] luxe-card-hover flex flex-col justify-between group h-full shadow-2xs">
                     <div>
                       {item.type === 'before_after' && item.before_image ? (
@@ -304,7 +304,7 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
                           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-60 group-hover:opacity-80 transition-opacity" />
 
                           <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
-                            <span className="px-2.5 py-1 bg-black/60 backdrop-blur-xs text-white text-[10px] font-mono uppercase tracking-wider rounded-md font-bold">
+                            <span className="px-2.5 py-1 bg-black/75 text-white text-[10px] font-mono uppercase tracking-wider rounded-md font-bold">
                               {item.type.replace('_', ' ')}
                             </span>
                             {item.featured && (
@@ -493,7 +493,7 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
                     : { label: 'Facebook Video', color: 'bg-[#1877F2] text-white', icon: FacebookIcon };
 
                 return (
-                  <RevealOnScroll key={video.id} delay={index * 0.05} duration={0.5}>
+                  <RevealOnScroll key={video.id} delay={index * 0.05} duration={0.5} className="shrink-0 snap-start h-full md:w-auto">
                     <div className="w-[82vw] max-w-[290px] shrink-0 snap-start md:w-auto bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] luxe-card-hover flex flex-col justify-between group h-full shadow-2xs">
                       <div>
                         {/* Video Thumbnail with Play Button */}
@@ -526,7 +526,7 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
 
                           {/* Center Play Button Overlay */}
                           <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="w-12 h-12 rounded-full bg-black/60 hover:bg-[#D09A40] text-white flex items-center justify-center transition-all backdrop-blur-xs border border-white/30 group-hover:scale-110 shadow-lg group-hover:bg-[#D09A40]">
+                            <div className="w-12 h-12 rounded-full bg-black/60 hover:bg-[#D09A40] text-white flex items-center justify-center transition-all border border-white/40 group-hover:scale-110 shadow-lg group-hover:bg-[#D09A40]">
                               <Play className="w-5 h-5 fill-white ml-0.5" />
                             </div>
                           </div>
@@ -606,7 +606,7 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
             FULLSCREEN PHOTO LIGHTBOX MODAL
         ======================================================== */}
         {activeModalItem && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-fade-in">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 animate-fade-in">
             <div className="relative max-w-4xl w-full bg-white rounded-3xl overflow-hidden shadow-2xl border border-[#0F172A]/20 flex flex-col md:flex-row max-h-[90vh]">
               <button
                 onClick={() => setActiveModalItem(null)}
@@ -672,7 +672,7 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
             CUSTOMER VIDEO LIGHTBOX PLAYER MODAL (16:9 & 9:16 RESPONSIVE)
         ======================================================== */}
         {activePlayVideo && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-6 bg-black/90 backdrop-blur-md animate-fade-in">
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-6 bg-black/90 animate-fade-in">
             <div className="w-full max-w-4xl bg-[#0F172A] rounded-3xl shadow-2xl border border-white/20 overflow-hidden text-white flex flex-col max-h-[92vh]">
               {/* Modal Header Bar */}
               <div className="px-6 py-3.5 bg-black/60 border-b border-white/10 flex items-center justify-between shrink-0">
@@ -719,7 +719,7 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
                         src={activePlayVideo.thumbnail}
                         alt={activePlayVideo.title}
                         referrerPolicy="no-referrer"
-                        className="absolute inset-0 w-full h-full object-cover opacity-25 blur-xs"
+                        className="absolute inset-0 w-full h-full object-cover opacity-25"
                       />
                     )}
 

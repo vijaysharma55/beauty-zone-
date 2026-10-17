@@ -22,9 +22,18 @@ import {
   CreditCard,
   Navigation,
   Truck,
-  Gift
+  Gift,
+  Mic,
+  MicOff
 } from 'lucide-react';
 import { RevealOnScroll } from './RevealOnScroll';
+
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+}
 
 interface BookingSectionProps {
   selectedServicePreload?: ServiceItem | null;
@@ -99,6 +108,101 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     artistLevel: selectedStylistPreload ? 'master' : 'senior',
     notes: selectedStylistPreload ? `Requested Artist: ${selectedStylistPreload}` : '',
   });
+
+  // Voice AI 'Speak to Book' State
+  const [isListening, setIsListening] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const [voiceFeedback, setVoiceFeedback] = useState<string | null>(null);
+
+  const handleStartVoiceBooking = () => {
+    const SpeechRecognitionAPI = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognitionAPI) {
+      alert('Speech recognition is not supported in this browser. Please use Chrome, Safari or Edge.');
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognitionAPI();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-IN';
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        setVoiceFeedback('Listening... Speak your service & date (e.g. "Book Bridal Makeup for tomorrow at 11 AM")');
+      };
+
+      recognition.onresult = (event: any) => {
+        const text = event.results[0][0].transcript;
+        setVoiceTranscript(text);
+        processVoiceCommand(text);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error', event.error);
+        setIsListening(false);
+        setVoiceFeedback('Could not hear clearly. Please try again or fill manually.');
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognition.start();
+    } catch (e) {
+      console.error(e);
+      setIsListening(false);
+      alert('Failed to start speech recognition.');
+    }
+  };
+
+  const processVoiceCommand = (text: string) => {
+    const lower = text.toLowerCase();
+    
+    // 1. Match service
+    let matchedService = SALON_SERVICES[0];
+    for (const service of SALON_SERVICES) {
+      const titleWords = service.title.toLowerCase().split(' ');
+      const matches = titleWords.filter(w => w.length > 3 && lower.includes(w));
+      if (matches.length > 0 || lower.includes(service.category)) {
+        matchedService = service;
+        break;
+      }
+    }
+
+    // 2. Match Date
+    let dateStr = formData.preferredDate;
+    const now = new Date();
+    if (lower.includes('tomorrow')) {
+      const tomorrow = new Date(now.getTime() + 86400000);
+      dateStr = tomorrow.toISOString().split('T')[0];
+    } else if (lower.includes('today')) {
+      dateStr = now.toISOString().split('T')[0];
+    } else if (lower.includes('day after')) {
+      const dayAfter = new Date(now.getTime() + 86400000 * 2);
+      dateStr = dayAfter.toISOString().split('T')[0];
+    }
+
+    // 3. Match Time
+    let timeStr = formData.preferredTime;
+    if (lower.includes('10 am') || lower.includes('10:00 am')) timeStr = '10:00 AM';
+    else if (lower.includes('11 am') || lower.includes('11:00 am')) timeStr = '11:30 AM';
+    else if (lower.includes('1 pm') || lower.includes('13:00') || lower.includes('1:00 pm')) timeStr = '1:00 PM';
+    else if (lower.includes('2 pm') || lower.includes('2:00 pm')) timeStr = '2:30 PM';
+    else if (lower.includes('4 pm') || lower.includes('4:00 pm')) timeStr = '4:00 PM';
+    else if (lower.includes('5 pm') || lower.includes('5:00 pm')) timeStr = '5:30 PM';
+    else if (lower.includes('6 pm') || lower.includes('6:00 pm')) timeStr = '6:30 PM';
+
+    setFormData(prev => ({
+      ...prev,
+      serviceCategory: matchedService.category,
+      selectedService: matchedService.id,
+      preferredDate: dateStr,
+      preferredTime: timeStr,
+    }));
+
+    setVoiceFeedback(`Successfully matched: "${matchedService.title}" on ${dateStr} at ${timeStr}!`);
+  };
 
   const [confirmedBooking, setConfirmedBooking] = useState<{
     code: string;
@@ -256,9 +360,9 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
           </div>
         </RevealOnScroll>
 
-        {/* Main Central Booking Card with Glassmorphism & Hover Animations */}
+        {/* Main Central Booking Card with Sharp Styling */}
         <RevealOnScroll delay={0.1} duration={0.65}>
-          <div className="max-w-4xl mx-auto bg-white/80 backdrop-blur-md rounded-2xl border border-white/60 p-4 sm:p-10 shadow-xl luxe-card-hover">
+          <div className="max-w-4xl mx-auto bg-white rounded-2xl border border-[#0F172A]/15 p-4 sm:p-10 shadow-xl">
           {/* Active Preloaded Bundle Banner */}
           {selectedBundlePreload && (
             <div className="mb-8 p-4 rounded-xl bg-[#FAF5E5] border border-[#D09A40] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
@@ -306,6 +410,51 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
               )}
             </div>
           )}
+
+          {/* ========================================================
+              SPEAK TO BOOK - VOICE AI ASSISTANT WIDGET
+          ======================================================== */}
+          <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-[#FAF5E5] via-[#FFFDF5] to-[#FAF5E5] border border-[#D09A40]/40 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className={`p-3 rounded-xl ${isListening ? 'bg-red-600 animate-pulse' : 'bg-[#0F172A] text-[#D09A40]'} text-white shrink-0 shadow-sm transition-colors`}>
+                {isListening ? <MicOff className="w-5 h-5 animate-spin" /> : <Mic className="w-5 h-5 text-[#D09A40]" />}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm sm:text-base font-bold text-[#0F172A]">
+                    Speak to Book (Voice AI Assistant)
+                  </h3>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#D09A40] text-[#0F172A] font-bold">
+                    AI Speech
+                  </span>
+                </div>
+                <p className="text-xs text-[#4A4A4A] mt-0.5">
+                  {voiceFeedback || 'Click mic & verbally dictate your preferred treatment and date (e.g., "Book Bridal Makeup for tomorrow at 11 AM")'}
+                </p>
+                {voiceTranscript && (
+                  <p className="text-[11px] font-mono text-[#0F172A] bg-white/80 px-2.5 py-1 rounded-lg border border-[#D09A40]/30 mt-1.5">
+                    "{voiceTranscript}"
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+              <button
+                type="button"
+                onClick={handleStartVoiceBooking}
+                disabled={isListening}
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2 cursor-pointer ${
+                  isListening
+                    ? 'bg-red-600 text-white animate-pulse'
+                    : 'bg-[#0F172A] hover:bg-[#D09A40] text-white'
+                }`}
+              >
+                <Mic className="w-4 h-4 text-[#D09A40]" />
+                <span>{isListening ? 'Listening...' : 'Start Voice Booking'}</span>
+              </button>
+            </div>
+          </div>
 
           {/* Prominent Mode Selector: In-Salon vs At-Home Doorstep */}
           <div className="mb-8">
@@ -748,7 +897,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
 
       {/* Mandatory Advance Payment Verification Modal */}
       {isVerifyingPayment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 sm:p-8 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
             <button
               onClick={() => setIsVerifyingPayment(false)}
@@ -882,7 +1031,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
 
       {/* Confirmation Modal */}
       {confirmedBooking && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 sm:p-8 shadow-2xl relative animate-modal-enter">
             <button
               onClick={() => setConfirmedBooking(null)}

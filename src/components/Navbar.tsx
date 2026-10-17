@@ -50,8 +50,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <header className={`sticky top-0 z-40 w-full transition-all duration-300 ${
       scrolled 
-        ? 'bg-[#FAF5E5]/95 backdrop-blur-md shadow-sm border-b border-[#0F172A]/10' 
-        : 'bg-[#FAF5E5]/90 backdrop-blur-md border-b border-[#0F172A]/10'
+        ? 'bg-[#FAF5E5] shadow-sm border-b border-[#0F172A]/10' 
+        : 'bg-[#FAF5E5] border-b border-[#0F172A]/10'
     }`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
         {/* Brand Logo */}
@@ -62,7 +62,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
           aria-label="Beauty Zone Jaipur Home"
         >
-          <div className="w-9 h-9 rounded-xl bg-white/80 backdrop-blur-md border border-[#D09A40]/30 shadow-xs flex items-center justify-center text-[#D09A40] transition-all duration-300 ease-out group-hover:scale-105 group-hover:drop-shadow-md">
+          <div className="w-9 h-9 rounded-xl bg-white border border-[#D09A40]/30 shadow-xs flex items-center justify-center text-[#D09A40] transition-all duration-300 ease-out group-hover:scale-105 group-hover:drop-shadow-md">
             <Crown className="w-5 h-5 text-[#D09A40] animate-float-subtle" />
           </div>
           <div className="flex flex-col">

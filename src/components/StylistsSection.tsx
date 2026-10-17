@@ -92,7 +92,7 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
         {/* Stylists Grid / Mobile Horizontal Swipe Carousel */}
         <div className="mt-6 flex overflow-x-auto gap-3.5 pb-3 scrollbar-none snap-x snap-mandatory -mx-3 px-3 md:grid md:grid-cols-2 gap-8 md:mx-0 md:px-0 scroll-smooth scroll-pl-3 md:scroll-pl-0">
           {filteredStylists.map((stylist, index) => (
-            <RevealOnScroll key={stylist.id} delay={index * 0.1} duration={0.6}>
+            <RevealOnScroll key={stylist.id} delay={index * 0.1} duration={0.6} className="shrink-0 snap-start h-full md:w-auto">
               <div
                 className="w-[82vw] max-w-[290px] shrink-0 snap-start md:w-auto bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] luxe-card-hover flex flex-col justify-between group h-full shadow-2xs"
               >
@@ -106,7 +106,7 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
                         referrerPolicy="no-referrer"
                         className="w-full h-full object-cover luxe-img-zoom"
                       />
-                      <div className="absolute bottom-0 inset-x-0 bg-black/60 backdrop-blur-2xs text-[9px] text-[#FAF5E5] text-center font-mono py-0.5 font-bold">
+                      <div className="absolute bottom-0 inset-x-0 bg-black/75 text-[9px] text-[#FAF5E5] text-center font-mono py-0.5 font-bold">
                         {stylist.experience}
                       </div>
                     </div>
@@ -239,7 +239,7 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
 
       {/* Stylist Portfolio Detail Modal */}
       {activePortfolioModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75">
           <div className="bg-white rounded-2xl max-w-3xl w-full p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto animate-modal-enter border border-[#0F172A]/10">
             <button
               onClick={() => setActivePortfolioModal(null)}

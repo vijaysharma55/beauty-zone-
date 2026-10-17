@@ -190,7 +190,7 @@ export const Hero: React.FC<HeroProps> = ({
                     href={SOCIAL_LINKS.instagram.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="p-1.5 rounded-lg bg-black/50 backdrop-blur-xs text-white hover:bg-pink-600 transition-colors border border-white/20"
+                    className="p-1.5 rounded-lg bg-black/70 text-white hover:bg-pink-600 transition-colors border border-white/30"
                     title="Instagram"
                   >
                     <InstagramIcon className="w-3.5 h-3.5" />
@@ -199,7 +199,7 @@ export const Hero: React.FC<HeroProps> = ({
                     href={SOCIAL_LINKS.whatsapp.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="p-1.5 rounded-lg bg-black/50 backdrop-blur-xs text-white hover:bg-emerald-600 transition-colors border border-white/20"
+                    className="p-1.5 rounded-lg bg-black/70 text-white hover:bg-emerald-600 transition-colors border border-white/30"
                     title="WhatsApp"
                   >
                     <WhatsAppIcon className="w-3.5 h-3.5" />
@@ -208,7 +208,7 @@ export const Hero: React.FC<HeroProps> = ({
                     href={SOCIAL_LINKS.facebook.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="p-1.5 rounded-lg bg-black/50 backdrop-blur-xs text-white hover:bg-blue-600 transition-colors border border-white/20"
+                    className="p-1.5 rounded-lg bg-black/70 text-white hover:bg-blue-600 transition-colors border border-white/30"
                     title="Facebook"
                   >
                     <FacebookIcon className="w-3.5 h-3.5" />
@@ -216,7 +216,7 @@ export const Hero: React.FC<HeroProps> = ({
                 </div>
 
                 {/* Floating Location Card Overlay (Mobile Compact) */}
-                <div className="absolute bottom-2.5 left-2.5 right-2.5 p-3 rounded-xl bg-white/90 backdrop-blur-md border border-white/80 text-[#0F172A] shadow-md">
+                <div className="absolute bottom-2.5 left-2.5 right-2.5 p-3 rounded-xl bg-white border border-[#0F172A]/10 text-[#0F172A] shadow-md">
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <div className="flex items-center gap-1">
@@ -278,7 +278,7 @@ export const Hero: React.FC<HeroProps> = ({
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
                     <div className="absolute bottom-1.5 left-1.5 right-1.5">
-                      <span className="text-[9px] sm:text-[10px] font-mono text-white bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-xs">
+                      <span className="text-[9px] sm:text-[10px] font-mono text-white bg-black/75 px-1.5 py-0.5 rounded">
                         {item.price}
                       </span>
                     </div>

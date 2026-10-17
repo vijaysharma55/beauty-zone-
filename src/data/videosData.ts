@@ -131,6 +131,7 @@ export const INITIAL_VIDEOS: VideoItem[] = [
     description: 'Step-by-step airbrush HD makeup, real Kundan jewellery setting, and rose water hydration glow on our real bride Pooja Sharma.',
     category: 'Bridal Reels',
     thumbnail: '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg',
+    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
     featured: true,
     active: true,
     viewsCount: '48.2K views',
@@ -151,6 +152,7 @@ export const INITIAL_VIDEOS: VideoItem[] = [
     description: 'Watch the dramatic frizz-to-glass transformation using our 0% formaldehyde nanoplastia formula at our C-Scheme Salon.',
     category: 'Hair Transformation',
     thumbnail: '/src/assets/images/hair_styling_luxe_1790672021591.jpg',
+    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
     featured: true,
     active: true,
     viewsCount: '124K views',
@@ -171,6 +173,7 @@ export const INITIAL_VIDEOS: VideoItem[] = [
     description: 'Detailed tutorial of our Russian builder gel technique with genuine Swarovski crystals and hand-painted gold leaf art.',
     category: 'Nail Art Tutorials',
     thumbnail: '/src/assets/images/nail_art_luxe_1790676094903.jpg',
+    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
     featured: true,
     active: true,
     viewsCount: '32.6K views',
@@ -191,6 +194,7 @@ export const INITIAL_VIDEOS: VideoItem[] = [
     description: 'Ananya Verma shares her honest experience after getting our signature ultrasound firming 24K gold facial before her sangeet ceremony.',
     category: 'Client Reviews',
     thumbnail: '/src/assets/images/skin_spa_treatment_1790672037475.jpg',
+    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4',
     featured: false,
     active: true,
     viewsCount: '18.9K views',
@@ -211,6 +215,7 @@ export const INITIAL_VIDEOS: VideoItem[] = [
     description: 'Explore our newly renovated flagship salon featuring private dressing rooms, Italian spa chairs, and sterilized beauty stations.',
     category: 'Salon Tour & Ambience',
     thumbnail: '/src/assets/images/hero_jaipur_salon_1790671992521.jpg',
+    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4',
     featured: true,
     active: true,
     viewsCount: '95.4K views',
@@ -231,6 +236,7 @@ export const INITIAL_VIDEOS: VideoItem[] = [
     description: 'Highlights from our 15-day professional bridal certification academy class held at the Vaishali Nagar academy branch.',
     category: 'Academy Masterclass',
     thumbnail: '/src/assets/images/academy_training_jaipur_1790676136151.jpg',
+    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
     featured: false,
     active: true,
     viewsCount: '62.1K views',
@@ -256,7 +262,10 @@ export function getStoredVideos(): VideoItem[] {
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed;
+      return parsed.map((item, idx) => ({
+        ...item,
+        videoUrl: item.videoUrl || INITIAL_VIDEOS[idx % INITIAL_VIDEOS.length]?.videoUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4'
+      }));
     }
     return INITIAL_VIDEOS;
   } catch (err) {

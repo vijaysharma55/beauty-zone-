@@ -17,7 +17,7 @@ export const Footer: React.FC<FooterProps> = ({ onOpenBooking, onOpenTokens, onO
         
         {/* Dedicated Social Media Highlight Section */}
         <RevealOnScroll duration={0.6}>
-          <div className="mb-14 p-6 sm:p-8 rounded-3xl bg-gradient-to-b from-white/[0.07] to-white/[0.02] border border-white/10 backdrop-blur-md relative overflow-hidden shadow-2xl">
+          <div className="mb-14 p-6 sm:p-8 rounded-3xl bg-white/[0.05] border border-white/15 relative overflow-hidden shadow-2xl">
             {/* Subtle decorative gold glow */}
             <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 bg-[#D09A40]/10 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute bottom-0 left-0 -mb-8 -ml-8 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />

@@ -156,96 +156,13 @@ export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
                 : { label: 'Facebook Video', color: 'bg-[#1877F2] text-white', icon: FacebookIcon };
 
             return (
-              <div
+              <FeaturedReelCard
                 key={video.id}
-                className="w-[80vw] max-w-[290px] sm:w-[320px] shrink-0 snap-start bg-white rounded-2xl border border-[#0F172A]/10 hover:border-[#D09A40] shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden group"
-              >
-                <div>
-                  {/* Video Thumbnail with Play Button */}
-                  <div 
-                    className="relative aspect-[9/14] sm:aspect-[9/13] w-full bg-neutral-900 overflow-hidden cursor-pointer"
-                    onClick={() => setActivePlayVideo(video)}
-                  >
-                    <img
-                      src={video.thumbnail || '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg'}
-                      alt={video.title}
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-90"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/20" />
-
-                    {/* Top Badges */}
-                    <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-10">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold shadow-sm ${platformBadge.color}`}>
-                        <platformBadge.icon className="w-3 h-3 text-white" />
-                        <span>{platformBadge.label}</span>
-                      </span>
-
-                      {video.featured && (
-                        <span className="px-2 py-0.5 rounded-full bg-[#D09A40] text-[#0F172A] text-[10px] font-bold flex items-center gap-1 shadow-sm">
-                          <Star className="w-3 h-3 fill-[#0F172A]" />
-                          <span>Trending</span>
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Center Animated Play Button */}
-                    <div className="absolute inset-0 flex items-center justify-center z-10">
-                      <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-md border border-white/40 group-hover:bg-[#D09A40] group-hover:scale-110 group-hover:border-[#D09A40] text-white flex items-center justify-center transition-all duration-300 shadow-xl">
-                        <Play className="w-6 h-6 fill-white ml-0.5" />
-                      </div>
-                    </div>
-
-                    {/* Bottom Metadata in Scrim */}
-                    <div className="absolute bottom-3 left-3 right-3 z-10 text-white space-y-1">
-                      <div className="flex items-center justify-between text-[11px] font-mono">
-                        <span className="text-[#FAF5E5] font-semibold bg-black/60 px-2 py-0.5 rounded text-[10px] uppercase">
-                          {video.category}
-                        </span>
-                        <span className="bg-black/60 px-2 py-0.5 rounded text-[10px]">
-                          {video.viewsCount || 'Trending'}
-                        </span>
-                      </div>
-                      <h4 className="font-serif text-sm font-bold text-white line-clamp-2 leading-snug drop-shadow-sm group-hover:text-[#FAF5E5]">
-                        {video.title}
-                      </h4>
-                    </div>
-                  </div>
-
-                  {/* Card Description */}
-                  <div className="p-3.5 space-y-1.5">
-                    <p className="text-xs text-[#4A4A4A] line-clamp-2 font-light leading-relaxed">
-                      {video.description}
-                    </p>
-                    {video.author && (
-                      <p className="text-[10px] text-neutral-400 font-mono truncate">
-                        By {video.author}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Footer Action Buttons */}
-                <div className="p-3.5 pt-2 border-t border-neutral-100 flex items-center justify-between gap-2 bg-[#FAF5E5]/40">
-                  <button
-                    type="button"
-                    onClick={() => setActivePlayVideo(video)}
-                    className="text-[11px] font-bold text-[#0F172A] hover:text-[#D09A40] flex items-center gap-1 cursor-pointer"
-                  >
-                    <Eye className="w-3.5 h-3.5 text-[#D09A40]" />
-                    <span>Watch Reel</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => onBookService(video.title)}
-                    className="px-3 py-1.5 text-[11px] font-bold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl transition-colors shadow-2xs flex items-center gap-1 cursor-pointer shrink-0"
-                  >
-                    <span>Book Look</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </button>
-                </div>
-              </div>
+                video={video}
+                platformBadge={platformBadge}
+                onPlay={(v) => setActivePlayVideo(v)}
+                onBook={onBookService}
+              />
             );
           })}
         </div>
@@ -253,7 +170,7 @@ export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
 
         {/* Video Lightbox Player Modal */}
         {activePlayVideo && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-6 bg-black/90 backdrop-blur-md animate-fade-in">
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-6 bg-black/85 animate-fade-in">
             <div className="w-full max-w-4xl bg-[#0F172A] rounded-3xl shadow-2xl border border-white/20 overflow-hidden text-white flex flex-col max-h-[92vh]">
               {/* Header */}
               <div className="px-6 py-3.5 bg-black/60 border-b border-white/10 flex items-center justify-between shrink-0">
@@ -351,5 +268,150 @@ export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
 
       </div>
     </section>
+  );
+};
+
+interface FeaturedReelCardProps {
+  video: VideoItem;
+  platformBadge: { label: string; color: string; icon: React.ElementType };
+  onPlay: (video: VideoItem) => void;
+  onBook: (title: string) => void;
+}
+
+const FeaturedReelCard: React.FC<FeaturedReelCardProps> = ({ video, platformBadge, onPlay, onBook }) => {
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const [isPlaying, setIsPlaying] = React.useState(false);
+
+  const handleMouseEnter = () => {
+    setIsPlaying(true);
+    if (videoRef.current) {
+      videoRef.current.currentTime = 0;
+      videoRef.current.play().catch((err) => {
+        console.log('Autoplay prevented or failed:', err);
+      });
+    }
+  };
+
+  const handleMouseLeave = () => {
+    setIsPlaying(false);
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+    }
+  };
+
+  return (
+    <div
+      className="w-[80vw] max-w-[290px] sm:w-[320px] shrink-0 snap-start bg-white rounded-2xl border border-[#0F172A]/10 hover:border-[#D09A40] shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden group"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      <div>
+        {/* Video Thumbnail / Hover Play Container */}
+        <div 
+          className="relative aspect-[9/14] sm:aspect-[9/13] w-full bg-neutral-900 overflow-hidden cursor-pointer"
+          onClick={() => onPlay(video)}
+        >
+          {/* Video element for hover playback */}
+          <video
+            ref={videoRef}
+            src={video.videoUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4'}
+            muted
+            playsInline
+            loop
+            preload="metadata"
+            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${isPlaying ? 'opacity-100 z-5' : 'opacity-0 z-0 pointer-events-none'}`}
+          />
+
+          <img
+            src={video.thumbnail || '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg'}
+            alt={video.title}
+            referrerPolicy="no-referrer"
+            className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ${isPlaying ? 'opacity-0' : 'opacity-90'}`}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/20 pointer-events-none" />
+
+          {/* Top Badges */}
+          <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-10">
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold shadow-sm ${platformBadge.color}`}>
+              <platformBadge.icon className="w-3 h-3 text-white" />
+              <span>{platformBadge.label}</span>
+            </span>
+
+            {video.featured && (
+              <span className="px-2 py-0.5 rounded-full bg-[#D09A40] text-[#0F172A] text-[10px] font-bold flex items-center gap-1 shadow-sm">
+                <Star className="w-3 h-3 fill-[#0F172A]" />
+                <span>Trending</span>
+              </span>
+            )}
+          </div>
+
+          {/* Center Play Button (hidden when hovering/playing) */}
+          {!isPlaying && (
+            <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+              <div className="w-14 h-14 rounded-full bg-black/60 border border-white/50 group-hover:bg-[#D09A40] group-hover:scale-110 group-hover:border-[#D09A40] text-white flex items-center justify-center transition-all duration-300 shadow-xl">
+                <Play className="w-6 h-6 fill-white ml-0.5" />
+              </div>
+            </div>
+          )}
+
+          {/* Live Playing Indicator */}
+          {isPlaying && (
+            <div className="absolute top-12 left-3 z-10 bg-black/70 text-[#D09A40] border border-[#D09A40]/40 px-2 py-0.5 rounded-full text-[10px] font-mono flex items-center gap-1 animate-pulse">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#D09A40]" />
+              <span>Playing (Muted)</span>
+            </div>
+          )}
+
+          {/* Bottom Metadata in Scrim */}
+          <div className="absolute bottom-3 left-3 right-3 z-10 text-white space-y-1">
+            <div className="flex items-center justify-between text-[11px] font-mono">
+              <span className="text-[#FAF5E5] font-semibold bg-black/60 px-2 py-0.5 rounded text-[10px] uppercase">
+                {video.category}
+              </span>
+              <span className="bg-black/60 px-2 py-0.5 rounded text-[10px]">
+                {video.viewsCount || 'Trending'}
+              </span>
+            </div>
+            <h4 className="font-serif text-sm font-bold text-white line-clamp-2 leading-snug drop-shadow-sm group-hover:text-[#FAF5E5]">
+              {video.title}
+            </h4>
+          </div>
+        </div>
+
+        {/* Card Description */}
+        <div className="p-3.5 space-y-1.5">
+          <p className="text-xs text-[#4A4A4A] line-clamp-2 font-light leading-relaxed">
+            {video.description}
+          </p>
+          {video.author && (
+            <p className="text-[10px] text-neutral-400 font-mono truncate">
+              By {video.author}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Footer Action Buttons */}
+      <div className="p-3.5 pt-2 border-t border-neutral-100 flex items-center justify-between gap-2 bg-[#FAF5E5]/40">
+        <button
+          type="button"
+          onClick={() => onPlay(video)}
+          className="text-[11px] font-bold text-[#0F172A] hover:text-[#D09A40] flex items-center gap-1 cursor-pointer"
+        >
+          <Eye className="w-3.5 h-3.5 text-[#D09A40]" />
+          <span>Watch Reel</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onBook(video.title)}
+          className="px-3 py-1.5 text-[11px] font-bold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl transition-colors shadow-2xs flex items-center gap-1 cursor-pointer shrink-0"
+        >
+          <span>Book Look</span>
+          <ArrowRight className="w-3 h-3" />
+        </button>
+      </div>
+    </div>
   );
 };

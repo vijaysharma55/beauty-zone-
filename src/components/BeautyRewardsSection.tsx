@@ -221,7 +221,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
 
         {/* Profile Switcher & Lookup Bar */}
         <RevealOnScroll delay={0.1} duration={0.5}>
-          <div className="p-4 sm:p-5 rounded-2xl bg-white/80 backdrop-blur-md border border-[#0F172A]/10 shadow-sm mb-8 flex flex-col lg:flex-row items-center justify-between gap-4">
+          <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#0F172A]/10 shadow-sm mb-8 flex flex-col lg:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2 overflow-x-auto w-full lg:w-auto pb-2 lg:pb-0">
               <span className="text-xs font-semibold text-[#4A4A4A] whitespace-nowrap uppercase tracking-wider">
                 Select Customer Profile:
@@ -340,7 +340,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
           {/* Right Column: Simple Progress Tracker & Tier Benefits */}
           <div className="lg:col-span-7">
             <RevealOnScroll direction="left" duration={0.6}>
-              <div className="rounded-3xl p-6 sm:p-7 bg-white/90 backdrop-blur-md border border-[#0F172A]/10 shadow-lg h-full flex flex-col justify-between">
+              <div className="rounded-3xl p-6 sm:p-7 bg-white border border-[#0F172A]/10 shadow-lg h-full flex flex-col justify-between">
                 <div>
                   {/* Progress Tracker Title */}
                   <div className="flex items-center justify-between gap-3 mb-4">
@@ -529,11 +529,11 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
 
         {/* Tab 1: Available Rewards to Redeem / Mobile Horizontal Swipe Carousel */}
         {activeTab === 'rewards' && (
-          <div className="flex overflow-x-auto gap-3.5 pb-3 scrollbar-none snap-x snap-mandatory -mx-3 px-3 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6 md:mx-0 md:px-0">
+          <div className="flex overflow-x-auto gap-3.5 pb-3 scrollbar-none snap-x snap-mandatory -mx-3 px-3 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6 md:mx-0 md:px-0 scroll-smooth scroll-pl-3 md:scroll-pl-0">
             {REWARD_OFFERS.map((offer, idx) => {
               const canAfford = customer.totalPoints >= offer.pointsCost;
               return (
-                <RevealOnScroll key={offer.id} delay={idx * 0.08} duration={0.5}>
+                <RevealOnScroll key={offer.id} delay={idx * 0.08} duration={0.5} className="shrink-0 snap-start h-full md:w-auto">
                   <div className="w-[82vw] max-w-[290px] shrink-0 snap-start md:w-auto h-full rounded-2xl bg-white p-5 sm:p-6 border border-neutral-200 hover:border-[#D09A40] transition-all duration-300 shadow-2xs hover:shadow-md flex flex-col justify-between group">
                     <div>
                       {/* Top Header */}

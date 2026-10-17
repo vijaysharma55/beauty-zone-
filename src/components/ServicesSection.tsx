@@ -4,6 +4,7 @@ import { SALON_SERVICES } from '../data/salonData';
 import { ServiceItem, ServiceReview } from '../types';
 import { INITIAL_SERVICE_REVIEWS, BASELINE_SERVICE_RATINGS } from '../data/serviceReviewsData';
 import { ServiceReviewModal } from './ServiceReviewModal';
+import { ServiceCompareModal } from './ServiceCompareModal';
 import { RevealOnScroll } from './RevealOnScroll';
 import { 
   Check, 
@@ -27,7 +28,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
-  Tag
+  Tag,
+  ArrowLeftRight,
+  LayoutGrid,
+  List,
+  Filter,
+  ArrowRight
 } from 'lucide-react';
 
 interface ServicesSectionProps {
@@ -35,7 +41,7 @@ interface ServicesSectionProps {
   onSelectService: (service: ServiceItem) => void;
 }
 
-export type ServiceFilterCategory = 'all' | 'bridal' | 'hair' | 'skin' | 'nails' | 'spa' | 'academy';
+export type ServiceFilterCategory = 'all' | 'hair' | 'skin' | 'bridal' | 'nails' | 'makeup' | 'spa' | 'academy';
 
 interface CategoryMetadata {
   id: ServiceFilterCategory;
@@ -64,9 +70,10 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
   }, [rawServices]);
 
   const [activeCategory, setActiveCategory] = useState<ServiceFilterCategory>('all');
+  const [viewMode, setViewMode] = useState<'grid' | 'carousel'>('grid');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [maxPrice, setMaxPrice] = useState<number>(50000);
-  const [sortBy, setSortBy] = useState<'featured' | 'price-asc' | 'price-desc' | 'rating-desc'>('featured');
+  const [sortBy, setSortBy] = useState<'featured' | 'price-asc' | 'price-desc' | 'rating-desc' | 'duration-asc'>('featured');
   const [failedImages, setFailedImages] = useState<{ [key: string]: boolean }>({});
 
   // Review & Rating Modal State
@@ -83,6 +90,50 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
   });
 
   const [reviewModalService, setReviewModalService] = useState<ServiceItem | null>(null);
+
+  // Comparison Feature State
+  const [selectedForCompare, setSelectedForCompare] = useState<ServiceItem[]>([]);
+  const [isCompareModalOpen, setIsCompareModalOpen] = useState<boolean>(false);
+
+  const selectedCompareIds = useMemo(() => new Set(selectedForCompare.map((s) => s.id)), [selectedForCompare]);
+
+  const handleToggleCompare = (service: ServiceItem) => {
+    setSelectedForCompare((prev) => {
+      if (prev.some((s) => s.id === service.id)) {
+        return prev.filter((s) => s.id !== service.id);
+      } else {
+        if (prev.length >= 4) {
+          return [...prev.slice(1), service];
+        }
+        return [...prev, service];
+      }
+    });
+  };
+
+  const handleAddToCompare = (service: ServiceItem) => {
+    setSelectedForCompare((prev) => {
+      if (prev.some((s) => s.id === service.id)) return prev;
+      if (prev.length >= 4) return [...prev.slice(1), service];
+      return [...prev, service];
+    });
+  };
+
+  const handleRemoveFromCompare = (serviceId: string) => {
+    setSelectedForCompare((prev) => prev.filter((s) => s.id !== serviceId));
+  };
+
+  const handleClearCompare = () => {
+    setSelectedForCompare([]);
+  };
+
+  const handleOpenCompareModal = () => {
+    if (selectedForCompare.length === 0) {
+      const popular = allServices.filter((s) => s.popular);
+      const defaults = popular.length >= 2 ? popular.slice(0, 2) : allServices.slice(0, 2);
+      setSelectedForCompare(defaults);
+    }
+    setIsCompareModalOpen(true);
+  };
 
   // Quick preset price brackets
   const pricePresetBrackets = [
@@ -174,6 +225,17 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
       features: ['4-Week Gel', 'Swarovski Stones', 'Russian Manicure', 'Paraffin Spa'],
     },
     { 
+      id: 'makeup', 
+      label: 'Makeup & Makeovers', 
+      shortLabel: 'Makeup',
+      icon: Sparkles, 
+      tagline: 'HD Airbrush & Sangeet Party Glam Makeovers',
+      description: 'Waterproof HD airbrush makeup, party glam, smokey eyes, and professional bridal makeup artistry.', 
+      image: '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg',
+      altText: 'Bridal and party makeup artistry at Beauty Zone Jaipur',
+      features: ['Temptu HD Airbrush', 'Smokey & Cut-Crease Eyes', 'Full Touchup Kit', 'Lashes & Draping'],
+    },
+    { 
       id: 'spa', 
       label: 'Spa & Body Care', 
       shortLabel: 'Spa',
@@ -245,6 +307,17 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
     }
 
     // Apply Sorting
+    const parseDurationMinutes = (durationStr: string): number => {
+      if (!durationStr) return 999;
+      const lower = durationStr.toLowerCase();
+      const numMatch = lower.match(/(\d+)/);
+      const num = numMatch ? parseInt(numMatch[1], 10) : 60;
+      if (lower.includes('day') || lower.includes('days')) return num * 1440;
+      if (lower.includes('session') || lower.includes('sessions')) return num * 90;
+      if (lower.includes('hour') || lower.includes('hours') || lower.includes('hr')) return num * 60;
+      return num;
+    };
+
     if (sortBy === 'price-asc') {
       result.sort((a, b) => a.price - b.price);
     } else if (sortBy === 'price-desc') {
@@ -255,10 +328,23 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
         const ratingB = serviceRatingsMap[b.id]?.rating || 0;
         return ratingB - ratingA;
       });
+    } else if (sortBy === 'duration-asc') {
+      result.sort((a, b) => parseDurationMinutes(a.duration) - parseDurationMinutes(b.duration));
     }
 
     return result;
   }, [allServices, searchQuery, maxPrice, sortBy, serviceRatingsMap]);
+
+  // Check if a service belongs to makeup
+  const isMakeupService = (service: ServiceItem) => {
+    return (
+      service.category === 'bridal' ||
+      service.title.toLowerCase().includes('makeup') ||
+      service.title.toLowerCase().includes('makeover') ||
+      service.description.toLowerCase().includes('makeup') ||
+      service.highlights.some((h) => h.toLowerCase().includes('makeup'))
+    );
+  };
 
   // Group filtered services by category
   const categorizedFilteredServices = useMemo(() => {
@@ -266,12 +352,18 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
     categories.forEach((cat) => {
       map[cat.id] = [];
     });
+    map['makeup'] = [];
 
     filteredServices.forEach((service) => {
       if (map[service.category]) {
         map[service.category].push(service);
       } else {
         map[service.category] = [service];
+      }
+      if (isMakeupService(service)) {
+        if (!map['makeup'].some((s) => s.id === service.id)) {
+          map['makeup'].push(service);
+        }
       }
     });
 
@@ -281,10 +373,24 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
   // Determine active display categories based on tab filter
   const displayCategories = useMemo(() => {
     if (activeCategory === 'all') {
-      return categories.filter((cat) => (categorizedFilteredServices[cat.id] || []).length > 0);
+      return categories.filter((cat) => cat.id !== 'makeup' && (categorizedFilteredServices[cat.id] || []).length > 0);
+    }
+    if (activeCategory === 'makeup') {
+      return categories.filter((cat) => cat.id === 'makeup');
     }
     return categories.filter((cat) => cat.id === activeCategory);
   }, [activeCategory, categories, categorizedFilteredServices]);
+
+  // Tag-based filter component tags: Hair, Skin, Bridal, Nails, Makeup (plus All and Spa)
+  const filterTags = useMemo(() => [
+    { id: 'all' as ServiceFilterCategory, label: 'All Services', shortLabel: 'All', icon: Layers, count: filteredServices.length },
+    { id: 'hair' as ServiceFilterCategory, label: 'Hair', shortLabel: 'Hair', icon: Scissors, count: (categorizedFilteredServices['hair'] || []).length },
+    { id: 'skin' as ServiceFilterCategory, label: 'Skin', shortLabel: 'Skin', icon: Droplet, count: (categorizedFilteredServices['skin'] || []).length },
+    { id: 'bridal' as ServiceFilterCategory, label: 'Bridal', shortLabel: 'Bridal', icon: Crown, count: (categorizedFilteredServices['bridal'] || []).length },
+    { id: 'nails' as ServiceFilterCategory, label: 'Nails', shortLabel: 'Nails', icon: Sparkle, count: (categorizedFilteredServices['nails'] || []).length },
+    { id: 'makeup' as ServiceFilterCategory, label: 'Makeup', shortLabel: 'Makeup', icon: Sparkles, count: (categorizedFilteredServices['makeup'] || []).length },
+    { id: 'spa' as ServiceFilterCategory, label: 'Spa', shortLabel: 'Spa', icon: Heart, count: (categorizedFilteredServices['spa'] || []).length },
+  ], [filteredServices, categorizedFilteredServices]);
 
   return (
     <section id="services" className="py-6 sm:py-10 md:py-14 bg-white/80 border-y border-[#0F172A]/10 w-full max-w-full">
@@ -338,14 +444,177 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
                   className="bg-transparent focus:outline-none cursor-pointer text-[#0F172A] font-medium"
                 >
                   <option value="featured">Featured</option>
-                  <option value="rating-desc">Highest Rated</option>
+                  <option value="duration-asc">Shortest Duration</option>
                   <option value="price-asc">Price: Low to High</option>
                   <option value="price-desc">Price: High to Low</option>
+                  <option value="rating-desc">Highest Rated</option>
                 </select>
               </div>
+
+              {/* Compare Button */}
+              <button
+                type="button"
+                onClick={handleOpenCompareModal}
+                className="flex items-center gap-1.5 bg-white hover:bg-[#FAF5E5] border border-[#0F172A]/15 hover:border-[#D09A40] rounded-lg px-2.5 py-1.5 text-xs text-[#0F172A] font-bold cursor-pointer transition-colors shadow-2xs shrink-0"
+                title="Compare treatments side-by-side"
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5 text-[#D09A40]" />
+                <span>Compare</span>
+                {selectedForCompare.length > 0 && (
+                  <span className="bg-[#D09A40] text-white text-[10px] px-1.5 py-0.2 rounded-full font-mono">
+                    {selectedForCompare.length}
+                  </span>
+                )}
+              </button>
             </div>
           </div>
         </RevealOnScroll>
+
+        {/* ========================================================
+            PRIMARY CATEGORY FILTER NAVIGATION SYSTEM
+        ======================================================== */}
+        <div className="mt-4 pb-2 border-b border-[#0F172A]/10">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#0F172A]">
+              <Filter className="w-3.5 h-3.5 text-[#D09A40]" />
+              <span>Filter by Category</span>
+            </div>
+            {activeCategory !== 'all' && (
+              <button
+                type="button"
+                onClick={() => setActiveCategory('all')}
+                className="text-xs font-bold text-[#D09A40] hover:text-[#0F172A] flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <span>Reset to All Categories</span>
+                <RotateCcw className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          <div
+            role="tablist"
+            aria-label="Filter services by category"
+            className="flex items-center gap-2 overflow-x-auto scrollbar-none no-scrollbar py-1 -mx-1 px-1"
+          >
+            {/* 'All' Tab */}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeCategory === 'all'}
+              onClick={() => setActiveCategory('all')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap cursor-pointer transition-all flex items-center gap-2 shrink-0 ${
+                activeCategory === 'all'
+                  ? 'bg-[#0F172A] text-white shadow-md ring-2 ring-[#0F172A]/10'
+                  : 'bg-white text-[#4A4A4A] border border-[#0F172A]/12 hover:border-[#D09A40] hover:text-[#0F172A]'
+              }`}
+            >
+              <Layers className={`w-4 h-4 ${activeCategory === 'all' ? 'text-[#D09A40]' : 'text-[#4A4A4A]'}`} />
+              <span>All Treatments</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold ${
+                activeCategory === 'all' ? 'bg-[#D09A40] text-white' : 'bg-neutral-100 text-[#4A4A4A]'
+              }`}>
+                {filteredServices.length}
+              </span>
+            </button>
+
+            {/* Individual Category Tabs: Bridal, Hair, Skin, Nails, Spa, Academy */}
+            {categories.map((cat) => {
+              const Icon = cat.icon;
+              const count = (categorizedFilteredServices[cat.id] || []).length;
+              const isSelected = activeCategory === cat.id;
+
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isSelected}
+                  onClick={() => setActiveCategory(cat.id)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap cursor-pointer transition-all flex items-center gap-2 shrink-0 ${
+                    isSelected
+                      ? 'bg-[#0F172A] text-white shadow-md ring-2 ring-[#0F172A]/10'
+                      : 'bg-white text-[#4A4A4A] border border-[#0F172A]/12 hover:border-[#D09A40] hover:text-[#0F172A]'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 ${isSelected ? 'text-[#D09A40]' : 'text-[#4A4A4A]'}`} />
+                  <span>{cat.shortLabel}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold ${
+                    isSelected ? 'bg-[#D09A40] text-white' : 'bg-neutral-100 text-[#4A4A4A]'
+                  }`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Selected Category Spotlight Overview Banner */}
+        {activeCategory !== 'all' && (
+          <div className="mt-4 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[#FAF5E5] via-[#FFFDF5] to-[#FAF5E5] border border-[#D09A40]/30 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in fade-in duration-200">
+            <div className="flex items-start gap-3.5">
+              <div className="p-2.5 rounded-xl bg-[#0F172A] text-[#D09A40] shrink-0 shadow-xs">
+                {React.createElement(categories.find((c) => c.id === activeCategory)?.icon || Sparkles, { className: 'w-5 h-5' })}
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-base sm:text-lg font-bold text-[#0F172A] tracking-tight">
+                    {categories.find((c) => c.id === activeCategory)?.label}
+                  </h3>
+                  <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#0F172A] text-white">
+                    {(categorizedFilteredServices[activeCategory] || []).length} Services Available
+                  </span>
+                </div>
+                <p className="text-xs text-[#4A4A4A] mt-0.5">
+                  {categories.find((c) => c.id === activeCategory)?.description}
+                </p>
+                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                  {categories.find((c) => c.id === activeCategory)?.features.map((feature, idx) => (
+                    <span key={idx} className="text-[10px] font-medium text-[#0F172A] bg-white px-2 py-0.5 rounded-md border border-[#D09A40]/25 shadow-2xs">
+                      ✓ {feature}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Layout Mode Toggle (Grid vs Carousel) & View All Button */}
+            <div className="flex items-center gap-2 self-start md:self-center shrink-0">
+              <div className="flex items-center bg-white border border-[#0F172A]/15 rounded-xl p-0.5 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('grid')}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    viewMode === 'grid' ? 'bg-[#0F172A] text-white shadow-xs' : 'text-[#4A4A4A] hover:text-[#0F172A]'
+                  }`}
+                  title="Grid View (All services visible)"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span>Grid</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('carousel')}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    viewMode === 'carousel' ? 'bg-[#0F172A] text-white shadow-xs' : 'text-[#4A4A4A] hover:text-[#0F172A]'
+                  }`}
+                  title="Carousel Row View"
+                >
+                  <List className="w-3.5 h-3.5" />
+                  <span>Row</span>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveCategory('all')}
+                className="px-3 py-1.5 rounded-xl bg-white border border-[#0F172A]/15 hover:border-[#D09A40] text-xs font-bold text-[#0F172A] hover:bg-[#FAF5E5] transition-colors cursor-pointer"
+              >
+                All Categories
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Compact Price Range & Preset Chips */}
         <div className="mt-3 p-3 sm:p-4 rounded-xl bg-[#FAF5E5] border border-[#D09A40]/30 shadow-2xs">
@@ -398,45 +667,6 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
           </div>
         </div>
 
-        {/* Category Navigation Pills */}
-        <div className="mt-4 flex items-center gap-1.5 overflow-x-auto scrollbar-none no-scrollbar pb-1">
-          <button
-            onClick={() => setActiveCategory('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-all flex items-center gap-1.5 shrink-0 ${
-              activeCategory === 'all'
-                ? 'bg-[#0F172A] text-white shadow-xs'
-                : 'bg-white text-[#4A4A4A] border border-[#0F172A]/10 hover:text-[#0F172A]'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5 text-[#D09A40]" />
-            <span>All Categories ({allServices.length})</span>
-          </button>
-
-          {categories.map((cat) => {
-            const Icon = cat.icon;
-            const count = (categorizedFilteredServices[cat.id] || []).length;
-            const isSelected = activeCategory === cat.id;
-
-            return (
-              <button
-                key={cat.id}
-                onClick={() => setActiveCategory(cat.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-all flex items-center gap-1.5 shrink-0 ${
-                  isSelected
-                    ? 'bg-[#0F172A] text-white shadow-xs'
-                    : 'bg-white text-[#4A4A4A] border border-[#0F172A]/10 hover:text-[#0F172A]'
-                }`}
-              >
-                <Icon className={`w-3.5 h-3.5 ${isSelected ? 'text-[#D09A40]' : 'text-[#4A4A4A]'}`} />
-                <span>{cat.label}</span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${isSelected ? 'bg-white/20 text-[#FAF5E5]' : 'bg-neutral-100 text-[#4A4A4A]'}`}>
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
         {/* Empty State */}
         {filteredServices.length === 0 && (
           <div className="mt-8 p-8 text-center bg-white rounded-2xl border border-[#0F172A]/10 max-w-md mx-auto">
@@ -460,28 +690,207 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
           </div>
         )}
 
-        {/* Render Single-Line Horizontal Side-Scrolling Rows for Each Category */}
-        <div className="mt-6 space-y-6">
-          {displayCategories.map((cat) => {
-            const catServices = categorizedFilteredServices[cat.id] || [];
-            if (catServices.length === 0) return null;
+        {/* ========================================================
+            TAG-BASED FILTER COMPONENT ABOVE SERVICES GRID
+            Instantly toggle between 'Hair', 'Skin', 'Bridal', 'Nails', and 'Makeup' views
+        ======================================================== */}
+        <div className="mt-8 pt-6 border-t border-[#0F172A]/10">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FAF5E5] border border-[#D09A40]/30 text-xs font-bold text-[#0F172A] shadow-2xs">
+                <Tag className="w-3.5 h-3.5 text-[#D09A40]" />
+                <span>Service Category Views:</span>
+              </div>
+              <span className="text-xs text-[#4A4A4A] hidden sm:inline">
+                Click any tag to toggle treatments instantly
+              </span>
+            </div>
 
-            return (
-              <CategoryHorizontalRow
-                key={cat.id}
-                category={cat}
-                services={catServices}
-                serviceRatingsMap={serviceRatingsMap}
-                failedImages={failedImages}
-                onSelectService={onSelectService}
-                onOpenReviewModal={(svc) => setReviewModalService(svc)}
-                onImageError={handleImageError}
-              />
-            );
-          })}
+            <div className="flex items-center gap-2.5 self-end sm:self-auto">
+              <span className="text-xs font-medium text-[#4A4A4A]">
+                Showing <strong className="text-[#0F172A] font-mono">{activeCategory === 'all' ? filteredServices.length : (categorizedFilteredServices[activeCategory] || []).length}</strong> treatments
+              </span>
+
+              {/* View Mode Toggle (Grid vs Row) */}
+              <div className="flex items-center bg-white border border-[#0F172A]/15 rounded-xl p-0.5 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('grid')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    viewMode === 'grid' ? 'bg-[#0F172A] text-white shadow-xs' : 'text-[#4A4A4A] hover:text-[#0F172A]'
+                  }`}
+                  title="Grid View (All services in columns)"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Grid</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('carousel')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    viewMode === 'carousel' ? 'bg-[#0F172A] text-white shadow-xs' : 'text-[#4A4A4A] hover:text-[#0F172A]'
+                  }`}
+                  title="Row Carousel View"
+                >
+                  <List className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Rows</span>
+                </button>
+              </div>
+
+              {activeCategory !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setActiveCategory('all')}
+                  className="text-xs font-bold text-[#D09A40] hover:text-[#0F172A] flex items-center gap-1 cursor-pointer transition-colors px-2.5 py-1 rounded-lg bg-white border border-[#D09A40]/30 hover:bg-[#FAF5E5]"
+                  title="Reset to all treatments"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Show All</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Interactive Tag Chips Bar */}
+          <div
+            role="toolbar"
+            aria-label="Filter services by tag"
+            className="flex items-center gap-2 overflow-x-auto scrollbar-none no-scrollbar pb-1 -mx-1 px-1"
+          >
+            {filterTags.map((tag) => {
+              const TagIcon = tag.icon;
+              const isSelected = activeCategory === tag.id;
+
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveCategory(tag.id);
+                    setViewMode('grid');
+                  }}
+                  aria-pressed={isSelected}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap cursor-pointer transition-all flex items-center gap-2 shrink-0 ${
+                    isSelected
+                      ? 'bg-[#0F172A] text-white shadow-md ring-2 ring-[#D09A40]'
+                      : 'bg-white text-[#0F172A] border border-[#0F172A]/15 hover:border-[#D09A40] hover:bg-[#FAF5E5]'
+                  }`}
+                >
+                  <TagIcon className={`w-3.5 h-3.5 ${isSelected ? 'text-[#D09A40]' : 'text-[#4A4A4A]'}`} />
+                  <span>{tag.label}</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                      isSelected
+                        ? 'bg-[#D09A40] text-white'
+                        : 'bg-neutral-100 text-[#4A4A4A]'
+                    }`}
+                  >
+                    {tag.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
+        {/* ========================================================
+            SERVICES RENDERING: Grid View vs Carousel Rows
+        ======================================================== */}
+        {/* Case 1: Grid View (Active when viewMode === 'grid') */}
+        {viewMode === 'grid' && filteredServices.length > 0 && (
+          <div className="mt-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {(activeCategory === 'all'
+                ? filteredServices
+                : categorizedFilteredServices[activeCategory] || []
+              ).map((service) => (
+                <ServiceCardItem
+                  key={service.id}
+                  service={service}
+                  ratingData={serviceRatingsMap[service.id] || { rating: 4.8, count: 18 }}
+                  hasFailed={failedImages[service.id]}
+                  isCompared={selectedCompareIds.has(service.id)}
+                  onToggleCompare={handleToggleCompare}
+                  onSelectService={onSelectService}
+                  onImageError={handleImageError}
+                  layout="grid"
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Case 2: Carousel Rows View (Active when viewMode === 'carousel') */}
+        {viewMode === 'carousel' && filteredServices.length > 0 && (
+          <div className="mt-6 space-y-6">
+            {displayCategories.map((cat) => {
+              const catServices = categorizedFilteredServices[cat.id] || [];
+              if (catServices.length === 0) return null;
+
+              return (
+                <CategoryHorizontalRow
+                  key={cat.id}
+                  category={cat}
+                  services={catServices}
+                  serviceRatingsMap={serviceRatingsMap}
+                  failedImages={failedImages}
+                  selectedCompareIds={selectedCompareIds}
+                  onToggleCompare={handleToggleCompare}
+                  onSelectService={onSelectService}
+                  onOpenReviewModal={(svc) => setReviewModalService(svc)}
+                  onImageError={handleImageError}
+                  onFilterCategory={(id) => {
+                    setActiveCategory(id);
+                    setViewMode('grid');
+                  }}
+                />
+              );
+            })}
+          </div>
+        )}
+
       </div>
+
+      {/* Floating Comparison Tray */}
+      {selectedForCompare.length > 0 && (
+        <aside 
+          aria-label="Service comparison tray"
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 max-w-xl w-[94vw] sm:w-auto bg-[#0F172A] text-white rounded-2xl shadow-2xl border border-white/20 p-2.5 sm:px-4 sm:py-3 flex items-center justify-between gap-3 sm:gap-6 animate-in slide-in-from-bottom-4 duration-200"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-[#D09A40] text-white flex items-center justify-center shrink-0 shadow-xs">
+              <ArrowLeftRight className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                <span>{selectedForCompare.length} {selectedForCompare.length === 1 ? 'Service' : 'Services'} Selected</span>
+                <span className="text-neutral-400 font-normal hidden sm:inline">· Max 4</span>
+              </div>
+              <div className="text-[11px] text-neutral-300 truncate max-w-[180px] sm:max-w-xs">
+                {selectedForCompare.map((s) => s.title).join(' · ')}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleClearCompare}
+              className="text-[11px] text-neutral-400 hover:text-white px-2 py-1 transition-colors cursor-pointer"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsCompareModalOpen(true)}
+              className="px-3.5 py-1.5 bg-[#D09A40] hover:bg-[#b88533] text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer flex items-center gap-1.5"
+            >
+              <span>Compare ({selectedForCompare.length})</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </aside>
+      )}
 
       {/* Service Review Modal */}
       {reviewModalService && (
@@ -494,7 +903,145 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
           onSubmitReview={handleSaveReview}
         />
       )}
+
+      {/* Service Comparison Modal */}
+      <ServiceCompareModal
+        isOpen={isCompareModalOpen}
+        services={allServices}
+        comparedServices={selectedForCompare}
+        serviceRatingsMap={serviceRatingsMap}
+        onClose={() => setIsCompareModalOpen(false)}
+        onSelectService={(service) => {
+          setIsCompareModalOpen(false);
+          onSelectService(service);
+        }}
+        onRemoveService={handleRemoveFromCompare}
+        onAddService={handleAddToCompare}
+        onClearAll={handleClearCompare}
+      />
     </section>
+  );
+};
+
+// Sub-Component: Reusable Service Card Item (supporting both Grid and Carousel layouts)
+interface ServiceCardItemProps {
+  service: ServiceItem;
+  ratingData: { rating: number; count: number };
+  hasFailed?: boolean;
+  isCompared: boolean;
+  onToggleCompare: (service: ServiceItem) => void;
+  onSelectService: (service: ServiceItem) => void;
+  onImageError: (id: string) => void;
+  layout?: 'grid' | 'carousel';
+}
+
+const ServiceCardItem: React.FC<ServiceCardItemProps> = ({
+  service,
+  ratingData,
+  hasFailed,
+  isCompared,
+  onToggleCompare,
+  onSelectService,
+  onImageError,
+  layout = 'carousel',
+}) => {
+  return (
+    <div
+      className={`${
+        layout === 'grid'
+          ? 'w-full h-full'
+          : 'w-[185px] sm:w-[215px] min-w-[175px] max-w-[225px] shrink-0 snap-start'
+      } rounded-xl border p-3 flex flex-col justify-between transition-all group/card shadow-2xs hover:shadow-md ${
+        isCompared
+          ? 'bg-amber-50/50 border-[#D09A40] ring-1 ring-[#D09A40]'
+          : 'bg-[#FAF5E5]/40 hover:bg-white border-[#0F172A]/10 hover:border-[#D09A40]'
+      }`}
+    >
+      <div>
+        {/* Compact Service Image Header */}
+        <div className="relative aspect-[16/10] -mx-3 -mt-3 mb-2.5 overflow-hidden rounded-t-xl bg-neutral-200">
+          {!hasFailed && service.image ? (
+            <img
+              src={service.image}
+              alt={service.title}
+              loading="lazy"
+              onError={() => onImageError(service.id)}
+              className="w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-500"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-[#FAF5E5] text-[#D09A40]">
+              <Sparkles className="w-6 h-6 opacity-60" />
+            </div>
+          )}
+
+          {/* Rating Tag */}
+          <div className="absolute top-1.5 left-1.5 bg-[#0F172A] text-white px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-1">
+            <Star className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
+            <span>{ratingData.rating}</span>
+          </div>
+
+          {service.popular && (
+            <div className="absolute top-1.5 right-1.5 bg-[#D09A40] text-white px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase">
+              Popular
+            </div>
+          )}
+        </div>
+
+        {/* Service Title */}
+        <h4 className="text-xs sm:text-sm font-bold text-[#0F172A] line-clamp-2 leading-snug group-hover/card:text-[#D09A40] transition-colors">
+          {service.title}
+        </h4>
+
+        {/* Duration & Highlights */}
+        <div className="flex items-center gap-1.5 text-[11px] text-[#4A4A4A] mt-1 font-mono">
+          <Clock className="w-3 h-3 text-[#D09A40]" />
+          <span>{service.duration}</span>
+        </div>
+
+        {service.highlights && service.highlights.length > 0 && (
+          <p className="text-[10px] text-neutral-500 mt-1 line-clamp-1 italic">
+            ✓ {service.highlights[0]}
+          </p>
+        )}
+      </div>
+
+      {/* Card Footer: Price & Quick Book & Compare */}
+      <div className="mt-3 pt-2 border-t border-[#0F172A]/10 flex items-center justify-between gap-1">
+        <div>
+          <span className="text-[9px] uppercase tracking-wider text-neutral-400 block leading-none">Starting</span>
+          <span className="text-xs sm:text-sm font-bold font-mono text-[#0F172A]">
+            ₹{service.price.toLocaleString('en-IN')}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleCompare(service);
+            }}
+            className={`px-1.5 py-1 text-[10px] font-bold rounded-lg border transition-all cursor-pointer flex items-center gap-0.5 ${
+              isCompared
+                ? 'bg-[#D09A40] text-white border-[#D09A40]'
+                : 'bg-white text-[#4A4A4A] border-[#0F172A]/15 hover:border-[#D09A40] hover:text-[#0F172A]'
+            }`}
+            title={isCompared ? 'Remove from comparison' : 'Compare service side-by-side'}
+            aria-label={isCompared ? `Remove ${service.title} from comparison` : `Compare ${service.title}`}
+          >
+            <ArrowLeftRight className="w-2.5 h-2.5" />
+            <span>{isCompared ? 'Added' : 'Compare'}</span>
+          </button>
+
+          <button
+            onClick={() => onSelectService(service)}
+            className="px-2 py-1 text-[11px] font-bold bg-[#0F172A] hover:bg-[#D09A40] text-white rounded-lg transition-colors cursor-pointer whitespace-nowrap shadow-2xs"
+          >
+            Book
+          </button>
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -504,9 +1051,12 @@ interface CategoryHorizontalRowProps {
   services: ServiceItem[];
   serviceRatingsMap: { [serviceId: string]: { rating: number; count: number } };
   failedImages: { [key: string]: boolean };
+  selectedCompareIds: Set<string>;
+  onToggleCompare: (service: ServiceItem) => void;
   onSelectService: (service: ServiceItem) => void;
   onOpenReviewModal: (service: ServiceItem) => void;
   onImageError: (id: string) => void;
+  onFilterCategory?: (id: ServiceFilterCategory) => void;
 }
 
 const CategoryHorizontalRow: React.FC<CategoryHorizontalRowProps> = ({
@@ -514,9 +1064,12 @@ const CategoryHorizontalRow: React.FC<CategoryHorizontalRowProps> = ({
   services,
   serviceRatingsMap,
   failedImages,
+  selectedCompareIds,
+  onToggleCompare,
   onSelectService,
   onOpenReviewModal,
   onImageError,
+  onFilterCategory,
 }) => {
   const rowRef = useRef<HTMLDivElement>(null);
   const Icon = category.icon;
@@ -551,8 +1104,19 @@ const CategoryHorizontalRow: React.FC<CategoryHorizontalRowProps> = ({
           </div>
         </div>
 
-        {/* Sleek Overlay Navigation Arrow Controls */}
+        {/* Sleek Overlay Navigation Arrow Controls & Category Jump */}
         <div className="flex items-center gap-1.5">
+          {onFilterCategory && (
+            <button
+              type="button"
+              onClick={() => onFilterCategory(category.id)}
+              className="hidden sm:flex items-center gap-1 text-[11px] font-bold text-[#D09A40] hover:text-[#0F172A] px-2.5 py-1 rounded-lg border border-[#D09A40]/30 hover:border-[#D09A40] bg-[#FAF5E5]/60 hover:bg-[#FAF5E5] transition-all cursor-pointer mr-1"
+            >
+              <span>Explore {category.shortLabel}</span>
+              <ArrowRight className="w-3 h-3" />
+            </button>
+          )}
+
           <button
             onClick={() => handleScroll('left')}
             aria-label={`Scroll ${category.label} left`}
@@ -594,82 +1158,19 @@ const CategoryHorizontalRow: React.FC<CategoryHorizontalRowProps> = ({
           className="flex flex-row overflow-x-auto snap-x snap-mandatory scrollbar-none no-scrollbar gap-3 sm:gap-4 py-1.5 flex-nowrap scroll-smooth scroll-pl-1"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
-        {services.map((service) => {
-          const ratingData = serviceRatingsMap[service.id] || { rating: 4.8, count: 18 };
-          const hasFailed = failedImages[service.id];
-
-          return (
-            <div
+          {services.map((service) => (
+            <ServiceCardItem
               key={service.id}
-              className="w-[180px] sm:w-[210px] min-w-[170px] max-w-[220px] shrink-0 snap-start bg-[#FAF5E5]/40 hover:bg-white rounded-xl border border-[#0F172A]/10 hover:border-[#D09A40] p-3 flex flex-col justify-between transition-all group/card shadow-2xs"
-            >
-              <div>
-                {/* Compact Service Image Header */}
-                <div className="relative aspect-[16/10] -mx-3 -mt-3 mb-2.5 overflow-hidden rounded-t-xl bg-neutral-200">
-                  {!hasFailed && service.image ? (
-                    <img
-                      src={service.image}
-                      alt={service.title}
-                      loading="lazy"
-                      onError={() => onImageError(service.id)}
-                      className="w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-500"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-[#FAF5E5] text-[#D09A40]">
-                      <Sparkles className="w-6 h-6 opacity-60" />
-                    </div>
-                  )}
-
-                  {/* Rating Tag */}
-                  <div className="absolute top-1.5 left-1.5 bg-[#0F172A]/85 text-white px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 backdrop-blur-xs">
-                    <Star className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
-                    <span>{ratingData.rating}</span>
-                  </div>
-
-                  {service.popular && (
-                    <div className="absolute top-1.5 right-1.5 bg-[#D09A40] text-white px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase">
-                      Popular
-                    </div>
-                  )}
-                </div>
-
-                {/* Service Title */}
-                <h4 className="text-xs sm:text-sm font-bold text-[#0F172A] line-clamp-2 leading-snug group-hover/card:text-[#D09A40] transition-colors">
-                  {service.title}
-                </h4>
-
-                {/* Duration & Highlights */}
-                <div className="flex items-center gap-1.5 text-[11px] text-[#4A4A4A] mt-1 font-mono">
-                  <Clock className="w-3 h-3 text-[#D09A40]" />
-                  <span>{service.duration}</span>
-                </div>
-
-                {service.highlights && service.highlights.length > 0 && (
-                  <p className="text-[10px] text-neutral-500 mt-1 line-clamp-1 italic">
-                    ✓ {service.highlights[0]}
-                  </p>
-                )}
-              </div>
-
-              {/* Card Footer: Price & Quick Book */}
-              <div className="mt-3 pt-2 border-t border-[#0F172A]/10 flex items-center justify-between gap-1.5">
-                <div>
-                  <span className="text-[9px] uppercase tracking-wider text-neutral-400 block leading-none">Starting</span>
-                  <span className="text-xs sm:text-sm font-bold font-mono text-[#0F172A]">
-                    ₹{service.price.toLocaleString('en-IN')}
-                  </span>
-                </div>
-
-                <button
-                  onClick={() => onSelectService(service)}
-                  className="px-2.5 py-1 text-[11px] font-bold bg-[#0F172A] hover:bg-[#D09A40] text-white rounded-lg transition-colors cursor-pointer whitespace-nowrap shadow-2xs"
-                >
-                  Book
-                </button>
-              </div>
-            </div>
-          );
-        })}
+              service={service}
+              ratingData={serviceRatingsMap[service.id] || { rating: 4.8, count: 18 }}
+              hasFailed={failedImages[service.id]}
+              isCompared={selectedCompareIds.has(service.id)}
+              onToggleCompare={onToggleCompare}
+              onSelectService={onSelectService}
+              onImageError={onImageError}
+              layout="carousel"
+            />
+          ))}
         </div>
       </div>
     </div>

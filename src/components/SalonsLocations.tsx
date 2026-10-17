@@ -29,7 +29,7 @@ export const SalonsLocations: React.FC = () => {
 
         <div className="mt-6 flex overflow-x-auto gap-3.5 pb-3 scrollbar-none snap-x snap-mandatory -mx-3 px-3 md:grid md:grid-cols-3 md:gap-8 md:mx-0 md:px-0 scroll-smooth scroll-pl-3 md:scroll-pl-0">
           {SALON_BRANCHES.map((branch, index) => (
-            <RevealOnScroll key={branch.id} delay={index * 0.1} duration={0.6}>
+            <RevealOnScroll key={branch.id} delay={index * 0.1} duration={0.6} className="shrink-0 snap-start h-full md:w-auto">
               <div
                 className={`w-[85vw] max-w-[300px] shrink-0 snap-start md:w-auto rounded-2xl p-5 sm:p-8 flex flex-col justify-between transition-all bg-white border h-full luxe-card-hover ${
                   branch.isFlagship

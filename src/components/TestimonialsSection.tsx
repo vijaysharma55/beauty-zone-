@@ -85,7 +85,7 @@ export const TestimonialsSection: React.FC = () => {
             className="flex overflow-x-auto gap-3.5 pb-3 scrollbar-none snap-x snap-mandatory -mx-3 px-3 md:grid md:grid-cols-3 md:gap-8 md:mx-0 md:px-0 scroll-smooth scroll-pl-3 md:scroll-pl-0"
           >
             {TESTIMONIALS.map((t, index) => (
-              <RevealOnScroll key={t.id} delay={index * 0.1} duration={0.6}>
+              <RevealOnScroll key={t.id} delay={index * 0.1} duration={0.6} className="shrink-0 snap-start h-full md:w-auto">
                 <div
                   className="w-[85vw] max-w-[300px] shrink-0 snap-start md:w-auto bg-white rounded-2xl border border-[#0F172A]/10 p-5 sm:p-8 flex flex-col justify-between shadow-2xs relative group/card hover:border-[#D09A40] luxe-card-hover h-full"
                 >

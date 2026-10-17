@@ -41,7 +41,9 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
 
   const scrollPackages = (dir: 'left' | 'right') => {
     if (packagesScrollRef.current) {
-      packagesScrollRef.current.scrollBy({ left: dir === 'left' ? -320 : 320, behavior: 'smooth' });
+      const card = packagesScrollRef.current.querySelector<HTMLElement>(':scope > div');
+      const step = card ? card.offsetWidth + 16 : 360;
+      packagesScrollRef.current.scrollBy({ left: dir === 'left' ? -step : step, behavior: 'smooth' });
     }
   };
   
@@ -216,139 +218,151 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
               <ChevronRight className="w-5 h-5 text-[#0F172A]" />
             </button>
 
-            <div ref={packagesScrollRef} className="flex overflow-x-auto gap-4 pb-3 scrollbar-none snap-x snap-mandatory -mx-3 px-3 lg:grid lg:grid-cols-2 lg:gap-8 lg:mx-0 lg:px-0 scroll-smooth scroll-pl-3 lg:scroll-pl-0">
+            <div ref={packagesScrollRef} className="flex overflow-x-auto items-stretch gap-4 sm:gap-6 pb-4 pt-1 scrollbar-none snap-x snap-mandatory -mx-3 px-3 lg:grid lg:grid-cols-2 lg:gap-8 lg:mx-0 lg:px-0 scroll-smooth scroll-pl-3 lg:scroll-pl-0">
             {displayPackages.map((pkg, index) => {
               const isRulesOpen = expandedRulesId === pkg.id;
               return (
-                <RevealOnScroll key={pkg.id} delay={index * 0.1} duration={0.6}>
-                  <div className="w-[85vw] max-w-[320px] shrink-0 snap-start lg:w-auto bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] luxe-card-hover flex flex-col justify-between group h-full shadow-2xs">
-                    <div>
+                <RevealOnScroll key={pkg.id} delay={index * 0.1} duration={0.6} className="shrink-0 snap-start h-full flex flex-col lg:w-auto">
+                  <div className="w-[88vw] sm:w-[380px] md:w-[420px] max-w-[440px] shrink-0 snap-start lg:w-full lg:max-w-none bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] luxe-card-hover flex flex-col justify-between group h-full shadow-2xs">
+                    {/* Upper Half: Media & Dynamic Included Services */}
+                    <div className="flex-1 flex flex-col">
                       {/* Photo & Badge Carrier */}
-                      <div className="relative aspect-[16/9] w-full overflow-hidden bg-neutral-100">
+                      <div className="relative aspect-[16/9] w-full overflow-hidden bg-neutral-100 shrink-0">
                         <img
                           src={pkg.image}
                           alt={`${pkg.name} - Beauty Zone Jaipur package`}
                           referrerPolicy="no-referrer"
                           className="w-full h-full object-cover luxe-img-zoom"
                         />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent pointer-events-none" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent pointer-events-none" />
 
                         {/* Top Savings Badge & Duration */}
-                        <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
-                          <span className="px-3 py-1 bg-[#D09A40] text-white text-xs font-bold rounded-lg shadow-sm">
+                        <div className="absolute top-2.5 sm:top-3 left-2.5 sm:left-3 right-2.5 sm:right-3 flex items-center justify-between gap-2">
+                          <span className="px-2.5 sm:px-3 py-1 bg-[#D09A40] text-white text-[11px] sm:text-xs font-bold rounded-lg shadow-sm whitespace-nowrap">
                             Save ₹{pkg.savings.toLocaleString('en-IN')} ({pkg.discount}% OFF)
                           </span>
-                          <span className="px-2.5 py-1 bg-black/60 backdrop-blur-xs text-[#FAF5E5] text-xs font-mono font-medium rounded-lg flex items-center gap-1.5">
+                          <span className="px-2 sm:px-2.5 py-1 bg-black/80 text-[#FAF5E5] text-[11px] sm:text-xs font-mono font-medium rounded-lg flex items-center gap-1.5 whitespace-nowrap shrink-0">
                             <Clock className="w-3.5 h-3.5 text-[#D09A40]" />
                             <span>{pkg.duration}</span>
                           </span>
                         </div>
 
                         {/* Bottom Title in Scrim */}
-                        <div className="absolute bottom-3 left-4 right-4 text-white">
-                          <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-[#FAF5E5]/90 uppercase">
+                        <div className="absolute bottom-2.5 sm:bottom-3 left-3 sm:left-4 right-3 sm:right-4 text-white">
+                          <div className="flex flex-wrap items-center gap-1.5 text-[10px] sm:text-xs font-mono text-[#FAF5E5]/90 uppercase">
                             {pkg.offer_name && (
-                              <span className="px-2 py-0.5 bg-[#D09A40] text-[#0F172A] font-bold rounded text-[10px] shadow-xs">
+                              <span className="px-2 py-0.5 bg-[#D09A40] text-[#0F172A] font-bold rounded text-[10px] shadow-xs shrink-0">
                                 {pkg.offer_name}
                               </span>
                             )}
-                            <div className="flex items-center gap-1">
-                              <Tag className="w-3.5 h-3.5 text-[#D09A40]" />
-                              <span>Validity: {pkg.validity}</span>
+                            <div className="flex items-center gap-1 shrink-0 bg-black/70 px-1.5 py-0.5 rounded">
+                              <Tag className="w-3 h-3 text-[#D09A40]" />
+                              <span>{pkg.validity}</span>
                             </div>
                             {pkg.valid_until && (
-                              <span className="px-2 py-0.5 bg-rose-600/90 text-white font-bold rounded text-[10px] shadow-xs flex items-center gap-1">
+                              <span className="px-2 py-0.5 bg-rose-600/90 text-white font-bold rounded text-[10px] shadow-xs flex items-center gap-1 shrink-0">
                                 <Clock className="w-3 h-3 text-white" />
                                 <span>Till {pkg.valid_until}</span>
                               </span>
                             )}
                           </div>
-                          <h3 className="font-serif text-xl sm:text-2xl font-bold text-white mt-1">
+                          <h3 className="font-serif text-lg sm:text-xl md:text-2xl font-bold text-white mt-1 line-clamp-1">
                             {pkg.name}
                           </h3>
                           {pkg.tagline && (
-                            <p className="text-xs text-[#FAF5E5]/90 italic line-clamp-1 mt-0.5">
+                            <p className="text-xs text-[#FAF5E5]/90 italic line-clamp-1 mt-0.5 font-light">
                               "{pkg.tagline}"
                             </p>
                           )}
                         </div>
                       </div>
 
-                      {/* Body Content */}
-                      <div className="p-6">
-                        <p className="text-xs sm:text-sm text-[#4A4A4A] leading-relaxed font-light">
-                          {pkg.description}
-                        </p>
-
-                        {/* Included Services Checklist */}
-                        <div className="mt-5 space-y-2">
-                          <p className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
-                            Services Included in this Package ({pkg.services.length}):
+                      {/* Body Content - flex-1 flex flex-col justify-between so footer remains aligned */}
+                      <div className="p-4 sm:p-5 lg:p-6 flex-1 flex flex-col justify-between">
+                        <div>
+                          <p className="text-xs sm:text-sm text-[#4A4A4A] leading-relaxed font-light min-h-[36px]">
+                            {pkg.description}
                           </p>
-                          <ul className="space-y-2">
-                            {pkg.services.map((item, idx) => (
-                              <li key={idx} className="flex items-start gap-2.5 text-xs text-[#0F172A]/90">
-                                <Check className="w-4 h-4 text-[#D09A40] shrink-0 mt-0.5" />
-                                <span>{item}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
 
-                        {/* Outlets Tags */}
-                        <div className="mt-4 pt-3 border-t border-neutral-100 flex items-center gap-2 text-xs text-[#4A4A4A]">
-                          <MapPin className="w-3.5 h-3.5 text-[#D09A40] shrink-0" />
-                          <span className="truncate">Valid at: {pkg.outlets.join(', ')}</span>
-                        </div>
-
-                        {/* Usage Rules Expandable Accordion */}
-                        <div className="mt-3 pt-2">
-                          <button
-                            type="button"
-                            onClick={() => setExpandedRulesId(isRulesOpen ? null : pkg.id)}
-                            className="text-[11px] font-semibold text-[#D09A40] hover:underline flex items-center gap-1 cursor-pointer"
-                          >
-                            <span>{isRulesOpen ? 'Hide Terms & Rules' : `View Terms & Rules (${pkg.usage_rules.length})`}</span>
-                            {isRulesOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                          </button>
-
-                          {isRulesOpen && (
-                            <div className="mt-2 p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-xs text-[#4A4A4A] space-y-1.5 animate-in fade-in duration-200">
-                              {pkg.usage_rules.map((rule, rIdx) => (
-                                <div key={rIdx} className="flex items-start gap-1.5">
-                                  <span className="text-[#D09A40] font-bold">•</span>
-                                  <span>{rule}</span>
-                                </div>
+                          {/* Included Services Checklist - flex-1 expands dynamically */}
+                          <div className="mt-4 pt-3 border-t border-neutral-100">
+                            <p className="text-xs font-bold uppercase tracking-wider text-[#0F172A] mb-2 flex items-center justify-between">
+                              <span className="flex items-center gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-[#D09A40]" />
+                                <span>Services Included ({pkg.services.length})</span>
+                              </span>
+                            </p>
+                            <ul className="space-y-1.5 sm:space-y-2">
+                              {pkg.services.map((item, idx) => (
+                                <li key={idx} className="flex items-start gap-2 text-xs text-[#0F172A]/90">
+                                  <Check className="w-4 h-4 text-[#D09A40] shrink-0 mt-0.5" />
+                                  <span className="leading-snug">{item}</span>
+                                </li>
                               ))}
-                            </div>
-                          )}
+                            </ul>
+                          </div>
+                        </div>
+
+                        {/* Outlets & Usage Rules Accordion */}
+                        <div className="mt-4 pt-3 border-t border-neutral-100">
+                          <div className="flex items-center gap-2 text-xs text-[#4A4A4A]">
+                            <MapPin className="w-3.5 h-3.5 text-[#D09A40] shrink-0" />
+                            <span className="truncate">Valid at: {pkg.outlets.join(', ')}</span>
+                          </div>
+
+                          {/* Usage Rules Expandable Accordion */}
+                          <div className="mt-2.5">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedRulesId(isRulesOpen ? null : pkg.id)}
+                              className="text-[11px] font-semibold text-[#D09A40] hover:text-[#b38232] hover:underline flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                              <span>{isRulesOpen ? 'Hide Terms & Rules' : `View Terms & Rules (${pkg.usage_rules.length})`}</span>
+                              {isRulesOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                            </button>
+
+                            {isRulesOpen && (
+                              <div className="mt-2 p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-xs text-[#4A4A4A] space-y-1.5 animate-in fade-in duration-200 max-h-36 overflow-y-auto">
+                                {pkg.usage_rules.map((rule, rIdx) => (
+                                  <div key={rIdx} className="flex items-start gap-1.5">
+                                    <span className="text-[#D09A40] font-bold">•</span>
+                                    <span>{rule}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Pricing & Booking Action Footer */}
-                    <div className="p-6 pt-4 bg-[#FAF5E5]/50 border-t border-[#0F172A]/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div>
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-2xl sm:text-3xl font-bold text-[#0F172A] tabular-nums">
+                    {/* Pricing & Booking Action Footer - Unified alignment and no clipping */}
+                    <div className="p-4 sm:p-5 lg:p-6 bg-[#FAF5E5]/60 border-t border-[#0F172A]/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3.5 sm:gap-4 shrink-0 mt-auto">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline gap-2 flex-wrap">
+                          <span className="text-2xl sm:text-3xl font-bold text-[#0F172A] tabular-nums tracking-tight">
                             ₹{pkg.package_price.toLocaleString('en-IN')}
                           </span>
-                          <span className="text-sm text-neutral-400 line-through tabular-nums">
+                          <span className="text-xs sm:text-sm text-neutral-400 line-through tabular-nums">
                             ₹{pkg.regular_price.toLocaleString('en-IN')}
                           </span>
                         </div>
-                        <span className="text-xs font-semibold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded mt-1 inline-block">
-                          Your Savings: ₹{pkg.savings.toLocaleString('en-IN')} ({pkg.discount}% OFF)
-                        </span>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <span className="text-[11px] sm:text-xs font-semibold text-emerald-800 bg-emerald-100/90 border border-emerald-200/60 px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                            <span>Save ₹{pkg.savings.toLocaleString('en-IN')}</span>
+                            <span className="opacity-80">({pkg.discount}% OFF)</span>
+                          </span>
+                        </div>
                       </div>
 
                       <button
+                        type="button"
                         onClick={() => handleBookCurated(pkg)}
-                        className="px-6 py-3 text-xs sm:text-sm font-semibold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl luxe-btn shadow-sm flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+                        className="w-full sm:w-auto shrink-0 px-5 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl luxe-btn shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98] whitespace-nowrap"
                       >
-                        <CalendarCheck className="w-4 h-4" />
+                        <CalendarCheck className="w-4 h-4 text-[#D09A40] shrink-0" />
                         <span>Book Package</span>
-                        <ArrowRight className="w-4 h-4" />
+                        <ArrowRight className="w-4 h-4 shrink-0" />
                       </button>
                     </div>
                   </div>

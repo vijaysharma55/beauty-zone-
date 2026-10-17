@@ -955,7 +955,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/75 backdrop-blur-md animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/80 animate-fade-in">
       {/* Toast Banner */}
       {toastMessage && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-70 bg-[#0F172A] text-[#FAF5E5] px-5 py-3 rounded-2xl shadow-2xl border border-[#D09A40] flex items-center gap-2.5 animate-bounce-short text-xs sm:text-sm font-semibold">
@@ -1673,7 +1673,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => setActiveWatchVideo(video)}
-                                  className="absolute inset-0 m-auto w-12 h-12 rounded-full bg-black/60 hover:bg-[#D09A40] text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-xs border border-white/30 hover:scale-110 shadow-lg group-hover:bg-[#D09A40]"
+                                  className="absolute inset-0 m-auto w-12 h-12 rounded-full bg-black/60 hover:bg-[#D09A40] text-white flex items-center justify-center transition-all cursor-pointer border border-white/40 hover:scale-110 shadow-lg group-hover:bg-[#D09A40]"
                                   title="Play Video"
                                 >
                                   <Play className="w-5 h-5 fill-white ml-0.5" />
@@ -2209,7 +2209,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             />
                             <div className="absolute top-2 left-2 flex items-center gap-1.5">
-                              <span className="px-2 py-0.5 bg-black/70 backdrop-blur-xs text-white text-[10px] font-mono rounded-md uppercase">
+                              <span className="px-2 py-0.5 bg-black/80 text-white text-[10px] font-mono rounded-md uppercase">
                                 {item.category}
                               </span>
                               {item.type === 'before_after' && (
@@ -2271,7 +2271,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
           SERVICE FORM MODAL (ADD / EDIT)
       ======================================================== */}
       {isServiceFormOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-6 bg-black/80 animate-fade-in">
           <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-neutral-300 overflow-hidden text-[#0F172A] max-h-[92vh] flex flex-col">
             <div className="px-6 py-4 bg-[#0F172A] text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
@@ -2496,7 +2496,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
           DELETE SERVICE CONFIRMATION MODAL
       ======================================================== */}
       {serviceToDelete && (
-        <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/80 animate-fade-in">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full border border-neutral-200 shadow-2xl text-center">
             <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-3">
               <Trash2 className="w-6 h-6" />
@@ -2531,7 +2531,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
           UPGRADED COMBO PACKAGE FORM MODAL
       ======================================================== */}
       {isPackageFormOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md animate-fade-in">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 animate-fade-in">
           <div className="w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-neutral-300 overflow-hidden text-[#0F172A] max-h-[94vh] flex flex-col">
             {/* Modal Header */}
             <div className="px-6 py-4 bg-[#0F172A] text-white flex items-center justify-between shrink-0">
@@ -3111,7 +3111,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
           GALLERY FORM MODAL
       ======================================================== */}
       {isGalleryFormOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-6 bg-black/80 animate-fade-in">
           <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-neutral-300 overflow-hidden text-[#0F172A] max-h-[92vh] flex flex-col">
             <div className="px-6 py-4 bg-[#0F172A] text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
@@ -3231,7 +3231,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
           VIDEO FORM MODAL (ADD / EDIT REEL OR VIDEO)
       ======================================================== */}
       {isVideoFormOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md animate-fade-in">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 animate-fade-in">
           <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-neutral-300 overflow-hidden text-[#0F172A] max-h-[94vh] flex flex-col">
             {/* Modal Header */}
             <div className="px-6 py-4 bg-[#0F172A] text-white flex items-center justify-between shrink-0">
@@ -3549,7 +3549,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
           WATCH VIDEO LIGHTBOX PREVIEW MODAL
       ======================================================== */}
       {activeWatchVideo && (
-        <div className="fixed inset-0 z-70 flex items-center justify-center p-3 sm:p-6 bg-black/90 backdrop-blur-md animate-fade-in">
+        <div className="fixed inset-0 z-70 flex items-center justify-center p-3 sm:p-6 bg-black/90 animate-fade-in">
           <div className="w-full max-w-4xl bg-[#0F172A] rounded-3xl shadow-2xl border border-white/20 overflow-hidden text-white flex flex-col">
             <div className="px-6 py-3.5 bg-black/50 border-b border-white/10 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">

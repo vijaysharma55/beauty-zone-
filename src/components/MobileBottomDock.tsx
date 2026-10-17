@@ -62,9 +62,9 @@ export const MobileBottomDock: React.FC<MobileBottomDockProps> = ({
         </button>
       )}
 
-      {/* Fixed Glassmorphic Bottom Navigation Dock (Mobile Only: md:hidden) */}
+      {/* Fixed Bottom Navigation Dock (Mobile Only: md:hidden) */}
       <nav 
-        className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#FAF5E5]/95 backdrop-blur-lg border-t border-[#0F172A]/15 px-2 pt-1.5 pb-safe shadow-[0_-8px_30px_rgba(0,0,0,0.12)] flex items-center justify-around"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#FAF5E5] border-t border-[#0F172A]/15 px-2 pt-1.5 pb-safe shadow-[0_-8px_30px_rgba(0,0,0,0.12)] flex items-center justify-around"
         aria-label="Mobile Application Dock"
       >
         {/* 1. Explore / Services */}
@@ -108,7 +108,7 @@ export const MobileBottomDock: React.FC<MobileBottomDockProps> = ({
 
       {/* "More" Smooth Mobile Bottom Sheet Drawer */}
       {isMoreOpen && (
-        <div className="md:hidden fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex flex-col justify-end animate-fade-in">
+        <div className="md:hidden fixed inset-0 z-60 bg-black/60 flex flex-col justify-end animate-fade-in">
           {/* Backdrop Click to Dismiss */}
           <div 
             className="flex-1 w-full" 

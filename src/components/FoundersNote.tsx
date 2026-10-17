@@ -20,10 +20,10 @@ export const FoundersNote: React.FC<FoundersNoteProps> = ({ onOpenBooking }) => 
           <div className="lg:col-span-5">
             <RevealOnScroll direction="right" duration={0.7}>
               <div className="relative group">
-                <div className="absolute -inset-3 bg-gradient-to-tr from-[#D09A40]/30 via-transparent to-[#0F172A]/10 rounded-3xl blur-xs transform -rotate-1 group-hover:rotate-0 transition-transform duration-500 pointer-events-none" />
+                <div className="absolute -inset-3 bg-gradient-to-tr from-[#D09A40]/20 via-transparent to-[#0F172A]/5 rounded-3xl transform -rotate-1 group-hover:rotate-0 transition-transform duration-500 pointer-events-none" />
                 
                 {/* Main Card with Portrait */}
-                <div className="relative rounded-2xl overflow-hidden bg-white border border-[#0F172A]/15 shadow-2xl luxe-card-hover">
+                <div className="relative rounded-2xl overflow-hidden bg-white border border-[#0F172A]/15 shadow-2xl">
                   <div className="aspect-[3/4] w-full overflow-hidden bg-[#FAF5E5]">
                     <img
                       src="/src/assets/images/founder_portrait_1790694693142.jpg"
@@ -36,7 +36,7 @@ export const FoundersNote: React.FC<FoundersNoteProps> = ({ onOpenBooking }) => 
 
                   {/* Floating Experience Badge */}
                   <div className="absolute top-4 left-4 z-10">
-                    <span className="px-3.5 py-1.5 rounded-full bg-white/90 backdrop-blur-md text-[#0F172A] text-xs font-mono font-bold tracking-wider uppercase border border-white/60 shadow-md flex items-center gap-1.5 animate-float-subtle">
+                    <span className="px-3.5 py-1.5 rounded-full bg-white text-[#0F172A] text-xs font-mono font-bold tracking-wider uppercase border border-[#D09A40]/40 shadow-md flex items-center gap-1.5 animate-float-subtle">
                       <Crown className="w-3.5 h-3.5 text-[#D09A40]" />
                       <span>18+ Years in Jaipur</span>
                     </span>

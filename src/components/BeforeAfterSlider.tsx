@@ -79,13 +79,13 @@ export const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
 
       {/* Floating Labels */}
       <div className="absolute top-3 left-3 pointer-events-none z-10">
-        <span className="px-2.5 py-1 rounded-md text-[10px] font-mono font-bold uppercase tracking-wider bg-black/70 text-white/90 backdrop-blur-xs shadow-sm border border-white/10">
+        <span className="px-2.5 py-1 rounded-md text-[10px] font-mono font-bold uppercase tracking-wider bg-black/80 text-white shadow-sm border border-white/20">
           {beforeLabel}
         </span>
       </div>
 
       <div className="absolute top-3 right-3 pointer-events-none z-10">
-        <span className="px-2.5 py-1 rounded-md text-[10px] font-mono font-bold uppercase tracking-wider bg-[#D09A40] text-[#0F172A] backdrop-blur-xs shadow-md border border-white/20 flex items-center gap-1">
+        <span className="px-2.5 py-1 rounded-md text-[10px] font-mono font-bold uppercase tracking-wider bg-[#D09A40] text-[#0F172A] shadow-md border border-white/30 flex items-center gap-1">
           <Sparkles className="w-3 h-3 text-[#0F172A]" />
           <span>{afterLabel}</span>
         </span>
@@ -105,8 +105,8 @@ export const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
       </div>
 
       {/* Bottom Hint */}
-      <div className="absolute bottom-2.5 inset-x-0 text-center pointer-events-none z-10 opacity-70 group-hover:opacity-100 transition-opacity">
-        <span className="text-[10px] font-medium text-white bg-black/60 backdrop-blur-xs px-2.5 py-0.5 rounded-full">
+      <div className="absolute bottom-2.5 inset-x-0 text-center pointer-events-none z-10 opacity-80 group-hover:opacity-100 transition-opacity">
+        <span className="text-[10px] font-medium text-white bg-black/75 px-2.5 py-0.5 rounded-full">
           Drag slider or tap to compare transformation
         </span>
       </div>
