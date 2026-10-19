@@ -1,32 +1,33 @@
-import React, { useState, useMemo } from 'react';
-import { SALON_SERVICES, SALON_BRANCHES } from '../data/salonData';
-import { BookingFormData, ServiceItem, ServiceMode } from '../types';
-import { 
-  Calendar, 
-  Clock, 
-  MapPin, 
-  User, 
-  Phone, 
-  Mail, 
-  CheckCircle2, 
-  Sparkles, 
-  X, 
-  MessageSquare, 
-  Home, 
-  Store, 
-  ShieldCheck, 
-  QrCode, 
-  Check, 
-  AlertCircle,
+import React, { useState, useEffect, useMemo } from 'react';
+import { SALON_SERVICES } from '../data/salonData';
+import { REWARD_OFFERS, getStoredLoyaltyCustomer } from '../data/loyaltyData';
+import { BookingFormState, ServiceItem } from '../types';
+import {
+  Calendar,
+  Clock,
+  MapPin,
+  Home,
+  Building2,
+  User,
+  Phone,
+  Sparkles,
+  CheckCircle2,
+  MessageSquare,
+  Navigation,
+  ShieldCheck,
+  QrCode,
+  Check,
   Copy,
   CreditCard,
-  Navigation,
-  Truck,
+  X,
+  UserCheck,
+  Tag,
   Gift,
   Mic,
-  MicOff
+  MicOff,
 } from 'lucide-react';
-import { RevealOnScroll } from './RevealOnScroll';
+import { WhatsAppIcon } from './SocialIcons';
+import { useBrand } from '../context/BrandContext';
 
 declare global {
   interface Window {
@@ -36,86 +37,227 @@ declare global {
 }
 
 interface BookingSectionProps {
-  selectedServicePreload?: ServiceItem | null;
-  selectedBundlePreload?: {
-    title: string;
-    price: number;
-    services: string[];
-  } | null;
-  selectedStylistPreload?: string | null;
-  onClearPreload?: () => void;
-  onClearBundle?: () => void;
-  onClearStylist?: () => void;
+  services?: ServiceItem[];
+  preselectedServiceId: string | null;
+  preselectedServiceTitle?: string | null;
+  preselectedLocationMode?: 'salon' | 'home' | null;
+  preselectedBranch?: string | null;
+  preselectedStylistName?: string | null;
+  preselectedPromoCode?: string | null;
 }
 
-// Popular Jaipur localities with preset distance in km from nearest salon hub
-const JAIPUR_LOCALITIES = [
-  { name: 'C-Scheme / Civil Lines', km: 2 },
-  { name: 'Bani Park / MI Road', km: 4 },
-  { name: 'Malviya Nagar / WTP', km: 3 },
-  { name: 'Vaishali Nagar / Chitrakoot', km: 3 },
-  { name: 'Raja Park / Tilak Nagar', km: 5 },
-  { name: 'Mansarovar / VT Road', km: 7 },
-  { name: 'Durgapura / Tonk Road', km: 8 },
-  { name: 'Jagatpura / Mahal Road', km: 11 },
-  { name: 'Vidhyadhar Nagar', km: 13 },
-  { name: 'Ajmer Road / Nirman Nagar', km: 9 },
-  { name: 'Sitapura Industrial / RIICO', km: 18 },
-  { name: 'Kukas / Palace Resorts (Fairmont/Leela)', km: 28 },
-  { name: 'Samode / Outstation Palace', km: 42 },
-  { name: 'Other / Custom Area in Jaipur', km: 6 },
+const TIME_SLOTS = [
+  '10:00 AM',
+  '11:30 AM',
+  '01:00 PM',
+  '02:30 PM',
+  '04:00 PM',
+  '05:30 PM',
+  '07:00 PM',
 ];
 
 export const BookingSection: React.FC<BookingSectionProps> = ({
-  selectedServicePreload,
-  selectedBundlePreload,
-  selectedStylistPreload,
-  onClearPreload,
-  onClearBundle,
-  onClearStylist,
+  services = SALON_SERVICES,
+  preselectedServiceId,
+  preselectedServiceTitle,
+  preselectedLocationMode,
+  preselectedBranch,
+  preselectedStylistName,
+  preselectedPromoCode,
 }) => {
-  const [serviceMode, setServiceMode] = useState<ServiceMode>('in-salon');
-  
-  // Home service address & distance state
-  const [homeLocality, setHomeLocality] = useState<string>('C-Scheme / Civil Lines');
-  const [homeAddress, setHomeAddress] = useState<string>('');
-  const [distanceKm, setDistanceKm] = useState<number>(2);
+  const { brand, formatPrice, convertPrice, t } = useBrand();
+  const catalogServices = services.length > 0 ? services : SALON_SERVICES;
 
-  // Advance Payment Verification state
-  const [isVerifyingPayment, setIsVerifyingPayment] = useState<boolean>(false);
-  const [paymentMethod, setPaymentMethod] = useState<'upi' | 'card' | 'netbanking'>('upi');
-  const [transactionRef, setTransactionRef] = useState<string>('');
-  const [isAdvanceVerified, setIsAdvanceVerified] = useState<boolean>(false);
-  const [verificationCode, setVerificationCode] = useState<string>('');
-  const [copiedUpi, setCopiedUpi] = useState<boolean>(false);
+  const defaultBranchName =
+    brand.branches[0]?.name || `${brand.cityName} Flagship Salon`;
+  const defaultLocality =
+    brand.localities[0] || {
+      name: `${brand.cityName} Central`,
+      distanceKm: 3,
+      zone: 'Central Zone',
+    };
 
-  const [formData, setFormData] = useState<BookingFormData>({
+  const [form, setForm] = useState<BookingFormState>({
     fullName: '',
     phone: '',
-    email: '',
-    serviceMode: 'in-salon',
-    branch: 'c-scheme',
+    locationType: 'salon',
+    selectedBranch: defaultBranchName,
     homeAddress: '',
-    homeLocality: 'C-Scheme / Civil Lines',
-    distanceKm: 2,
-    distanceFee: 250,
-    advanceDepositRequired: 500,
+    locality: defaultLocality.name,
+    distanceKm: defaultLocality.distanceKm,
+    serviceCategory: 'bridal',
+    selectedService: catalogServices[0]?.title || 'Signature Royal HD Bridal Makeover',
+    preferredStylist: 'Any Senior Specialist',
+    appointmentDate: '',
+    timeSlot: '11:30 AM',
+    bridalTrialRequired: false,
+    specialNotes: '',
     advancePaymentVerified: false,
-    serviceCategory: selectedServicePreload ? selectedServicePreload.category : 'bridal',
-    selectedService: selectedServicePreload ? selectedServicePreload.id : 'b1',
-    preferredDate: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
-    preferredTime: '11:30 AM',
-    artistLevel: selectedStylistPreload ? 'master' : 'senior',
-    notes: selectedStylistPreload ? `Requested Artist: ${selectedStylistPreload}` : '',
+    advancePaymentRef: '',
+    advancePaymentMethod: 'upi',
   });
 
-  // Voice AI 'Speak to Book' State
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [bookingRefCode, setBookingRefCode] = useState('');
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [copiedUpi, setCopiedUpi] = useState(false);
+
+  // Loyalty Voucher & Gift Card Promo Code State
+  const [promoCodeInput, setPromoCodeInput] = useState('');
+  const [appliedPromo, setAppliedPromo] = useState<{
+    code: string;
+    title: string;
+    discountAmount: number;
+  } | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+
+  // Voice AI State
   const [isListening, setIsListening] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [voiceFeedback, setVoiceFeedback] = useState<string | null>(null);
 
+  // Keep branch & locality synced when white-label brand changes
+  useEffect(() => {
+    setForm((prev) => ({
+      ...prev,
+      selectedBranch:
+        brand.branches.some((b) => b.name === prev.selectedBranch)
+          ? prev.selectedBranch
+          : brand.branches[0]?.name || prev.selectedBranch,
+      locality:
+        brand.localities.some((l) => l.name === prev.locality)
+          ? prev.locality
+          : brand.localities[0]?.name || prev.locality,
+      distanceKm:
+        brand.localities.find((l) => l.name === prev.locality)?.distanceKm ??
+        brand.localities[0]?.distanceKm ??
+        3,
+    }));
+  }, [brand.branches, brand.localities]);
+
+  // Preselect service when triggered from ServicesSection
+  useEffect(() => {
+    if (preselectedServiceId) {
+      const found = catalogServices.find((s) => s.id === preselectedServiceId);
+      if (found) {
+        setForm((prev) => ({
+          ...prev,
+          serviceCategory: found.category,
+          selectedService: found.title,
+        }));
+      }
+    }
+  }, [preselectedServiceId, catalogServices]);
+
+  useEffect(() => {
+    if (preselectedServiceTitle) {
+      setForm((prev) => ({
+        ...prev,
+        selectedService: preselectedServiceTitle,
+      }));
+    }
+  }, [preselectedServiceTitle]);
+
+  useEffect(() => {
+    if (preselectedLocationMode) {
+      setForm((prev) => ({
+        ...prev,
+        locationType: preselectedLocationMode,
+      }));
+    }
+  }, [preselectedLocationMode]);
+
+  useEffect(() => {
+    if (preselectedBranch) {
+      if (preselectedBranch === 'Home Service') {
+        setForm((prev) => ({
+          ...prev,
+          locationType: 'home',
+        }));
+      } else {
+        setForm((prev) => ({
+          ...prev,
+          locationType: 'salon',
+          selectedBranch: preselectedBranch,
+        }));
+      }
+    }
+  }, [preselectedBranch]);
+
+  useEffect(() => {
+    if (preselectedStylistName) {
+      setForm((prev) => ({
+        ...prev,
+        preferredStylist: preselectedStylistName,
+        locationType: 'salon',
+      }));
+    }
+  }, [preselectedStylistName]);
+
+  useEffect(() => {
+    if (preselectedPromoCode) {
+      setPromoCodeInput(preselectedPromoCode);
+      validateAndApplyPromo(preselectedPromoCode);
+    }
+  }, [preselectedPromoCode]);
+
+  const validateAndApplyPromo = (codeToTest: string) => {
+    const clean = codeToTest.trim().toUpperCase();
+    setPromoError(null);
+    if (!clean) return;
+
+    const storedCustomer = getStoredLoyaltyCustomer();
+    const matchedRedeemed = storedCustomer.redeemedRewards.find(
+      (r) => r.voucherCode.toUpperCase() === clean
+    );
+
+    if (matchedRedeemed) {
+      let discountAmt = 500;
+      if (matchedRedeemed.rewardTitle.includes('1,500')) discountAmt = 1500;
+      else if (matchedRedeemed.rewardTitle.includes('Hair Spa')) discountAmt = 1800;
+      else if (matchedRedeemed.rewardTitle.includes('Gold')) discountAmt = 2500;
+      else if (matchedRedeemed.rewardTitle.includes('Nail')) discountAmt = 1499;
+      else if (matchedRedeemed.rewardTitle.includes('Travel')) discountAmt = 600;
+
+      setAppliedPromo({
+        code: clean,
+        title: matchedRedeemed.rewardTitle,
+        discountAmount: discountAmt,
+      });
+      return;
+    }
+
+    if (clean.includes('1500') || clean.startsWith('ROYAL')) {
+      setAppliedPromo({
+        code: clean,
+        title: 'Royal Bridal Booking Discount',
+        discountAmount: 1500,
+      });
+    } else if (
+      clean.startsWith(brand.bookingPrefix.toUpperCase()) ||
+      clean.startsWith(brand.giftCardPrefix.toUpperCase()) ||
+      clean.startsWith('BZ-') ||
+      clean.startsWith('VIP-') ||
+      clean.includes('500') ||
+      clean.includes('GLOW') ||
+      clean.includes('GIFT')
+    ) {
+      setAppliedPromo({
+        code: clean,
+        title: `${brand.brandName} Privilege Voucher`,
+        discountAmount: 500,
+      });
+    } else {
+      setPromoError(
+        `Invalid voucher code. Try "${brand.bookingPrefix}-GLOW-500" or redeem a code from the ${brand.loyaltyClubName} section.`
+      );
+    }
+  };
+
+  // Voice AI "Speak to Book"
   const handleStartVoiceBooking = () => {
-    const SpeechRecognitionAPI = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognitionAPI =
+      window.SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognitionAPI) {
       alert('Speech recognition is not supported in this browser. Please use Chrome, Safari or Edge.');
       return;
@@ -129,19 +271,45 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
 
       recognition.onstart = () => {
         setIsListening(true);
-        setVoiceFeedback('Listening... Speak your service & date (e.g. "Book Bridal Makeup for tomorrow at 11 AM")');
+        setVoiceFeedback(
+          'Listening... Speak your service & date (e.g. "Book Bridal Makeup for tomorrow at 11:30 AM")'
+        );
       };
 
       recognition.onresult = (event: any) => {
         const text = event.results[0][0].transcript;
         setVoiceTranscript(text);
-        processVoiceCommand(text);
+        const lower = text.toLowerCase();
+
+        let matchedService = catalogServices[0];
+        for (const srv of catalogServices) {
+          const words = srv.title.toLowerCase().split(' ');
+          if (words.some((w) => w.length > 3 && lower.includes(w)) || lower.includes(srv.category)) {
+            matchedService = srv;
+            break;
+          }
+        }
+
+        const now = new Date();
+        let dateStr = form.appointmentDate || new Date(now.getTime() + 86400000).toISOString().split('T')[0];
+        if (lower.includes('tomorrow')) {
+          dateStr = new Date(now.getTime() + 86400000).toISOString().split('T')[0];
+        } else if (lower.includes('today')) {
+          dateStr = now.toISOString().split('T')[0];
+        }
+
+        setForm((prev) => ({
+          ...prev,
+          serviceCategory: matchedService.category,
+          selectedService: matchedService.title,
+          appointmentDate: dateStr,
+        }));
+        setVoiceFeedback(`Matched "${matchedService.title}" on ${dateStr}!`);
       };
 
-      recognition.onerror = (event: any) => {
-        console.error('Speech recognition error', event.error);
+      recognition.onerror = () => {
         setIsListening(false);
-        setVoiceFeedback('Could not hear clearly. Please try again or fill manually.');
+        setVoiceFeedback('Could not hear clearly. Please try again or select below.');
       };
 
       recognition.onend = () => {
@@ -149,979 +317,862 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
       };
 
       recognition.start();
-    } catch (e) {
-      console.error(e);
+    } catch {
       setIsListening(false);
-      alert('Failed to start speech recognition.');
     }
   };
 
-  const processVoiceCommand = (text: string) => {
-    const lower = text.toLowerCase();
-    
-    // 1. Match service
-    let matchedService = SALON_SERVICES[0];
-    for (const service of SALON_SERVICES) {
-      const titleWords = service.title.toLowerCase().split(' ');
-      const matches = titleWords.filter(w => w.length > 3 && lower.includes(w));
-      if (matches.length > 0 || lower.includes(service.category)) {
-        matchedService = service;
-        break;
-      }
-    }
+  // Price & Distance Calculations
+  const selectedServiceObj = useMemo(() => {
+    return (
+      catalogServices.find((s) => s.title === form.selectedService) ||
+      catalogServices[0]
+    );
+  }, [form.selectedService, catalogServices]);
 
-    // 2. Match Date
-    let dateStr = formData.preferredDate;
-    const now = new Date();
-    if (lower.includes('tomorrow')) {
-      const tomorrow = new Date(now.getTime() + 86400000);
-      dateStr = tomorrow.toISOString().split('T')[0];
-    } else if (lower.includes('today')) {
-      dateStr = now.toISOString().split('T')[0];
-    } else if (lower.includes('day after')) {
-      const dayAfter = new Date(now.getTime() + 86400000 * 2);
-      dateStr = dayAfter.toISOString().split('T')[0];
-    }
+  const treatmentPrice = selectedServiceObj ? selectedServiceObj.price : 4999;
 
-    // 3. Match Time
-    let timeStr = formData.preferredTime;
-    if (lower.includes('10 am') || lower.includes('10:00 am')) timeStr = '10:00 AM';
-    else if (lower.includes('11 am') || lower.includes('11:00 am')) timeStr = '11:30 AM';
-    else if (lower.includes('1 pm') || lower.includes('13:00') || lower.includes('1:00 pm')) timeStr = '1:00 PM';
-    else if (lower.includes('2 pm') || lower.includes('2:00 pm')) timeStr = '2:30 PM';
-    else if (lower.includes('4 pm') || lower.includes('4:00 pm')) timeStr = '4:00 PM';
-    else if (lower.includes('5 pm') || lower.includes('5:00 pm')) timeStr = '5:30 PM';
-    else if (lower.includes('6 pm') || lower.includes('6:00 pm')) timeStr = '6:30 PM';
-
-    setFormData(prev => ({
-      ...prev,
-      serviceCategory: matchedService.category,
-      selectedService: matchedService.id,
-      preferredDate: dateStr,
-      preferredTime: timeStr,
-    }));
-
-    setVoiceFeedback(`Successfully matched: "${matchedService.title}" on ${dateStr} at ${timeStr}!`);
-  };
-
-  const [confirmedBooking, setConfirmedBooking] = useState<{
-    code: string;
-    data: BookingFormData;
-    serviceName: string;
-    treatmentPrice: number;
-    distanceFee: number;
-    advancePaid: number;
-    balancePayable: number;
-  } | null>(null);
-
-  // Sync if preload prop changes
-  React.useEffect(() => {
-    if (selectedServicePreload) {
-      setFormData((prev) => ({
-        ...prev,
-        serviceCategory: selectedServicePreload.category,
-        selectedService: selectedServicePreload.id,
-      }));
-    }
-  }, [selectedServicePreload]);
-
-  React.useEffect(() => {
-    if (selectedStylistPreload) {
-      setFormData((prev) => ({
-        ...prev,
-        artistLevel: 'master',
-        notes: prev.notes && !prev.notes.includes(selectedStylistPreload) 
-          ? `${prev.notes} (Requested Artist: ${selectedStylistPreload})` 
-          : `Requested Artist: ${selectedStylistPreload}`,
-      }));
-    }
-  }, [selectedStylistPreload]);
-
-  // Calculate dynamic distance fee
   const calculateDistanceFee = (km: number): number => {
-    if (km <= 5) return 250;
-    if (km <= 15) return 250 + (km - 5) * 30;
-    if (km <= 30) return 550 + (km - 15) * 40;
-    return 1150 + (km - 30) * 50;
+    const base = brand.homeServiceBaseFee || 250;
+    const perKm = brand.homeServicePerKmRate || 30;
+    if (km <= 4) return base;
+    return base + (km - 4) * perKm;
   };
 
-  const dynamicDistanceFee = useMemo(() => {
-    return serviceMode === 'at-home' ? calculateDistanceFee(distanceKm) : 0;
-  }, [serviceMode, distanceKm]);
+  const distanceFee = useMemo(() => {
+    return form.locationType === 'home' ? calculateDistanceFee(form.distanceKm) : 0;
+  }, [form.locationType, form.distanceKm, brand.homeServiceBaseFee, brand.homeServicePerKmRate]);
 
-  const availableServices = SALON_SERVICES.filter(
-    (s) => s.category === formData.serviceCategory
+  const advanceRequired = useMemo(() => {
+    if (form.locationType !== 'home') return 0;
+    const pct = (brand.advancePercentage || 20) / 100;
+    return Math.max(500, Math.round((treatmentPrice * pct) / 50) * 50);
+  }, [form.locationType, treatmentPrice, brand.advancePercentage]);
+
+  const promoDiscount = appliedPromo ? appliedPromo.discountAmount : 0;
+  const totalEstimatedAmount = Math.max(0, treatmentPrice + distanceFee - promoDiscount);
+  const balanceAtDoorstep = Math.max(
+    0,
+    totalEstimatedAmount - (form.advancePaymentVerified ? advanceRequired : 0)
   );
 
-  const currentService = SALON_SERVICES.find((s) => s.id === formData.selectedService) || availableServices[0];
-  const currentBranch = SALON_BRANCHES.find((b) => b.id === formData.branch) || SALON_BRANCHES[0];
-
-  // If a bundle is selected, use its bundled discounted price and title
-  const treatmentPrice = selectedBundlePreload ? selectedBundlePreload.price : (currentService?.price || 4999);
-  const treatmentTitle = selectedBundlePreload ? selectedBundlePreload.title : (currentService?.title || 'Selected Salon Service');
-  
-  // Mandatory advance deposit for home service: 20% or ₹500, rounded to nearest 50
-  const advanceRequired = useMemo(() => {
-    if (serviceMode !== 'at-home') return 0;
-    const deposit = Math.max(500, Math.round((treatmentPrice * 0.2) / 50) * 50);
-    return deposit;
-  }, [serviceMode, treatmentPrice]);
-
-  const totalPayable = treatmentPrice + dynamicDistanceFee;
-  const balanceRemaining = totalPayable - (isAdvanceVerified ? advanceRequired : 0);
-
-  // When locality changes, automatically set typical distance
   const handleLocalityChange = (locName: string) => {
-    setHomeLocality(locName);
-    const found = JAIPUR_LOCALITIES.find((l) => l.name === locName);
-    if (found) {
-      setDistanceKm(found.km);
-    }
-  };
-
-  // Simulate or verify advance payment
-  const handleVerifyAdvancePayment = () => {
-    const code = `ADV-${Math.floor(100000 + Math.random() * 900000)}`;
-    setVerificationCode(code);
-    setIsAdvanceVerified(true);
-    setIsVerifyingPayment(false);
+    const found = brand.localities.find((l) => l.name === locName);
+    setForm((prev) => ({
+      ...prev,
+      locality: locName,
+      distanceKm: found ? found.distanceKm : prev.distanceKm,
+    }));
   };
 
   const handleCopyUpi = () => {
-    navigator.clipboard.writeText('beautyzone.jaipur@icici');
+    navigator.clipboard.writeText(brand.upiId);
     setCopiedUpi(true);
     setTimeout(() => setCopiedUpi(false), 2000);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!formData.fullName || !formData.phone) {
-      alert('Please provide your name and phone number.');
-      return;
-    }
-
-    if (serviceMode === 'at-home') {
-      if (!homeAddress.trim()) {
-        alert('Please enter your complete doorstep address in Jaipur.');
-        return;
-      }
-      if (!isAdvanceVerified) {
-        setIsVerifyingPayment(true);
-        return;
-      }
-    }
-
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const bookingCode = serviceMode === 'at-home' ? `BZ-HOME-${randomSuffix}` : `BZ-JPR-${randomSuffix}`;
-
-    const submissionData: BookingFormData = {
-      ...formData,
-      serviceMode,
-      homeAddress,
-      homeLocality,
-      distanceKm,
-      distanceFee: dynamicDistanceFee,
-      advanceDepositRequired: advanceRequired,
-      advancePaymentVerified: isAdvanceVerified,
-      advancePaymentRef: verificationCode || undefined,
-      advancePaymentMethod: paymentMethod,
-    };
-
-    setConfirmedBooking({
-      code: bookingCode,
-      data: submissionData,
-      serviceName: treatmentTitle,
-      treatmentPrice,
-      distanceFee: dynamicDistanceFee,
-      advancePaid: isAdvanceVerified ? advanceRequired : 0,
-      balancePayable: balanceRemaining,
-    });
+  const handleVerifyAdvancePayment = () => {
+    const ref = `ADV-${Math.floor(100000 + Math.random() * 900000)}`;
+    setForm((prev) => ({
+      ...prev,
+      advancePaymentVerified: true,
+      advancePaymentRef: ref,
+    }));
+    setIsPaymentModalOpen(false);
   };
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.fullName.trim() || !form.phone.trim() || !form.appointmentDate) return;
+
+    if (form.locationType === 'home') {
+      if (!form.homeAddress.trim()) {
+        alert(`Please enter your complete doorstep address in ${brand.cityName}.`);
+        return;
+      }
+      if (!form.advancePaymentVerified) {
+        setIsPaymentModalOpen(true);
+        return;
+      }
+    }
+
+    const randomDigits = Math.floor(1000 + Math.random() * 9000);
+    const prefix = brand.bookingPrefix || 'BK';
+    const ref =
+      form.locationType === 'home'
+        ? `${prefix}-HOME-${randomDigits}`
+        : `${prefix}-SALON-${randomDigits}`;
+    setBookingRefCode(ref);
+    setIsSubmitted(true);
+  };
+
+  const buildWhatsAppBookingUrl = () => {
+    const locationDetails =
+      form.locationType === 'salon'
+        ? `Salon Branch: ${form.selectedBranch}`
+        : `Doorstep Home Service (${form.locality}, ~${form.distanceKm} km): ${form.homeAddress} | Travel Fee: ${formatPrice(distanceFee)} | Advance Paid: ${formatPrice(advanceRequired)} (Ref: ${form.advancePaymentRef})`;
+
+    const promoLine = appliedPromo
+      ? `\n*Loyalty Voucher:* ${appliedPromo.code} (-${formatPrice(appliedPromo.discountAmount)})`
+      : '';
+
+    const message =
+      `Hello *${brand.brandName} (${brand.cityName})*,\n` +
+      `I would like to confirm my appointment:\n\n` +
+      `*Booking Ref:* ${bookingRefCode}\n` +
+      `*Name:* ${form.fullName}\n` +
+      `*Phone:* ${form.phone}\n` +
+      `*Service:* ${form.selectedService} (${formatPrice(treatmentPrice)})\n` +
+      `*Preferred Specialist:* ${form.preferredStylist}\n` +
+      `*Date & Time:* ${form.appointmentDate} at ${form.timeSlot}\n` +
+      `*Location:* ${locationDetails}` +
+      promoLine +
+      `\n*Total Estimated:* ${formatPrice(totalEstimatedAmount)}\n` +
+      (form.specialNotes ? `*Notes:* ${form.specialNotes}` : '');
+
+    return `https://wa.me/${brand.whatsappNumber}?text=${encodeURIComponent(message)}`;
+  };
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  const branchSummary =
+    brand.branches.length > 0
+      ? brand.branches
+          .slice(0, 3)
+          .map((b) => b.locality.split('/')[0].trim())
+          .join(', ')
+      : brand.cityName;
+
   return (
-    <section id="booking" className="py-8 sm:py-16 md:py-24 bg-white/70 border-t border-[#0F172A]/10 w-full max-w-full">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-        <RevealOnScroll duration={0.6}>
-          <div className="max-w-2xl mx-auto text-center mb-10">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#D09A40] tracking-wider uppercase mb-2">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Easy Salon & Home Service Booking</span>
-            </div>
-            <h2
-              className="text-3xl sm:text-4xl font-bold text-[#0F172A] tracking-tight"
-              style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-            >
-              Book Your Appointment at Beauty Zone Jaipur
-            </h2>
-            <p className="mt-2 text-sm sm:text-base text-[#4A4A4A]">
-              Choose to visit any of our 3 Jaipur salons or book our professional home salon service right to your doorstep.
-            </p>
-          </div>
-        </RevealOnScroll>
+    <section
+      id="booking"
+      className="py-20 lg:py-28 bg-[#0F172A] text-[#FAF5E5] relative overflow-hidden"
+    >
+      {/* Decorative Ambient Glow */}
+      <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[42rem] h-[42rem] rounded-full bg-[#D09A40]/10 blur-3xl pointer-events-none" />
 
-        {/* Main Central Booking Card with Sharp Styling */}
-        <RevealOnScroll delay={0.1} duration={0.65}>
-          <div className="max-w-4xl mx-auto bg-white rounded-2xl border border-[#0F172A]/15 p-4 sm:p-10 shadow-xl">
-          {/* Active Preloaded Bundle Banner */}
-          {selectedBundlePreload && (
-            <div className="mb-8 p-4 rounded-xl bg-[#FAF5E5] border border-[#D09A40] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <Gift className="w-4 h-4 text-[#D09A40]" />
-                  <span className="font-bold text-[#0F172A] text-sm">{selectedBundlePreload.title}</span>
-                  <span className="font-mono font-bold text-[#D09A40] bg-white px-2 py-0.5 rounded shadow-2xs">
-                    ₹{selectedBundlePreload.price.toLocaleString('en-IN')}
-                  </span>
-                </div>
-                <p className="text-[#4A4A4A]">
-                  Bundled Services: {selectedBundlePreload.services.join(' · ')}
-                </p>
-              </div>
-              {onClearBundle && (
-                <button
-                  type="button"
-                  onClick={onClearBundle}
-                  className="text-[#4A4A4A] hover:text-[#0F172A] font-semibold text-xs cursor-pointer underline self-start sm:self-auto shrink-0"
-                >
-                  Clear Bundle
-                </button>
-              )}
-            </div>
-          )}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 relative z-10">
+        {/* Section Header */}
+        <div className="text-center max-w-2xl mx-auto mb-12 space-y-3">
+          <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-[#D09A40]/15 text-[#D09A40] text-xs font-semibold uppercase tracking-widest border border-[#D09A40]/30">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>{t('bookingOverline')}</span>
+          </span>
+          <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold text-[#FAF5E5] tracking-tight">
+            {t('bookingTitle')}
+          </h2>
+          <p className="text-sm sm:text-base text-[#FAF5E5]/75">
+            {t('bookingSubtitle')}
+          </p>
+        </div>
 
-          {/* Active Preloaded Stylist Banner */}
-          {selectedStylistPreload && (
-            <div className="mb-6 p-3.5 rounded-xl bg-[#FAF5E5] border border-[#D09A40] flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-[#D09A40]" />
-                <span className="text-[#0F172A]">
-                  Requested Master Stylist: <strong className="font-bold">{selectedStylistPreload}</strong> (Master Tier Allocated)
-                </span>
-              </div>
-              {onClearStylist && (
-                <button
-                  type="button"
-                  onClick={onClearStylist}
-                  className="text-[#4A4A4A] hover:text-[#0F172A] font-semibold text-xs cursor-pointer underline"
-                >
-                  Clear Stylist
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* ========================================================
-              SPEAK TO BOOK - VOICE AI ASSISTANT WIDGET
-          ======================================================== */}
-          <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-[#FAF5E5] via-[#FFFDF5] to-[#FAF5E5] border border-[#D09A40]/40 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className={`p-3 rounded-xl ${isListening ? 'bg-red-600 animate-pulse' : 'bg-[#0F172A] text-[#D09A40]'} text-white shrink-0 shadow-sm transition-colors`}>
-                {isListening ? <MicOff className="w-5 h-5 animate-spin" /> : <Mic className="w-5 h-5 text-[#D09A40]" />}
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm sm:text-base font-bold text-[#0F172A]">
-                    Speak to Book (Voice AI Assistant)
-                  </h3>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#D09A40] text-[#0F172A] font-bold">
-                    AI Speech
-                  </span>
-                </div>
-                <p className="text-xs text-[#4A4A4A] mt-0.5">
-                  {voiceFeedback || 'Click mic & verbally dictate your preferred treatment and date (e.g., "Book Bridal Makeup for tomorrow at 11 AM")'}
-                </p>
-                {voiceTranscript && (
-                  <p className="text-[11px] font-mono text-[#0F172A] bg-white/80 px-2.5 py-1 rounded-lg border border-[#D09A40]/30 mt-1.5">
-                    "{voiceTranscript}"
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
-              <button
-                type="button"
-                onClick={handleStartVoiceBooking}
-                disabled={isListening}
-                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2 cursor-pointer ${
-                  isListening
-                    ? 'bg-red-600 text-white animate-pulse'
-                    : 'bg-[#0F172A] hover:bg-[#D09A40] text-white'
-                }`}
-              >
-                <Mic className="w-4 h-4 text-[#D09A40]" />
-                <span>{isListening ? 'Listening...' : 'Start Voice Booking'}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Prominent Mode Selector: In-Salon vs At-Home Doorstep */}
-          <div className="mb-8">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-[#4A4A4A] mb-3">
-              Where would you like your service?
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <button
-                type="button"
-                onClick={() => setServiceMode('in-salon')}
-                className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3.5 ${
-                  serviceMode === 'in-salon'
-                    ? 'border-[#0F172A] bg-[#FAF5E5] ring-1 ring-[#0F172A] shadow-xs'
-                    : 'border-neutral-200 hover:border-neutral-300 bg-white'
-                }`}
-              >
-                <div className={`p-2 rounded-lg ${serviceMode === 'in-salon' ? 'bg-[#0F172A] text-white' : 'bg-neutral-100 text-neutral-600'}`}>
-                  <Store className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-serif text-base font-bold text-[#0F172A]">Visit Our Salon</span>
-                    {serviceMode === 'in-salon' && <span className="text-[10px] bg-[#0F172A] text-white px-2 py-0.5 rounded font-sans">Selected</span>}
+        {/* Booking Card Container */}
+        <div className="bg-white text-[#0F172A] rounded-3xl shadow-2xl border border-[#D09A40]/30 overflow-hidden">
+          {!isSubmitted ? (
+            <form onSubmit={handleSubmit} className="p-6 sm:p-10 space-y-7">
+              {/* Speak to Book Voice AI Bar */}
+              <div className="p-4 rounded-2xl bg-[#FAF5E5] border border-[#D09A40]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`p-2.5 rounded-xl ${
+                      isListening ? 'bg-rose-600 animate-pulse' : 'bg-[#0F172A]'
+                    } text-[#D09A40] shrink-0`}
+                  >
+                    {isListening ? <MicOff className="w-4 h-4 text-white" /> : <Mic className="w-4 h-4" />}
                   </div>
-                  <p className="text-xs text-[#4A4A4A] mt-1 leading-relaxed">
-                    Visit us in C-Scheme, Malviya Nagar, or Vaishali Nagar. Pay comfortably after your service.
-                  </p>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setServiceMode('at-home')}
-                className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3.5 ${
-                  serviceMode === 'at-home'
-                    ? 'border-[#D09A40] bg-[#FAF5E5] ring-1 ring-[#D09A40] shadow-xs'
-                    : 'border-neutral-200 hover:border-neutral-300 bg-white'
-                }`}
-              >
-                <div className={`p-2 rounded-lg ${serviceMode === 'at-home' ? 'bg-[#D09A40] text-white' : 'bg-neutral-100 text-neutral-600'}`}>
-                  <Home className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-serif text-base font-bold text-[#0F172A]">Home Salon Service</span>
-                    {serviceMode === 'at-home' && <span className="text-[10px] bg-[#D09A40] text-white px-2 py-0.5 rounded font-sans">Selected</span>}
-                  </div>
-                  <p className="text-xs text-[#4A4A4A] mt-1 leading-relaxed">
-                    Certified artist visits your home or hotel with a clean vanity kit and professional lighting.
-                  </p>
-                  <span className="inline-block mt-2 text-[10px] text-[#D09A40] font-semibold bg-[#D09A40]/10 px-2 py-0.5 rounded">
-                    Small Travel Charge · Small Advance Token Required
-                  </span>
-                </div>
-              </button>
-            </div>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Row 1: Personal Details */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-              <div>
-                <label className="block text-xs font-semibold text-[#0F172A] mb-1.5">
-                  Full Name *
-                </label>
-                <div className="relative">
-                  <User className="w-4 h-4 text-[#4A4A4A] absolute left-3 top-3" />
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Radhika Sharma"
-                    value={formData.fullName}
-                    onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                    className="w-full pl-9 pr-3 py-2 text-sm border border-[#0F172A]/15 rounded-lg focus:outline-none focus:border-[#D09A40] focus:ring-1 focus:ring-[#D09A40]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#0F172A] mb-1.5">
-                  Phone / WhatsApp *
-                </label>
-                <div className="relative">
-                  <Phone className="w-4 h-4 text-[#4A4A4A] absolute left-3 top-3" />
-                  <input
-                    type="tel"
-                    required
-                    placeholder="+91 98290 XXXXX"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full pl-9 pr-3 py-2 text-sm border border-[#0F172A]/15 rounded-lg focus:outline-none focus:border-[#D09A40] focus:ring-1 focus:ring-[#D09A40]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#0F172A] mb-1.5">
-                  Email Address
-                </label>
-                <div className="relative">
-                  <Mail className="w-4 h-4 text-[#4A4A4A] absolute left-3 top-3" />
-                  <input
-                    type="email"
-                    placeholder="client@example.com"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full pl-9 pr-3 py-2 text-sm border border-[#0F172A]/15 rounded-lg focus:outline-none focus:border-[#D09A40] focus:ring-1 focus:ring-[#D09A40]"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* In-Salon Specific Branch Picker */}
-            {serviceMode === 'in-salon' && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 p-4 bg-[#FAF5E5]/60 rounded-xl border border-[#0F172A]/10">
-                <div className="sm:col-span-3">
-                  <label className="block text-xs font-semibold text-[#0F172A] mb-1.5">
-                    Preferred Jaipur Salon Branch *
-                  </label>
-                  <div className="relative">
-                    <MapPin className="w-4 h-4 text-[#4A4A4A] absolute left-3 top-3" />
-                    <select
-                      value={formData.branch}
-                      onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
-                      className="w-full pl-9 pr-3 py-2 text-sm border border-[#0F172A]/15 rounded-lg focus:outline-none focus:border-[#D09A40] focus:ring-1 focus:ring-[#D09A40] bg-white cursor-pointer"
-                    >
-                      {SALON_BRANCHES.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.name} — {b.locality} ({b.address})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* At-Home Specific: Dynamic Distance Calculator & Address */}
-            {serviceMode === 'at-home' && (
-              <div className="p-5 bg-[#FAF5E5] rounded-xl border border-[#D09A40]/40 space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-[#0F172A]/10">
-                  <div className="flex items-center gap-2">
-                    <Navigation className="w-4 h-4 text-[#D09A40]" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
-                      Jaipur Home Service & Distance Calculator
-                    </span>
-                  </div>
-                  <span className="text-xs font-mono font-bold text-[#D09A40]">
-                    Travel Charge: ₹{dynamicDistanceFee}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-[#0F172A] mb-1.5">
-                      Your Area in Jaipur *
-                    </label>
-                    <select
-                      value={homeLocality}
-                      onChange={(e) => handleLocalityChange(e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-[#0F172A]/15 rounded-lg focus:outline-none focus:border-[#D09A40] bg-white cursor-pointer"
-                    >
-                      {JAIPUR_LOCALITIES.map((loc) => (
-                        <option key={loc.name} value={loc.name}>
-                          {loc.name} (~{loc.km} km)
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-xs font-semibold text-[#0F172A]">
-                        Distance from Nearest Salon
-                      </label>
-                      <span className="text-xs font-mono font-bold text-[#0F172A]">
-                        {distanceKm} km
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs sm:text-sm font-bold text-[#0F172A]">
+                        Speak to Book (Voice AI Assistant)
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#D09A40] text-[#0F172A]">
+                        Voice Enabled
                       </span>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <p className="text-xs text-[#4A4A4A] mt-0.5">
+                      {voiceFeedback ||
+                        'Tap mic & speak your preferred service and date (e.g. "Book Bridal Makeup for tomorrow")'}
+                    </p>
+                    {voiceTranscript && (
+                      <p className="text-[11px] font-mono text-[#0F172A] mt-1">
+                        &ldquo;{voiceTranscript}&rdquo;
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleStartVoiceBooking}
+                  disabled={isListening}
+                  className="px-4 py-2 rounded-xl bg-[#0F172A] hover:bg-[#D09A40] text-[#FAF5E5] hover:text-[#0F172A] text-xs font-bold transition-colors shrink-0 cursor-pointer"
+                >
+                  {isListening ? 'Listening...' : 'Speak Now'}
+                </button>
+              </div>
+
+              {/* 1. Choose Location Mode (Salon vs Home Service) */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-3">
+                  {t('bookingWhereQuestion')}
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, locationType: 'salon' })}
+                    className={`flex items-center gap-3.5 p-4 rounded-2xl border-2 text-left transition-all cursor-pointer ${
+                      form.locationType === 'salon'
+                        ? 'border-[#D09A40] bg-[#FAF5E5] shadow-md'
+                        : 'border-[#0F172A]/10 bg-white hover:border-[#0F172A]/30'
+                    }`}
+                  >
+                    <div
+                      className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
+                        form.locationType === 'salon'
+                          ? 'bg-[#0F172A] text-[#D09A40]'
+                          : 'bg-[#FAF5E5] text-[#0F172A]'
+                      }`}
+                    >
+                      <Building2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-sm text-[#0F172A]">{t('bookingVisitSalon')}</p>
+                      <p className="text-xs text-[#4A4A4A]">
+                        {branchSummary} • Pay after service
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, locationType: 'home' })}
+                    className={`flex items-center gap-3.5 p-4 rounded-2xl border-2 text-left transition-all cursor-pointer ${
+                      form.locationType === 'home'
+                        ? 'border-[#D09A40] bg-[#FAF5E5] shadow-md'
+                        : 'border-[#0F172A]/10 bg-white hover:border-[#0F172A]/30'
+                    }`}
+                  >
+                    <div
+                      className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
+                        form.locationType === 'home'
+                          ? 'bg-[#0F172A] text-[#D09A40]'
+                          : 'bg-[#FAF5E5] text-[#0F172A]'
+                      }`}
+                    >
+                      <Home className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-sm text-[#0F172A]">
+                        {t('bookingHomeService')}
+                      </p>
+                      <p className="text-xs text-[#4A4A4A]">
+                        Stylist visits your home or venue in {brand.cityName}
+                      </p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Conditional Location Input: Branch OR Home Distance Calculator */}
+              {form.locationType === 'salon' ? (
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
+                    Select {brand.cityName} Salon Branch
+                  </label>
+                  <div className="relative">
+                    <MapPin className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
+                    <select
+                      value={form.selectedBranch}
+                      onChange={(e) => setForm({ ...form, selectedBranch: e.target.value })}
+                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                    >
+                      {brand.branches.map((b) => (
+                        <option key={b.id} value={b.name}>
+                          {b.name} ({b.locality})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-5 bg-[#FAF5E5] rounded-2xl border border-[#D09A40]/40 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#0F172A]/10">
+                    <div className="flex items-center gap-2">
+                      <Navigation className="w-4 h-4 text-[#D09A40]" />
+                      <span className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
+                        {brand.cityName} Home Service & Travel Fee Calculator
+                      </span>
+                    </div>
+                    <span className="text-xs font-bold bg-[#0F172A] text-[#D09A40] px-3 py-1 rounded-full">
+                      Travel Fee: {formatPrice(distanceFee)} (~{form.distanceKm} km)
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-[#0F172A] mb-1.5">
+                        Select Your Area in {brand.cityName} *
+                      </label>
+                      <select
+                        value={form.locality}
+                        onChange={(e) => handleLocalityChange(e.target.value)}
+                        className="w-full px-3.5 py-3 rounded-xl bg-white border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                      >
+                        {brand.localities.map((loc) => (
+                          <option key={loc.name} value={loc.name}>
+                            {loc.name} (~{loc.distanceKm} km)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-[#0F172A]">
+                          Distance from Nearest Studio
+                        </label>
+                        <span className="text-xs font-bold text-[#D09A40]">
+                          {form.distanceKm} km
+                        </span>
+                      </div>
                       <input
                         type="range"
                         min="1"
                         max="45"
-                        value={distanceKm}
-                        onChange={(e) => setDistanceKm(Number(e.target.value))}
-                        className="w-full accent-[#D09A40] cursor-pointer"
+                        value={form.distanceKm}
+                        onChange={(e) =>
+                          setForm({ ...form, distanceKm: Number(e.target.value) })
+                        }
+                        className="w-full accent-[#D09A40] cursor-pointer mt-2"
                       />
-                      <span className="text-xs font-mono font-medium text-neutral-600 w-12 shrink-0 text-right">
-                        {distanceKm} km
-                      </span>
+                      <p className="text-[11px] text-[#4A4A4A] mt-1">
+                        Base fee {formatPrice(brand.homeServiceBaseFee)} +{' '}
+                        {formatPrice(brand.homeServicePerKmRate)}/km beyond 4 km
+                      </p>
                     </div>
-                    <p className="text-[10px] text-[#4A4A4A] mt-1">
-                      Rate: {distanceKm <= 5 ? 'Up to 5 km (₹250 flat)' : distanceKm <= 15 ? '5-15 km (₹250 + ₹30/km)' : distanceKm <= 30 ? '15-30 km (₹550 + ₹40/km)' : 'Outstation / Palace Resort (₹1,150 + ₹50/km)'}
-                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#0F172A] mb-1.5">
+                      Complete House / Flat / Hotel Address in {brand.cityName} *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder={`House/Flat No., Street, Landmark, ${brand.cityName}`}
+                      value={form.homeAddress}
+                      onChange={(e) => setForm({ ...form, homeAddress: e.target.value })}
+                      className="w-full px-4 py-3 rounded-xl bg-white border border-[#0F172A]/15 text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* 2. Personal Contact Info */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
+                    {t('bookingFullName')}
+                  </label>
+                  <div className="relative">
+                    <User className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g., Priya Sharma"
+                      value={form.fullName}
+                      onChange={(e) => setForm({ ...form, fullName: e.target.value })}
+                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                    />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#0F172A] mb-1.5">
-                    Complete Address in Jaipur (House / Flat / Hotel / Wedding Venue) *
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
+                    {t('bookingPhone')}
                   </label>
-                  <textarea
-                    rows={2}
-                    required
-                    placeholder="e.g. House No. 14, Near Amrapali Circle, Vaishali Nagar, Jaipur"
-                    value={homeAddress}
-                    onChange={(e) => setHomeAddress(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-[#0F172A]/15 rounded-lg focus:outline-none focus:border-[#D09A40] bg-white"
-                  />
-                </div>
-
-                {/* Hygiene & Kit Badge */}
-                <div className="flex flex-wrap items-center gap-4 text-xs text-[#4A4A4A] pt-2 border-t border-[#0F172A]/10">
-                  <div className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Single-use clean disposable towels & cape</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Bright portable ring light for perfect makeup</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Verified & experienced female beauty artists</span>
+                  <div className="relative">
+                    <Phone className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="tel"
+                      required
+                      placeholder={brand.phoneDisplay}
+                      value={form.phone}
+                      onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                    />
                   </div>
                 </div>
               </div>
-            )}
 
-            {/* Service & Treatment Selectors */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <div>
-                <label className="block text-xs font-semibold text-[#0F172A] mb-1.5">
-                  Service Category *
-                </label>
-                <select
-                  value={formData.serviceCategory}
-                  onChange={(e) => {
-                    const newCat = e.target.value;
-                    const firstOfCat = SALON_SERVICES.find((s) => s.category === newCat);
-                    setFormData({
-                      ...formData,
-                      serviceCategory: newCat,
-                      selectedService: firstOfCat ? firstOfCat.id : '',
-                    });
-                  }}
-                  className="w-full px-3 py-2 text-sm border border-[#0F172A]/15 rounded-lg focus:outline-none focus:border-[#D09A40] focus:ring-1 focus:ring-[#D09A40] bg-white cursor-pointer"
-                >
-                  <option value="bridal">Bridal Makeup & Draping</option>
-                  <option value="hair">Hair Care, Botox & Color</option>
-                  <option value="skin">Skin Facials & HydraFacial</option>
-                  <option value="nails">Nail Extensions & Manicure</option>
-                  <option value="spa">Body Scrub & Milk Spa</option>
-                  <option value="academy">Professional Makeup Course</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#0F172A] mb-1.5">
-                  Select Service *
-                </label>
-                <select
-                  value={formData.selectedService}
-                  onChange={(e) => setFormData({ ...formData, selectedService: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-[#0F172A]/15 rounded-lg focus:outline-none focus:border-[#D09A40] focus:ring-1 focus:ring-[#D09A40] bg-white cursor-pointer"
-                >
-                  {availableServices.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.title} (₹{s.price.toLocaleString('en-IN')})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Schedule & Artist Tier */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-              <div>
-                <label className="block text-xs font-semibold text-[#0F172A] mb-1.5">
-                  Preferred Date *
-                </label>
-                <div className="relative">
-                  <Calendar className="w-4 h-4 text-[#4A4A4A] absolute left-3 top-3" />
-                  <input
-                    type="date"
-                    required
-                    value={formData.preferredDate}
-                    onChange={(e) => setFormData({ ...formData, preferredDate: e.target.value })}
-                    className="w-full pl-9 pr-3 py-2 text-sm border border-[#0F172A]/15 rounded-lg focus:outline-none focus:border-[#D09A40] bg-white cursor-pointer"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#0F172A] mb-1.5">
-                  Preferred Time Slot *
-                </label>
-                <div className="relative">
-                  <Clock className="w-4 h-4 text-[#4A4A4A] absolute left-3 top-3" />
+              {/* 3. Select Service & Preferred Specialist */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
+                    {t('bookingSelectService')}
+                  </label>
                   <select
-                    value={formData.preferredTime}
-                    onChange={(e) => setFormData({ ...formData, preferredTime: e.target.value })}
-                    className="w-full pl-9 pr-3 py-2 text-sm border border-[#0F172A]/15 rounded-lg focus:outline-none focus:border-[#D09A40] bg-white cursor-pointer"
+                    value={form.selectedService}
+                    onChange={(e) => setForm({ ...form, selectedService: e.target.value })}
+                    className="w-full px-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
                   >
-                    <option value="09:00 AM">09:00 AM - Morning Slot</option>
-                    <option value="11:00 AM">11:00 AM - Late Morning</option>
-                    <option value="01:30 PM">01:30 PM - Afternoon</option>
-                    <option value="04:00 PM">04:00 PM - Evening</option>
-                    <option value="06:30 PM">06:30 PM - Late Evening</option>
+                    {preselectedServiceTitle &&
+                      !catalogServices.some((s) => s.title === preselectedServiceTitle) && (
+                        <option value={preselectedServiceTitle}>
+                          {preselectedServiceTitle}
+                        </option>
+                      )}
+                    {catalogServices.map((srv) => (
+                      <option key={srv.id} value={srv.title}>
+                        {srv.title} — {formatPrice(srv.price)} ({srv.duration})
+                      </option>
+                    ))}
                   </select>
                 </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
+                    {t('bookingSelectStylist')}
+                  </label>
+                  <div className="relative">
+                    <UserCheck className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
+                    <select
+                      value={form.preferredStylist}
+                      onChange={(e) => setForm({ ...form, preferredStylist: e.target.value })}
+                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                    >
+                      <option value="Any Senior Specialist">
+                        Any Available Senior Specialist
+                      </option>
+                      {brand.stylists.map((stylist) => (
+                        <option key={stylist.id} value={stylist.name}>
+                          {stylist.name} — {stylist.role} ({stylist.branch.split(' ')[0]})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-[#0F172A] mb-1.5">
-                  Artist Level
+              {/* 4. Preferred Date & Time */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
+                    {t('bookingPreferredDate')}
+                  </label>
+                  <div className="relative">
+                    <Calendar className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="date"
+                      required
+                      min={todayStr}
+                      value={form.appointmentDate}
+                      onChange={(e) => setForm({ ...form, appointmentDate: e.target.value })}
+                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
+                    {t('bookingPreferredTime')}
+                  </label>
+                  <div className="relative">
+                    <Clock className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
+                    <select
+                      value={form.timeSlot}
+                      onChange={(e) => setForm({ ...form, timeSlot: e.target.value })}
+                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                    >
+                      {TIME_SLOTS.map((slot) => (
+                        <option key={slot} value={slot}>
+                          {slot}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* 5. Special Notes & Bridal Trial Checkbox */}
+              <div className="space-y-4">
+                <label className="flex items-center gap-3 cursor-pointer select-none bg-[#FAF5E5]/70 p-3.5 rounded-xl border border-[#D09A40]/30">
+                  <input
+                    type="checkbox"
+                    checked={form.bridalTrialRequired}
+                    onChange={(e) =>
+                      setForm({ ...form, bridalTrialRequired: e.target.checked })
+                    }
+                    className="w-4 h-4 accent-[#D09A40] rounded"
+                  />
+                  <span className="text-xs sm:text-sm font-medium text-[#0F172A]">
+                    I am booking for a <strong>Bride / Wedding</strong> — include a free 15-minute skin & makeup consultation.
+                  </span>
                 </label>
-                <select
-                  value={formData.artistLevel}
-                  onChange={(e) => setFormData({ ...formData, artistLevel: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-[#0F172A]/15 rounded-lg focus:outline-none focus:border-[#D09A40] bg-white cursor-pointer"
-                >
-                  <option value="senior">Senior Salon Artist</option>
-                  <option value="master">Master Bridal Artist</option>
-                  <option value="director">Lead Stylist</option>
-                </select>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
+                    Special Requests (Optional)
+                  </label>
+                  <div className="relative">
+                    <MessageSquare className="w-4 h-4 text-[#D09A40] absolute left-4 top-3.5" />
+                    <textarea
+                      rows={2}
+                      placeholder="Mention skin sensitivity, hair length, or number of family members..."
+                      value={form.specialNotes}
+                      onChange={(e) => setForm({ ...form, specialNotes: e.target.value })}
+                      className="w-full pl-11 pr-4 py-3 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
 
-            {/* Special Requests / Notes */}
-            <div>
-              <label className="block text-xs font-semibold text-[#0F172A] mb-1.5">
-                Special Requests or Landmark (Optional)
-              </label>
-              <textarea
-                rows={2}
-                placeholder="E.g. Nearby landmark, hotel room number, hair type, or specific timing requirements..."
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-[#0F172A]/15 rounded-lg focus:outline-none focus:border-[#D09A40]"
-              />
-            </div>
-
-            {/* Mandatory Advance Payment Notice Card for Home Services */}
-            {serviceMode === 'at-home' && (
-              <div className="p-4 rounded-xl border bg-amber-50/70 border-amber-200 text-xs text-[#0F172A] space-y-2">
+              {/* 5.5 Loyalty Reward / Gift Card Code Input */}
+              <div className="p-4 rounded-2xl bg-[#FAF5E5] border border-[#D09A40]/35 space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-amber-700" />
-                    <span className="font-bold text-amber-900">
-                      Advance Token Policy for Home Service
-                    </span>
-                  </div>
-                  {isAdvanceVerified ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
-                      <Check className="w-3.5 h-3.5" />
-                      Paid & Verified (Ref: {verificationCode})
-                    </span>
-                  ) : (
-                    <span className="text-[11px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded">
-                      Pending Advance Token: ₹{advanceRequired}
-                    </span>
-                  )}
-                </div>
-                <p className="text-amber-800 text-[11px] leading-relaxed">
-                  To confirm your home booking and schedule the artist, a small advance token deposit of ₹{advanceRequired} is required. The remaining balance (₹{balanceRemaining}) can be paid comfortably at your home after your service.
-                </p>
-
-                {!isAdvanceVerified && (
-                  <button
-                    type="button"
-                    onClick={() => setIsVerifyingPayment(true)}
-                    className="mt-2 px-4 py-2 text-xs font-bold text-white bg-amber-800 hover:bg-amber-900 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
-                  >
-                    <CreditCard className="w-3.5 h-3.5" />
-                    <span>Pay Advance Token (₹{advanceRequired})</span>
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Real-time Rate Breakdown & Confirmation Bar */}
-            <div className="pt-4 border-t border-[#0F172A]/10 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="text-left space-y-1">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-xs text-[#4A4A4A]">Total Estimated Amount:</span>
-                  <span className="text-2xl font-bold text-[#0F172A] tabular-nums">
-                    ₹{totalPayable.toLocaleString('en-IN')}
-                  </span>
-                  {serviceMode === 'at-home' && (
-                    <span className="text-[11px] text-[#4A4A4A]">
-                      (Service ₹{treatmentPrice} + Travel ₹{dynamicDistanceFee})
-                    </span>
+                  <label className="text-xs font-bold uppercase tracking-wider text-[#0F172A] flex items-center gap-1.5">
+                    <Gift className="w-4 h-4 text-[#D09A40]" />
+                    <span>Have a {brand.loyaltyClubName} or Gift Card Code?</span>
+                  </label>
+                  {appliedPromo && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAppliedPromo(null);
+                        setPromoCodeInput('');
+                      }}
+                      className="text-[11px] text-rose-600 hover:underline font-semibold cursor-pointer"
+                    >
+                      Remove Voucher
+                    </button>
                   )}
                 </div>
 
-                {serviceMode === 'at-home' ? (
-                  <div className="text-[11px] flex items-center gap-2">
-                    <span className="text-amber-900 font-semibold">
-                      Advance: ₹{advanceRequired} {isAdvanceVerified ? '✓ Paid' : '(Required)'}
-                    </span>
-                    <span aria-hidden="true">·</span>
-                    <span className="text-neutral-600">
-                      Balance to pay at home: ₹{balanceRemaining}
-                    </span>
+                {!appliedPromo ? (
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1">
+                      <Tag className="w-4 h-4 text-[#D09A40] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={promoCodeInput}
+                        onChange={(e) => setPromoCodeInput(e.target.value)}
+                        placeholder={`e.g. ${brand.bookingPrefix}-GLOW-500 or ${brand.giftCardPrefix}-1234`}
+                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-white border border-[#0F172A]/15 text-xs font-mono uppercase text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => validateAndApplyPromo(promoCodeInput)}
+                      className="px-5 py-2.5 rounded-xl bg-[#0F172A] hover:bg-[#D09A40] text-[#FAF5E5] hover:text-[#0F172A] font-bold text-xs transition-colors cursor-pointer shrink-0"
+                    >
+                      Apply Voucher
+                    </button>
                   </div>
                 ) : (
-                  <span className="text-xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-medium">
-                    Pay at salon after service
-                  </span>
+                  <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2.5 text-xs">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <div>
+                        <span className="font-mono font-bold text-emerald-950">
+                          {appliedPromo.code}
+                        </span>
+                        <span className="text-emerald-700 ml-2">
+                          ({appliedPromo.title})
+                        </span>
+                      </div>
+                    </div>
+                    <span className="font-bold text-emerald-700">
+                      -{formatPrice(appliedPromo.discountAmount)} Saved
+                    </span>
+                  </div>
+                )}
+
+                {promoError && (
+                  <p className="text-[11px] text-rose-600 font-medium">{promoError}</p>
                 )}
               </div>
 
-              <button
-                type="submit"
-                className="w-full sm:w-auto px-8 py-3.5 text-sm font-semibold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl luxe-btn shadow-sm cursor-pointer whitespace-nowrap flex items-center justify-center gap-2"
-              >
-                {serviceMode === 'at-home' ? (
-                  isAdvanceVerified ? (
-                    <>
-                      <Check className="w-4 h-4 text-emerald-400" />
-                      <span>Confirm Home Booking</span>
-                    </>
-                  ) : (
-                    <>
-                      <ShieldCheck className="w-4 h-4 text-[#D09A40]" />
-                      <span>Pay Advance Token & Book</span>
-                    </>
-                  )
-                ) : (
-                  <span>Confirm Salon Booking</span>
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
-        </RevealOnScroll>
-      </div>
-
-      {/* Mandatory Advance Payment Verification Modal */}
-      {isVerifyingPayment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 sm:p-8 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
-            <button
-              onClick={() => setIsVerifyingPayment(false)}
-              className="absolute top-4 right-4 text-neutral-400 hover:text-black p-1 cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="text-center mb-6">
-              <div className="w-12 h-12 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center mx-auto mb-3">
-                <ShieldCheck className="w-6 h-6" />
-              </div>
-              <h3 className="font-serif text-2xl font-bold text-[#0F172A]">
-                Pay Advance Token
-              </h3>
-              <p className="text-xs text-[#4A4A4A] mt-1">
-                Required for Home Service visit to {homeLocality} (~{distanceKm} km)
-              </p>
-            </div>
-
-            {/* Payment Summary */}
-            <div className="bg-[#FAF5E5] rounded-xl p-3.5 text-xs space-y-1.5 mb-5 border border-[#D09A40]/30">
-              <div className="flex justify-between">
-                <span className="text-[#4A4A4A]">Service:</span>
-                <span className="font-semibold">{currentService?.title}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#4A4A4A]">Travel Charge:</span>
-                <span className="font-semibold font-mono">₹{dynamicDistanceFee}</span>
-              </div>
-              <div className="flex justify-between border-t border-[#0F172A]/10 pt-1.5 font-bold text-[#0F172A]">
-                <span>Advance Token Amount:</span>
-                <span className="text-sm font-mono text-[#D09A40]">₹{advanceRequired}</span>
-              </div>
-            </div>
-
-            {/* Payment Method Selector */}
-            <div className="flex items-center gap-2 mb-4 text-xs">
-              <button
-                type="button"
-                onClick={() => setPaymentMethod('upi')}
-                className={`flex-1 py-1.5 px-3 rounded-lg border font-semibold cursor-pointer transition-colors ${
-                  paymentMethod === 'upi' ? 'bg-[#0F172A] text-white border-[#0F172A]' : 'bg-neutral-50 text-neutral-700 border-neutral-200'
-                }`}
-              >
-                Instant UPI / QR
-              </button>
-              <button
-                type="button"
-                onClick={() => setPaymentMethod('card')}
-                className={`flex-1 py-1.5 px-3 rounded-lg border font-semibold cursor-pointer transition-colors ${
-                  paymentMethod === 'card' ? 'bg-[#0F172A] text-white border-[#0F172A]' : 'bg-neutral-50 text-neutral-700 border-neutral-200'
-                }`}
-              >
-                Card / NetBanking
-              </button>
-            </div>
-
-            {/* UPI View */}
-            {paymentMethod === 'upi' && (
-              <div className="space-y-4 text-center">
-                {/* Simulated QR Code Canvas */}
-                <div className="w-40 h-40 bg-neutral-100 border-2 border-dashed border-[#D09A40] rounded-xl mx-auto flex flex-col items-center justify-center p-3 relative">
-                  <QrCode className="w-24 h-24 text-[#0F172A]" />
-                  <span className="text-[10px] text-neutral-500 font-mono mt-1">Scan via GPay / PhonePe / Paytm</span>
+              {/* 6. Home Service Advance Token Policy Card */}
+              {form.locationType === 'home' && (
+                <div className="p-4 rounded-2xl border bg-amber-50/80 border-amber-200 text-xs text-[#0F172A] space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-amber-700" />
+                      <span className="font-bold text-amber-900">
+                        Advance Token Deposit for Home Visit
+                      </span>
+                    </div>
+                    {form.advancePaymentVerified ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full">
+                        <Check className="w-3.5 h-3.5" />
+                        Token Paid (Ref: {form.advancePaymentRef})
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full">
+                        Advance Token Required: {formatPrice(advanceRequired)}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-amber-800 text-[11px] leading-relaxed">
+                    To confirm a home visit and reserve your beauty artist, a small token deposit of{' '}
+                    <strong>{formatPrice(advanceRequired)}</strong> is required. The remaining{' '}
+                    <strong>{formatPrice(balanceAtDoorstep)}</strong> is payable after your service.
+                  </p>
+                  {!form.advancePaymentVerified && (
+                    <button
+                      type="button"
+                      onClick={() => setIsPaymentModalOpen(true)}
+                      className="mt-1 px-4 py-2 text-xs font-bold text-white bg-amber-800 hover:bg-amber-900 rounded-xl transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                    >
+                      <CreditCard className="w-3.5 h-3.5" />
+                      <span>Pay Advance Token ({formatPrice(advanceRequired)})</span>
+                    </button>
+                  )}
                 </div>
+              )}
 
-                {/* VPA Handle with copy */}
-                <div className="flex items-center justify-between bg-neutral-100 rounded-lg p-2 text-xs">
-                  <span className="font-mono text-neutral-700 text-[11px]">beautyzone.jaipur@icici</span>
-                  <button
-                    type="button"
-                    onClick={handleCopyUpi}
-                    className="text-xs text-[#D09A40] font-bold flex items-center gap-1 cursor-pointer hover:underline"
-                  >
-                    {copiedUpi ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                    <span>{copiedUpi ? 'Copied' : 'Copy UPI'}</span>
-                  </button>
-                </div>
-
-                {/* Simulation / Auto-Verification button */}
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={handleVerifyAdvancePayment}
-                    className="w-full py-3 px-4 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors cursor-pointer shadow-md flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Pay Advance Token (₹{advanceRequired})</span>
-                  </button>
-                  <p className="text-[10px] text-neutral-500 mt-2">
-                    Instant confirmation. Your booking reference will be generated immediately.
+              {/* Live Price Summary & Submit CTA */}
+              <div className="pt-4 border-t border-[#0F172A]/10 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="text-center sm:text-left">
+                  <div className="flex items-baseline justify-center sm:justify-start gap-2">
+                    <span className="text-xs text-[#4A4A4A]">{t('bookingEstimatedTotal')}</span>
+                    <span className="font-serif text-2xl font-bold text-[#0F172A]">
+                      {formatPrice(totalEstimatedAmount)}
+                    </span>
+                    {form.locationType === 'home' && (
+                      <span className="text-[11px] text-[#4A4A4A]">
+                        (Service {formatPrice(treatmentPrice)} + Travel {formatPrice(distanceFee)}
+                        {promoDiscount > 0 ? ` - Voucher ${formatPrice(promoDiscount)}` : ''})
+                      </span>
+                    )}
+                    {form.locationType === 'salon' && promoDiscount > 0 && (
+                      <span className="text-[11px] text-emerald-700 font-semibold">
+                        (Includes {formatPrice(promoDiscount)} Voucher Off)
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-[#10B981] font-semibold mt-0.5">
+                    {form.locationType === 'salon'
+                      ? '✓ Zero advance needed for salon visits — pay after your service'
+                      : form.advancePaymentVerified
+                      ? `✓ Advance ${formatPrice(advanceRequired)} verified • Balance ${formatPrice(balanceAtDoorstep)} after service`
+                      : `Requires ${formatPrice(advanceRequired)} advance token to dispatch artist`}
                   </p>
                 </div>
-              </div>
-            )}
 
-            {/* Card / NetBanking View */}
-            {paymentMethod === 'card' && (
-              <div className="space-y-3">
-                <input
-                  type="text"
-                  placeholder="Card Number (4000 1234 5678 9010)"
-                  className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg focus:outline-none focus:border-[#D09A40]"
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="text"
-                    placeholder="MM / YY"
-                    className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg focus:outline-none focus:border-[#D09A40]"
-                  />
-                  <input
-                    type="password"
-                    maxLength={3}
-                    placeholder="CVV"
-                    className="w-full px-3 py-2 text-xs border border-neutral-300 rounded-lg focus:outline-none focus:border-[#D09A40]"
-                  />
-                </div>
                 <button
-                  type="button"
-                  onClick={handleVerifyAdvancePayment}
-                  className="w-full mt-2 py-3 px-4 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors cursor-pointer"
+                  type="submit"
+                  className="w-full sm:w-auto px-8 py-4 rounded-xl bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A] font-bold text-base shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer"
                 >
-                  Pay ₹{advanceRequired} & Confirm
+                  {form.locationType === 'home' && !form.advancePaymentVerified
+                    ? `Pay ${formatPrice(advanceRequired)} Token & Book`
+                    : t('bookingConfirmBtn')}
                 </button>
               </div>
-            )}
-          </div>
-        </div>
-      )}
+            </form>
+          ) : (
+            /* Confirmation State */
+            <div className="p-8 sm:p-12 text-center space-y-6">
+              <div className="w-16 h-16 rounded-full bg-[#10B981]/15 text-[#10B981] flex items-center justify-center mx-auto">
+                <CheckCircle2 className="w-10 h-10" />
+              </div>
 
-      {/* Confirmation Modal */}
-      {confirmedBooking && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 sm:p-8 shadow-2xl relative animate-modal-enter">
+              <div className="space-y-2">
+                <span className="inline-block px-3.5 py-1 rounded-full bg-[#FAF5E5] border border-[#D09A40] text-xs font-bold text-[#0F172A]">
+                  Booking Reference: #{bookingRefCode}
+                </span>
+                <h3 className="font-serif text-3xl font-bold text-[#0F172A]">
+                  Thank You, {form.fullName}!
+                </h3>
+                <p className="text-sm text-[#4A4A4A] max-w-md mx-auto">
+                  Your appointment request for <strong>{form.selectedService}</strong> on{' '}
+                  <strong>{form.appointmentDate}</strong> at <strong>{form.timeSlot}</strong> is ready.
+                </p>
+              </div>
+
+              <div className="bg-[#FAF5E5] rounded-2xl p-5 max-w-md mx-auto text-left text-xs space-y-2 border border-[#0F172A]/10">
+                <div className="flex justify-between">
+                  <span className="text-[#4A4A4A]">Mode:</span>
+                  <span className="font-bold">
+                    {form.locationType === 'salon' ? 'Salon Studio Visit' : 'Doorstep Home Service'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#4A4A4A]">Location:</span>
+                  <span className="font-semibold text-right">
+                    {form.locationType === 'salon'
+                      ? form.selectedBranch
+                      : `${form.locality} (~${form.distanceKm} km)`}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#4A4A4A]">Preferred Specialist:</span>
+                  <span className="font-semibold text-right">{form.preferredStylist}</span>
+                </div>
+                {appliedPromo && (
+                  <div className="flex justify-between text-emerald-700 font-semibold">
+                    <span>Voucher Applied ({appliedPromo.code}):</span>
+                    <span>-{formatPrice(appliedPromo.discountAmount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between border-t border-[#0F172A]/10 pt-2 font-bold text-sm">
+                  <span>Total Amount:</span>
+                  <span>{formatPrice(totalEstimatedAmount)}</span>
+                </div>
+              </div>
+
+              <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-4">
+                <a
+                  href={buildWhatsAppBookingUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#10B981] hover:bg-[#059669] text-white font-bold text-sm px-7 py-4 rounded-xl shadow-lg transition-all"
+                >
+                  <WhatsAppIcon className="w-4 h-4" />
+                  <span>Send Booking on WhatsApp for Instant Slot Lock</span>
+                </a>
+                <button
+                  onClick={() => setIsSubmitted(false)}
+                  className="w-full sm:w-auto px-6 py-4 rounded-xl border border-[#0F172A]/20 text-xs font-semibold text-[#0F172A] hover:bg-[#FAF5E5] transition-colors cursor-pointer"
+                >
+                  Modify Details
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* UPI / Card Advance Token Modal for Home Service */}
+      {isPaymentModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F172A]/80 backdrop-blur-sm">
+          <div className="bg-white text-[#0F172A] rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl relative border border-[#D09A40]/40">
             <button
-              onClick={() => setConfirmedBooking(null)}
+              onClick={() => setIsPaymentModalOpen(false)}
               className="absolute top-4 right-4 text-[#4A4A4A] hover:text-[#0F172A] p-1 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="text-center">
-              <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto mb-3 animate-success-pop">
-                <CheckCircle2 className="w-6 h-6" />
+            <div className="text-center mb-5">
+              <div className="w-12 h-12 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center mx-auto mb-3">
+                <ShieldCheck className="w-6 h-6" />
               </div>
               <h3 className="font-serif text-2xl font-bold text-[#0F172A]">
-                {confirmedBooking.data.serviceMode === 'at-home' ? 'Home Service Booking Confirmed!' : 'Salon Appointment Confirmed!'}
+                Pay Home Visit Token
               </h3>
               <p className="text-xs text-[#4A4A4A] mt-1">
-                Booking Reference: <span className="font-mono font-bold text-[#D09A40]">{confirmedBooking.code}</span>
+                For Doorstep Service in {form.locality} (~{form.distanceKm} km)
               </p>
             </div>
 
-            <div className="mt-6 bg-[#FAF5E5] rounded-xl p-4 text-xs space-y-2 text-[#0F172A]">
-              <div className="flex justify-between border-b border-[#0F172A]/10 pb-1.5">
-                <span className="text-[#4A4A4A]">Booking Type:</span>
-                <span className="font-bold text-[#0F172A]">
-                  {confirmedBooking.data.serviceMode === 'at-home' ? '🏠 Home Salon Service' : '🏛 In-Salon Appointment'}
+            <div className="bg-[#FAF5E5] rounded-2xl p-4 text-xs space-y-1.5 mb-5 border border-[#D09A40]/30">
+              <div className="flex justify-between">
+                <span className="text-[#4A4A4A]">Selected Service:</span>
+                <span className="font-semibold text-right max-w-[200px] truncate">
+                  {form.selectedService}
                 </span>
               </div>
-              <div className="flex justify-between border-b border-[#0F172A]/10 pb-1.5">
-                <span className="text-[#4A4A4A]">Customer:</span>
-                <span className="font-semibold">{confirmedBooking.data.fullName} ({confirmedBooking.data.phone})</span>
+              <div className="flex justify-between">
+                <span className="text-[#4A4A4A]">Travel Charge:</span>
+                <span className="font-semibold">{formatPrice(distanceFee)}</span>
               </div>
-              <div className="flex justify-between border-b border-[#0F172A]/10 pb-1.5">
-                <span className="text-[#4A4A4A]">Service:</span>
-                <span className="font-semibold text-right">{confirmedBooking.serviceName}</span>
+              <div className="flex justify-between border-t border-[#0F172A]/10 pt-2 font-bold text-[#0F172A]">
+                <span>Advance Token Payable Now:</span>
+                <span className="text-sm text-[#D09A40]">{formatPrice(advanceRequired)}</span>
               </div>
-
-              {confirmedBooking.data.serviceMode === 'at-home' ? (
-                <>
-                  <div className="flex justify-between border-b border-[#0F172A]/10 pb-1.5">
-                    <span className="text-[#4A4A4A]">Service Address:</span>
-                    <span className="font-semibold text-right max-w-[220px] truncate">{confirmedBooking.data.homeAddress}</span>
-                  </div>
-                  <div className="flex justify-between border-b border-[#0F172A]/10 pb-1.5">
-                    <span className="text-[#4A4A4A]">Distance & Travel Charge:</span>
-                    <span className="font-semibold tabular-nums">{confirmedBooking.data.distanceKm} km (₹{confirmedBooking.distanceFee})</span>
-                  </div>
-                  <div className="flex justify-between border-b border-[#0F172A]/10 pb-1.5 text-emerald-800">
-                    <span className="font-semibold">Advance Token Paid:</span>
-                    <span className="font-bold tabular-nums">✓ ₹{confirmedBooking.advancePaid} (Ref: {confirmedBooking.data.advancePaymentRef})</span>
-                  </div>
-                  <div className="flex justify-between pt-1 font-bold text-sm">
-                    <span className="text-[#4A4A4A]">Balance to Pay at Home:</span>
-                    <span className="tabular-nums text-[#0F172A]">₹{confirmedBooking.balancePayable.toLocaleString('en-IN')}</span>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="flex justify-between border-b border-[#0F172A]/10 pb-1.5">
-                    <span className="text-[#4A4A4A]">Salon Branch:</span>
-                    <span className="font-semibold">{currentBranch.name}</span>
-                  </div>
-                  <div className="flex justify-between border-b border-[#0F172A]/10 pb-1.5">
-                    <span className="text-[#4A4A4A]">Appointment Date & Time:</span>
-                    <span className="font-semibold">{confirmedBooking.data.preferredDate} at {confirmedBooking.data.preferredTime}</span>
-                  </div>
-                  <div className="flex justify-between pt-1">
-                    <span className="text-[#4A4A4A]">Payable at Salon:</span>
-                    <span className="font-bold text-sm text-[#0F172A] tabular-nums">₹{confirmedBooking.treatmentPrice.toLocaleString('en-IN')}</span>
-                  </div>
-                </>
-              )}
             </div>
 
-            <div className="mt-6 flex flex-col sm:flex-row gap-3">
-              <a
-                href={`https://wa.me/919829012345?text=Hello%20Beauty%20Zone%20Jaipur,%20I%20have%20confirmed%20my%20${confirmedBooking.data.serviceMode === 'at-home' ? 'Home%20Salon' : 'In-Salon'}%20Booking%20for%20${encodeURIComponent(confirmedBooking.serviceName)}%20(Ref:%20${confirmedBooking.code}).%20Scheduled%20Date:%20${confirmedBooking.data.preferredDate}.`}
-                target="_blank"
-                rel="noreferrer"
-                className="flex-1 py-2.5 px-4 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg text-center transition-colors flex items-center justify-center gap-1.5"
-              >
-                <MessageSquare className="w-4 h-4" />
-                <span>Send Details on WhatsApp</span>
-              </a>
+            {/* Method Toggle */}
+            <div className="grid grid-cols-2 gap-2 mb-4 text-xs">
               <button
-                onClick={() => setConfirmedBooking(null)}
-                className="py-2.5 px-4 text-xs font-semibold text-[#0F172A] bg-white border border-[#0F172A]/20 hover:bg-[#FAF5E5] rounded-lg transition-colors cursor-pointer"
+                type="button"
+                onClick={() => setForm({ ...form, advancePaymentMethod: 'upi' })}
+                className={`py-2 px-3 rounded-xl border font-bold cursor-pointer ${
+                  form.advancePaymentMethod === 'upi'
+                    ? 'bg-[#0F172A] text-[#FAF5E5] border-[#0F172A]'
+                    : 'bg-[#FAF5E5] text-[#0F172A] border-[#0F172A]/15'
+                }`}
               >
-                Close Receipt
+                UPI / QR Scan
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, advancePaymentMethod: 'card' })}
+                className={`py-2 px-3 rounded-xl border font-bold cursor-pointer ${
+                  form.advancePaymentMethod === 'card'
+                    ? 'bg-[#0F172A] text-[#FAF5E5] border-[#0F172A]'
+                    : 'bg-[#FAF5E5] text-[#0F172A] border-[#0F172A]/15'
+                }`}
+              >
+                Debit / Credit Card
               </button>
             </div>
+
+            {form.advancePaymentMethod === 'upi' ? (
+              <div className="space-y-4 text-center">
+                <div className="w-36 h-36 bg-[#FAF5E5] border-2 border-dashed border-[#D09A40] rounded-2xl mx-auto flex flex-col items-center justify-center p-3">
+                  <QrCode className="w-20 h-20 text-[#0F172A]" />
+                  <span className="text-[10px] text-[#4A4A4A] mt-1 font-medium">
+                    GPay • PhonePe • Paytm
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between bg-[#FAF5E5] rounded-xl px-3.5 py-2.5 text-xs border border-[#0F172A]/10">
+                  <span className="font-mono font-semibold text-[#0F172A]">
+                    {brand.upiId}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCopyUpi}
+                    className="text-xs text-[#D09A40] font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    {copiedUpi ? (
+                      <Check className="w-3.5 h-3.5 text-[#10B981]" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                    <span>{copiedUpi ? 'Copied' : 'Copy UPI'}</span>
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleVerifyAdvancePayment}
+                  className="w-full py-3.5 px-4 text-xs font-bold text-white bg-[#10B981] hover:bg-[#059669] rounded-xl transition-colors cursor-pointer shadow-md flex items-center justify-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Confirm Token Paid ({formatPrice(advanceRequired)})</span>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  placeholder="Card Number (XXXX XXXX XXXX)"
+                  className="w-full px-3.5 py-2.5 text-xs border border-[#0F172A]/20 rounded-xl"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    placeholder="MM / YY"
+                    className="w-full px-3.5 py-2.5 text-xs border border-[#0F172A]/20 rounded-xl"
+                  />
+                  <input
+                    type="password"
+                    maxLength={3}
+                    placeholder="CVV"
+                    className="w-full px-3.5 py-2.5 text-xs border border-[#0F172A]/20 rounded-xl"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleVerifyAdvancePayment}
+                  className="w-full py-3.5 px-4 text-xs font-bold text-white bg-[#10B981] hover:bg-[#059669] rounded-xl transition-colors cursor-pointer"
+                >
+                  Pay {formatPrice(advanceRequired)} & Verify
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

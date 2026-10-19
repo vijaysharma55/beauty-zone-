@@ -1,183 +1,146 @@
 import React from 'react';
-import { Sparkles, Crown, Quote, Award, ArrowRight } from 'lucide-react';
-import { RevealOnScroll } from './RevealOnScroll';
+import { Award, Heart, Sparkles, ShieldCheck, Quote, Calendar } from 'lucide-react';
+import { useBrand } from '../context/BrandContext';
 
 interface FoundersNoteProps {
-  onOpenBooking?: () => void;
+  onBookBridalConsult: () => void;
 }
 
-export const FoundersNote: React.FC<FoundersNoteProps> = ({ onOpenBooking }) => {
+export const FoundersNote: React.FC<FoundersNoteProps> = ({ onBookBridalConsult }) => {
+  const { brand, t } = useBrand();
+
+  const branchSummary =
+    brand.branches.length > 0
+      ? brand.branches
+          .slice(0, 3)
+          .map((b) => b.locality.split('/')[0].trim())
+          .join(', ')
+      : brand.cityName;
+
   return (
-    <section id="founder" className="py-8 sm:py-16 md:py-24 bg-[#FAF5E5] border-t border-[#0F172A]/10 relative overflow-hidden w-full max-w-full">
-      {/* Subtle decorative background watermarks */}
-      <div className="absolute top-1/2 -left-20 w-80 h-80 bg-[#D09A40]/5 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-0 right-0 w-96 h-96 bg-[#0F172A]/5 rounded-full blur-3xl pointer-events-none" />
+    <section className="py-20 lg:py-24 bg-white border-t border-[#0F172A]/10 relative overflow-hidden">
+      {/* Subtle Ambient Gold Accents */}
+      <div className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-[#D09A40]/10 blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-24 -left-24 w-80 h-80 rounded-full bg-[#0F172A]/5 blur-3xl pointer-events-none" />
 
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 relative z-10">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">
-          
-          {/* Left Column: Founder Portrait & Credential Badge */}
-          <div className="lg:col-span-5">
-            <RevealOnScroll direction="right" duration={0.7}>
-              <div className="relative group">
-                <div className="absolute -inset-3 bg-gradient-to-tr from-[#D09A40]/20 via-transparent to-[#0F172A]/5 rounded-3xl transform -rotate-1 group-hover:rotate-0 transition-transform duration-500 pointer-events-none" />
-                
-                {/* Main Card with Portrait */}
-                <div className="relative rounded-2xl overflow-hidden bg-white border border-[#0F172A]/15 shadow-2xl">
-                  <div className="aspect-[3/4] w-full overflow-hidden bg-[#FAF5E5]">
-                    <img
-                      src="/src/assets/images/founder_portrait_1790694693142.jpg"
-                      alt="Gayatri Devi Rathore - Founder of Beauty Zone Jaipur"
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover luxe-img-zoom"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A]/85 via-[#0F172A]/20 to-transparent pointer-events-none" />
-                  </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 relative z-10">
+        <div className="bg-[#FAF5E5] rounded-3xl border border-[#D09A40]/30 p-6 sm:p-10 lg:p-14 shadow-xl">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
+            {/* Left Column: Founder Portrait & Credentials */}
+            <div className="lg:col-span-5">
+              <div className="relative max-w-sm mx-auto lg:max-w-none">
+                <div className="absolute -inset-2.5 rounded-3xl border border-[#D09A40]/40 translate-x-2 translate-y-2 pointer-events-none" />
+                <div className="relative rounded-2xl overflow-hidden bg-[#0F172A] shadow-2xl border border-[#0F172A]/15">
+                  <img
+                    src={brand.founderImage}
+                    alt={`${brand.founderName} — ${brand.founderRole}`}
+                    className="w-full h-[380px] sm:h-[420px] object-cover object-top"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A] via-[#0F172A]/20 to-transparent" />
 
-                  {/* Floating Experience Badge */}
-                  <div className="absolute top-4 left-4 z-10">
-                    <span className="px-3.5 py-1.5 rounded-full bg-white text-[#0F172A] text-xs font-mono font-bold tracking-wider uppercase border border-[#D09A40]/40 shadow-md flex items-center gap-1.5 animate-float-subtle">
-                      <Crown className="w-3.5 h-3.5 text-[#D09A40]" />
-                      <span>18+ Years in Jaipur</span>
-                    </span>
-                  </div>
-
-                  {/* Bottom Portrait Caption */}
-                  <div className="absolute bottom-5 left-5 right-5 text-white z-10">
-                    <div className="flex items-center gap-2 text-[#D09A40] text-xs font-mono uppercase tracking-wider">
-                      <Award className="w-3.5 h-3.5" />
-                      <span>Master Bridal Artist & Skin Expert</span>
+                  <div className="absolute bottom-4 left-4 right-4 bg-[#0F172A]/95 backdrop-blur-md border border-[#D09A40]/30 rounded-xl p-4 text-[#FAF5E5]">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="font-serif text-lg font-bold text-[#FAF5E5]">
+                          {brand.founderName}
+                        </p>
+                        <p className="text-xs text-[#D09A40] font-medium">
+                          {brand.founderRole}
+                        </p>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full bg-[#D09A40]/20 text-[#D09A40] text-[11px] font-bold">
+                        {brand.founderExperienceBadge}
+                      </span>
                     </div>
-                    <h3 
-                      className="text-2xl font-bold text-white mt-1"
-                      style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Warm Personal Message */}
+            <div className="lg:col-span-7 space-y-6">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#0F172A]/5 border border-[#0F172A]/10 text-[#0F172A] text-xs font-semibold uppercase tracking-widest">
+                <Heart className="w-3.5 h-3.5 text-[#D09A40] fill-[#D09A40]" />
+                <span>{t('founderOverline')}</span>
+              </div>
+
+              <div className="relative">
+                <Quote className="w-10 h-10 text-[#D09A40]/25 -mb-3" />
+                <h2 className="font-serif text-2xl sm:text-3xl lg:text-4xl font-bold text-[#0F172A] leading-snug">
+                  &ldquo;{brand.founderQuoteHeadline}&rdquo;
+                </h2>
+              </div>
+
+              <div className="space-y-4 text-sm sm:text-base text-[#4A4A4A] leading-relaxed">
+                <p>{brand.founderBioParagraph1}</p>
+                <p>{brand.founderBioParagraph2}</p>
+              </div>
+
+              {/* 4 Stats Grid */}
+              {brand.founderStats && brand.founderStats.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+                  {brand.founderStats.map((stat, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-white rounded-xl p-3 border border-[#0F172A]/10 text-center shadow-2xs"
                     >
-                      Gayatri Devi Rathore
-                    </h3>
-                    <p className="text-white/80 text-xs mt-0.5">
-                      Founder, Beauty Zone Jaipur
-                    </p>
-                  </div>
+                      <div className="font-serif text-xl font-bold text-[#0F172A]">
+                        {stat.value}
+                      </div>
+                      <div className="text-[11px] text-[#4A4A4A] font-medium">
+                        {stat.label}
+                      </div>
+                    </div>
+                  ))}
                 </div>
+              )}
 
-                {/* Floating Quote Stamp */}
-                <div className="hidden sm:flex absolute -bottom-6 -right-6 p-4 rounded-2xl bg-white text-[#0F172A] shadow-xl border border-[#D09A40]/40 max-w-xs items-start gap-3 animate-float-slow z-20">
-                  <div className="w-8 h-8 rounded-full bg-[#FAF5E5] flex items-center justify-center text-[#D09A40] shrink-0 font-serif">
-                    <Quote className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-[11px] italic text-[#4A4A4A] leading-snug">
-                      "Real beauty is about enhancing your natural charm so you feel confident and happy."
-                    </p>
-                    <p className="text-[10px] font-bold text-[#D09A40] uppercase tracking-wider mt-1 font-mono">
-                      — G. D. Rathore
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </RevealOnScroll>
-          </div>
-
-          {/* Right Column: Founder's Narrative & Vision */}
-          <div className="lg:col-span-7 space-y-6">
-            <RevealOnScroll direction="left" delay={0.15} duration={0.7}>
-              {/* Overline Badge */}
-              <div className="flex items-center gap-2 text-xs font-semibold text-[#D09A40] tracking-wider uppercase">
-                <Sparkles className="w-4 h-4" />
-                <span>Founder's Message & Vision</span>
-                <span aria-hidden="true">·</span>
-                <span>Beauty Zone Jaipur</span>
-              </div>
-
-              {/* Headline */}
-              <h2
-                className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#0F172A] tracking-tight leading-tight mt-2"
-                style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-              >
-                Bringing Royal Care and Modern Beauty Together in Jaipur
-              </h2>
-
-              {/* Bio & Vision Paragraphs in Simple Indian English */}
-              <div className="space-y-4 text-sm sm:text-base text-[#4A4A4A] leading-relaxed font-light">
-                <p>
-                  When I started <strong className="text-[#0F172A] font-semibold">Beauty Zone Jaipur</strong> in 2008, 
-                  my goal was simple: to give brides and families in Jaipur top-quality salon services with 
-                  100% genuine products, skilled artists, and warm hospitality.
-                </p>
-                <p>
-                  With certified training in professional bridal makeup and advanced skincare, I created our 
-                  salons to blend traditional Ayurvedic ingredients like kesar, chandan, and almond oils with 
-                  modern technologies like machine Hydra-Facials and chemical-free hair botox.
-                </p>
-                <p className="text-xs sm:text-sm text-[#0F172A]/90 italic border-l-2 border-[#D09A40] pl-4 py-1 bg-white/40 rounded-r-xl">
-                  "For us, every customer who walks into our salon is like family. Our promise is clean, 
-                  hygienic rooms, genuine branded products, and careful styling so you look your absolute best."
-                </p>
-              </div>
-
-              {/* Key Vision Pillars */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-                <div className="p-4 rounded-xl bg-white border border-[#0F172A]/10 shadow-xs luxe-card-hover">
-                  <div className="w-7 h-7 rounded-lg bg-[#FAF5E5] text-[#D09A40] flex items-center justify-center font-bold mb-2">
-                    1
-                  </div>
-                  <h4 className="font-bold text-xs text-[#0F172A]">Flawless Makeup</h4>
-                  <p className="text-[11px] text-[#4A4A4A] mt-1 leading-snug">
-                    Lightweight HD airbrush makeup that looks natural and stays sweat-free all day.
+              {/* 3 Personal Guarantees */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-2">
+                <div className="bg-white rounded-xl p-3.5 border border-[#0F172A]/10 shadow-xs">
+                  <ShieldCheck className="w-5 h-5 text-[#10B981] mb-1.5" />
+                  <p className="text-xs font-bold text-[#0F172A]">100% Genuine Products</p>
+                  <p className="text-[11px] text-[#4A4A4A] mt-0.5">
+                    Every product is opened and shown to you before use.
                   </p>
                 </div>
-
-                <div className="p-4 rounded-xl bg-white border border-[#0F172A]/10 shadow-xs luxe-card-hover">
-                  <div className="w-7 h-7 rounded-lg bg-[#FAF5E5] text-[#D09A40] flex items-center justify-center font-bold mb-2">
-                    2
-                  </div>
-                  <h4 className="font-bold text-xs text-[#0F172A]">Safe Branded Care</h4>
-                  <p className="text-[11px] text-[#4A4A4A] mt-1 leading-snug">
-                    Chemical-free hair smoothening and skin-safe, dermatologically tested products.
+                <div className="bg-white rounded-xl p-3.5 border border-[#0F172A]/10 shadow-xs">
+                  <Sparkles className="w-5 h-5 text-[#D09A40] mb-1.5" />
+                  <p className="text-xs font-bold text-[#0F172A]">Natural Skin Tone Match</p>
+                  <p className="text-[11px] text-[#4A4A4A] mt-0.5">
+                    Zero white-cast or cakey base—just your natural glow.
                   </p>
                 </div>
-
-                <div className="p-4 rounded-xl bg-white border border-[#0F172A]/10 shadow-xs luxe-card-hover">
-                  <div className="w-7 h-7 rounded-lg bg-[#FAF5E5] text-[#D09A40] flex items-center justify-center font-bold mb-2">
-                    3
-                  </div>
-                  <h4 className="font-bold text-xs text-[#0F172A]">Personal Attention</h4>
-                  <p className="text-[11px] text-[#4A4A4A] mt-1 leading-snug">
-                    Private bridal rooms, comfortable waiting lounges, and doorstep home services.
+                <div className="bg-white rounded-xl p-3.5 border border-[#0F172A]/10 shadow-xs">
+                  <Award className="w-5 h-5 text-[#D09A40] mb-1.5" />
+                  <p className="text-xs font-bold text-[#0F172A]">Fixed & Honest Prices</p>
+                  <p className="text-[11px] text-[#4A4A4A] mt-0.5">
+                    Clear prices in {brand.currencySymbol} with zero hidden extras at billing.
                   </p>
                 </div>
               </div>
 
-              {/* Signature & CTA Section */}
-              <div className="pt-6 border-t border-[#0F172A]/10 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+              {/* Signature & Action */}
+              <div className="pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t border-[#0F172A]/10">
                 <div>
-                  <span className="text-[10px] font-mono uppercase text-neutral-400 font-bold block mb-1">
-                    With Warm Regards,
-                  </span>
-                  <div 
-                    className="text-3xl text-[#0F172A] select-none font-serif italic tracking-wide"
-                    style={{ fontFamily: "'Playfair Display', cursive" }}
-                  >
-                    Gayatri D. Rathore
-                  </div>
-                  <span className="text-[11px] text-[#D09A40] font-mono block mt-0.5">
-                    Founder, Beauty Zone Jaipur
-                  </span>
+                  <p className="font-serif italic text-xl text-[#0F172A] font-semibold">
+                    Warmest wishes, {brand.founderName.split(' ')[0]}
+                  </p>
+                  <p className="text-xs text-[#4A4A4A]">
+                    {brand.branches.length} Studios ({branchSummary}) • Est. {brand.establishedYear}
+                  </p>
                 </div>
 
-                {onOpenBooking && (
-                  <button
-                    onClick={onOpenBooking}
-                    className="px-6 py-3 text-xs sm:text-sm font-semibold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl luxe-btn shadow-sm flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap self-start sm:self-auto"
-                  >
-                    <span>Book an Appointment</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                )}
+                <button
+                  onClick={onBookBridalConsult}
+                  className="inline-flex items-center justify-center gap-2 bg-[#0F172A] hover:bg-[#D09A40] text-[#FAF5E5] hover:text-[#0F172A] font-bold text-xs sm:text-sm px-5 py-3 rounded-xl transition-all duration-300 shadow-md cursor-pointer"
+                >
+                  <Calendar className="w-4 h-4 text-[#D09A40] group-hover:text-[#0F172A]" />
+                  <span>{t('founderBookConsult')}</span>
+                </button>
               </div>
-            </RevealOnScroll>
+            </div>
           </div>
-
         </div>
       </div>
     </section>

@@ -4,6 +4,7 @@ import { CURATED_BUNDLES } from '../data/bundlesData';
 import { SALON_SERVICES } from '../data/salonData';
 import { SalonPackage, ServiceItem } from '../types';
 import { RevealOnScroll } from './RevealOnScroll';
+import { useBrand } from '../context/BrandContext';
 import { 
   Sparkles, 
   Check, 
@@ -35,6 +36,7 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
   onBookBundle,
   onOpenManagement 
 }) => {
+  const { t } = useBrand();
   const [activeTab, setActiveTab] = useState<'curated' | 'custom'>('curated');
   const [expandedRulesId, setExpandedRulesId] = useState<string | null>(null);
   const packagesScrollRef = useRef<HTMLDivElement>(null);
@@ -73,10 +75,10 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
       validity: '60 Days from purchase',
       usage_rules: [
         'Please book your appointment at least 24 hours in advance',
-        'Valid across selected Beauty Zone salons in Jaipur',
+        'Valid across selected studio branches',
         'Cannot be transferred to another person once started'
       ],
-      outlets: ['All Jaipur Outlets'],
+      outlets: ['All Salon Outlets'],
       image: cb.image,
       active: true,
       featured: cb.popular,
@@ -136,19 +138,16 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
             <div className="max-w-2xl">
               <div className="flex items-center gap-2 text-xs font-semibold text-[#D09A40] tracking-wider uppercase mb-2">
                 <Gift className="w-3.5 h-3.5" />
-                <span>Money-Saving Combo Packages</span>
-                <span aria-hidden="true">·</span>
-                <span>Save Up to 28%</span>
+                <span>{t('packagesOverline')}</span>
               </div>
               <h2
                 className="text-3xl sm:text-4xl font-bold text-[#0F172A] tracking-tight"
                 style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
               >
-                Special Beauty Packages & Custom Combos
+                {t('packagesTitle')}
               </h2>
               <p className="mt-2 text-sm sm:text-base text-[#4A4A4A] leading-relaxed font-light">
-                Combine bridal makeup, hair smoothening, glowing facials, and spa care into discounted 
-                combo packages with clear pricing and guaranteed savings.
+                {t('packagesSubtitle')} 
               </p>
             </div>
 
@@ -230,7 +229,7 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
                       <div className="relative aspect-[16/9] w-full overflow-hidden bg-neutral-100 shrink-0">
                         <img
                           src={pkg.image}
-                          alt={`${pkg.name} - Beauty Zone Jaipur package`}
+                          alt={`${pkg.name} - Curated Salon Package`}
                           referrerPolicy="no-referrer"
                           className="w-full h-full object-cover luxe-img-zoom"
                         />
@@ -361,7 +360,7 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
                         className="w-full sm:w-auto shrink-0 px-5 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl luxe-btn shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98] whitespace-nowrap"
                       >
                         <CalendarCheck className="w-4 h-4 text-[#D09A40] shrink-0" />
-                        <span>Book Package</span>
+                        <span>{t('packagesBookCombo')}</span>
                         <ArrowRight className="w-4 h-4 shrink-0" />
                       </button>
                     </div>

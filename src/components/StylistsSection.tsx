@@ -1,355 +1,285 @@
 import React, { useState } from 'react';
-import { SALON_STYLISTS } from '../data/stylistsData';
 import { Stylist } from '../types';
-import { RevealOnScroll } from './RevealOnScroll';
-import { 
-  Star, 
-  Award, 
-  MapPin, 
-  Check, 
-  ArrowRight, 
-  Sparkles, 
-  X, 
-  Image as ImageIcon, 
-  CalendarCheck,
-  CheckCircle2,
-  Briefcase
-} from 'lucide-react';
+import { Award, Star, MapPin, Calendar, Sparkles, CheckCircle2, X, Eye } from 'lucide-react';
+import { useBrand } from '../context/BrandContext';
 
 interface StylistsSectionProps {
-  onBookWithStylist?: (stylist: Stylist) => void;
+  onBookWithStylist: (stylistName: string, branchName: string) => void;
 }
 
 export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStylist }) => {
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [activePortfolioModal, setActivePortfolioModal] = useState<Stylist | null>(null);
+  const { brand, t } = useBrand();
+  const [selectedStylist, setSelectedStylist] = useState<Stylist | null>(null);
+  const [activeFilter, setActiveFilter] = useState<'all' | 'bridal' | 'hair' | 'skin' | 'nails'>('all');
 
-  // Live Availability State per stylist ID
-  const [stylistAvailabilities, setStylistAvailabilities] = useState<{ [id: string]: boolean }>(() => {
-    const initial: { [id: string]: boolean } = {};
-    SALON_STYLISTS.forEach((s, idx) => {
-      initial[s.id] = idx % 3 !== 0; // true = Available Now, false = Booked
-    });
-    return initial;
-  });
-
-  // Periodically toggle status for live urgency simulation
-  React.useEffect(() => {
-    const timer = setInterval(() => {
-      const randomStylist = SALON_STYLISTS[Math.floor(Math.random() * SALON_STYLISTS.length)];
-      if (randomStylist) {
-        setStylistAvailabilities((prev) => ({
-          ...prev,
-          [randomStylist.id]: !prev[randomStylist.id],
-        }));
-      }
-    }, 12000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const categories = [
-    { id: 'all', label: 'All Stylists' },
-    { id: 'bridal', label: 'Bridal Artists' },
-    { id: 'hair', label: 'Hair Specialists' },
-    { id: 'skin', label: 'Skin Specialists' },
-    { id: 'nails', label: 'Nail Artists' },
-  ];
-
-  const filteredStylists = selectedCategory === 'all'
-    ? SALON_STYLISTS
-    : SALON_STYLISTS.filter((s) => s.category === selectedCategory);
-
-  const handleBook = (stylist: Stylist) => {
-    if (onBookWithStylist) {
-      onBookWithStylist(stylist);
-    } else {
-      const el = document.getElementById('booking');
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
+  const filteredStylists =
+    activeFilter === 'all'
+      ? brand.stylists
+      : brand.stylists.filter((s) => s.category === activeFilter);
 
   return (
-    <section id="stylists" className="py-8 sm:py-16 md:py-24 bg-white/70 border-t border-[#0F172A]/10 w-full max-w-full">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+    <section id="stylists" className="py-20 lg:py-28 bg-[#FAF5E5] border-t border-[#0F172A]/10 relative">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
         {/* Section Header */}
-        <RevealOnScroll duration={0.6}>
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-[#0F172A]/10">
-            <div className="max-w-2xl">
-              <div className="flex items-center gap-2 text-xs font-semibold text-[#D09A40] tracking-wider uppercase mb-2">
-                <Award className="w-3.5 h-3.5" />
-                <span>Meet Your Stylists & Artists</span>
-                <span aria-hidden="true">·</span>
-                <span>Certified Salon Professionals</span>
-              </div>
-              <h2
-                className="text-3xl sm:text-4xl font-bold text-[#0F172A] tracking-tight"
-                style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-              >
-                Our Experienced Salon Artists & Stylists
-              </h2>
-              <p className="mt-2 text-sm sm:text-base text-[#4A4A4A] leading-relaxed font-light">
-                Meet our friendly team of bridal makeup artists, hair experts, skin specialists, 
-                and nail artists with 7 to 14+ years of trusted experience in Jaipur.
-              </p>
-            </div>
+        <div className="text-center max-w-3xl mx-auto mb-12 space-y-3">
+          <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-[#D09A40]/15 text-[#0F172A] text-xs font-semibold uppercase tracking-widest border border-[#D09A40]/30">
+            <Sparkles className="w-3.5 h-3.5 text-[#D09A40]" />
+            <span>{t('stylistsOverline')}</span>
+          </span>
+          <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold text-[#0F172A] tracking-tight">
+            {t('stylistsTitle')}
+          </h2>
+          <p className="text-base text-[#4A4A4A]">
+            {t('stylistsSubtitle')}
+          </p>
+        </div>
 
-            {/* Category Filter Pills */}
-            <div className="flex items-center gap-1.5 p-1 bg-[#FAF5E5] rounded-xl border border-[#0F172A]/10 overflow-x-auto self-start md:self-auto scrollbar-none">
-              {categories.map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setSelectedCategory(cat.id)}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-                    selectedCategory === cat.id
-                      ? 'bg-[#0F172A] text-white shadow-xs'
-                      : 'text-[#4A4A4A] hover:text-[#0F172A]'
-                  }`}
-                >
-                  {cat.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </RevealOnScroll>
+        {/* Specialty Filter Pills */}
+        <div className="flex items-center justify-center flex-wrap gap-2 mb-12">
+          {[
+            { id: 'all', label: 'All Specialists' },
+            { id: 'bridal', label: 'Bridal Makeup' },
+            { id: 'hair', label: 'Hair & Color' },
+            { id: 'skin', label: 'Skin & Facials' },
+            { id: 'nails', label: 'Nail Art' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveFilter(tab.id as typeof activeFilter)}
+              className={`px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                activeFilter === tab.id
+                  ? 'bg-[#0F172A] text-[#FAF5E5] shadow-md border border-[#D09A40]'
+                  : 'bg-white text-[#4A4A4A] hover:text-[#0F172A] border border-[#0F172A]/10'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
-        {/* Stylists Grid / Mobile Horizontal Swipe Carousel */}
-        <div className="mt-6 flex overflow-x-auto gap-3.5 pb-3 scrollbar-none snap-x snap-mandatory -mx-3 px-3 md:grid md:grid-cols-2 gap-8 md:mx-0 md:px-0 scroll-smooth scroll-pl-3 md:scroll-pl-0">
-          {filteredStylists.map((stylist, index) => (
-            <RevealOnScroll key={stylist.id} delay={index * 0.1} duration={0.6} className="shrink-0 snap-start h-full md:w-auto">
-              <div
-                className="w-[90vw] max-w-[400px] shrink-0 snap-start md:w-full md:max-w-none bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] luxe-card-hover flex flex-col justify-between group h-full shadow-2xs"
-              >
-                <div className="p-4 space-y-3">
-                  {/* Header: Avatar, Name, Role, Rating */}
-                  <div className="flex items-start gap-3">
-                    <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden shrink-0 bg-neutral-100 border border-[#0F172A]/10 shadow-sm">
-                      <img
-                        src={stylist.avatar}
-                        alt={`${stylist.name} - ${stylist.role}`}
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover luxe-img-zoom"
-                      />
-                      <div className="absolute bottom-0 inset-x-0 bg-black/75 text-[9px] text-[#FAF5E5] text-center font-mono py-0.5 font-bold">
-                        {stylist.experience}
-                      </div>
-                    </div>
+        {/* Stylists Cards Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-7">
+          {filteredStylists.map((stylist) => (
+            <div
+              key={stylist.id}
+              className="bg-white rounded-3xl overflow-hidden border border-[#0F172A]/10 elevation-subtle card-lift flex flex-col justify-between group"
+            >
+              <div>
+                {/* Portrait Header */}
+                <div className="relative h-72 overflow-hidden bg-[#0F172A]">
+                  <img
+                    src={stylist.avatar}
+                    alt={stylist.name}
+                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A] via-transparent to-transparent opacity-85" />
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-bold text-[#D09A40] bg-[#FAF5E5] px-2 py-0.5 rounded-md uppercase tracking-wider">
-                          {stylist.category === 'skin' ? 'Clinical Skin' : stylist.category}
-                        </span>
-                        <div className="flex items-center gap-1 text-[10px] font-bold text-[#0F172A]">
-                          <Star className="w-3 h-3 fill-[#D09A40] text-[#D09A40]" />
-                          <span>{stylist.rating.toFixed(1)}</span>
-                          <span className="text-neutral-400 font-normal text-[10px]">
-                            ({stylist.reviewCount})
-                          </span>
-                        </div>
-                      </div>
-
-                      <h3 className="font-serif text-lg sm:text-xl font-bold text-[#0F172A] mt-0.5 group-hover:text-[#D09A40] transition-colors leading-snug truncate">
-                        {stylist.name}
-                      </h3>
-                      <p className="text-[11px] text-[#D09A40] font-medium">
-                        {stylist.role}
-                      </p>
-
-                      <div className="flex items-center gap-1 text-[10px] text-[#4A4A4A] mt-0.5">
-                        <MapPin className="w-2.5 h-2.5 text-[#D09A40]" />
-                        <span>{stylist.branch}</span>
-                      </div>
-
-                      {/* Live Availability Badge */}
-                      {(() => {
-                        const isAvailable = stylistAvailabilities[stylist.id] ?? true;
-                        return (
-                          <div className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold font-mono border shadow-2xs transition-all duration-300">
-                            <span className={`w-1.5 h-1.5 rounded-full ${isAvailable ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                            <span className={isAvailable ? 'text-emerald-700' : 'text-amber-700'}>
-                              {isAvailable ? 'Available Now' : 'Booked'}
-                            </span>
-                          </div>
-                        );
-                      })()}
-                    </div>
+                  {/* Experience Pill */}
+                  <div className="absolute top-3.5 left-3.5 bg-[#0F172A]/85 backdrop-blur-md text-[#FAF5E5] border border-[#D09A40]/40 text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1">
+                    <Award className="w-3 h-3 text-[#D09A40]" />
+                    <span>{stylist.experience} Exp</span>
                   </div>
 
-                  {/* Professional Bio */}
-                  <p className="text-[11px] text-[#4A4A4A] leading-relaxed font-light line-clamp-2">
+                  {/* Rating Pill */}
+                  <div className="absolute top-3.5 right-3.5 bg-white/95 backdrop-blur-md text-[#0F172A] text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow-md">
+                    <Star className="w-3.5 h-3.5 fill-[#D09A40] text-[#D09A40]" />
+                    <span>{stylist.rating.toFixed(1)}</span>
+                  </div>
+
+                  {/* Name & Title Overlay */}
+                  <div className="absolute bottom-3.5 left-4 right-4 text-[#FAF5E5]">
+                    <p className="text-[11px] uppercase tracking-wider text-[#D09A40] font-bold">
+                      {stylist.role}
+                    </p>
+                    <h3 className="font-serif text-xl font-bold leading-snug mt-0.5">
+                      {stylist.name}
+                    </h3>
+                    <p className="text-[11px] text-[#FAF5E5]/80 flex items-center gap-1 mt-1">
+                      <MapPin className="w-3 h-3 text-[#D09A40]" />
+                      <span>{stylist.branch}</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Bio & Specialties */}
+                <div className="p-5 space-y-4">
+                  <p className="text-xs text-[#4A4A4A] leading-relaxed line-clamp-3">
                     {stylist.bio}
                   </p>
 
-                  {/* Specialties */}
                   <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#0F172A] block mb-1">
-                      Specialties:
-                    </span>
-                    <div className="flex flex-wrap gap-1">
-                      {stylist.specialties.slice(0, 4).map((spec, i) => (
-                        <div key={i} className="flex items-center gap-1 text-[10px] text-[#0F172A]/85 bg-neutral-50 px-1.5 py-0.5 rounded border border-neutral-100">
-                          <Check className="w-2.5 h-2.5 text-[#D09A40] shrink-0" />
-                          <span className="truncate">{spec}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Certifications (Condensed) */}
-                  <div className="pt-1 border-t border-neutral-100">
-                     <div className="text-[9px] font-mono text-[#D09A40] uppercase tracking-wider font-semibold mb-1">
-                      Certificates:
-                    </div>
+                    <p className="text-[10px] uppercase tracking-wider font-bold text-[#0F172A]/60 mb-1.5">
+                      Specialties
+                    </p>
                     <div className="flex flex-wrap gap-1.5">
-                      {stylist.certifications.slice(0, 2).map((cert, idx) => (
-                        <div key={idx} className="flex items-center gap-1 text-[10px] text-neutral-600">
-                          <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
-                          <span>{cert}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Portfolio Preview Strip */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#0F172A]">
-                        Recent Work ({stylist.portfolio.length}):
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setActivePortfolioModal(stylist)}
-                        className="text-[10px] text-[#D09A40] hover:underline font-semibold cursor-pointer"
-                      >
-                        View Photos
-                      </button>
-                    </div>
-                    <div className="flex gap-1.5">
-                      {stylist.portfolio.slice(0, 4).map((item, idx) => (
-                        <div
-                          key={idx}
-                          onClick={() => setActivePortfolioModal(stylist)}
-                          className="group/thumb relative w-12 h-12 rounded-md overflow-hidden border border-neutral-200 cursor-pointer bg-neutral-100 shrink-0"
-                          title={item.title}
+                      {stylist.specialties.slice(0, 3).map((spec, i) => (
+                        <span
+                          key={i}
+                          className="text-[11px] bg-[#FAF5E5] text-[#0F172A] px-2.5 py-1 rounded-lg border border-[#D09A40]/25 font-medium"
                         >
-                          <img
-                            src={item.image}
-                            alt={item.title}
-                            referrerPolicy="no-referrer"
-                            className="w-full h-full object-cover group-hover/thumb:scale-110 transition-transform duration-300"
-                          />
-                        </div>
+                          {spec}
+                        </span>
                       ))}
                     </div>
                   </div>
-                </div>
-
-                {/* Action Footer */}
-                <div className="p-5 bg-[#FAF5E5]/50 border-t border-[#0F172A]/10 flex items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setActivePortfolioModal(stylist)}
-                    className="px-4 py-2 text-xs font-semibold text-[#0F172A] hover:text-[#D09A40] transition-colors cursor-pointer flex items-center gap-1.5"
-                  >
-                    <ImageIcon className="w-3.5 h-3.5" />
-                    <span>View Photos</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleBook(stylist)}
-                    className="px-4 py-2 text-[11px] font-bold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl luxe-btn shadow-sm flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                  >
-                    <CalendarCheck className="w-3 h-3" />
-                    <span>Book with {stylist.name.split(' ')[0]}</span>
-                  </button>
                 </div>
               </div>
-            </RevealOnScroll>
+
+              {/* Card Footer CTAs */}
+              <div className="px-5 pb-5 pt-2 space-y-2">
+                <button
+                  onClick={() => setSelectedStylist(stylist)}
+                  className="w-full py-2.5 px-3 rounded-xl border border-[#0F172A]/15 bg-[#FAF5E5]/60 hover:bg-[#0F172A]/5 text-[#0F172A] font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Eye className="w-3.5 h-3.5 text-[#D09A40]" />
+                  <span>View Portfolio & Bio</span>
+                </button>
+                <button
+                  onClick={() => onBookWithStylist(stylist.name, stylist.branch)}
+                  className="w-full py-2.5 px-3 rounded-xl bg-[#0F172A] hover:bg-[#D09A40] text-[#FAF5E5] hover:text-[#0F172A] font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>Book with {stylist.name.split(' ')[0]}</span>
+                </button>
+              </div>
+            </div>
           ))}
         </div>
       </div>
 
-      {/* Stylist Portfolio Detail Modal */}
-      {activePortfolioModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75">
-          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto animate-modal-enter border border-[#0F172A]/10">
-            <button
-              onClick={() => setActivePortfolioModal(null)}
-              className="absolute top-4 right-4 text-neutral-400 hover:text-[#0F172A] p-1.5 rounded-lg hover:bg-neutral-100 transition-colors cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+      {/* Stylist Full Profile & Portfolio Modal */}
+      {selectedStylist && (
+        <div
+          className="fixed inset-0 z-50 bg-[#0F172A]/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+          onClick={() => setSelectedStylist(null)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-3xl w-full overflow-hidden shadow-2xl border border-[#D09A40]/30 my-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Top Header */}
+            <div className="bg-[#0F172A] text-[#FAF5E5] p-6 sm:p-8 relative flex flex-col sm:flex-row items-start sm:items-center gap-5">
+              <button
+                onClick={() => setSelectedStylist(null)}
+                className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-[#FAF5E5] flex items-center justify-center transition-colors cursor-pointer"
+                aria-label="Close modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
 
-            {/* Modal Stylist Header */}
-            <div className="flex items-center gap-4 pb-5 border-b border-[#0F172A]/10">
               <img
-                src={activePortfolioModal.avatar}
-                alt={activePortfolioModal.name}
-                className="w-16 h-16 rounded-xl object-cover border border-[#0F172A]/10"
+                src={selectedStylist.avatar}
+                alt={selectedStylist.name}
+                className="w-24 h-24 rounded-2xl object-cover border-2 border-[#D09A40] shrink-0"
               />
-              <div>
-                <span className="text-[11px] font-semibold text-[#D09A40] uppercase tracking-wider">
-                  Artist Portfolio Lookbook
-                </span>
-                <h3 className="font-serif text-2xl font-bold text-[#0F172A]">
-                  {activePortfolioModal.name}
+
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] uppercase tracking-widest bg-[#D09A40] text-[#0F172A] font-bold px-2.5 py-0.5 rounded-full">
+                    {selectedStylist.role}
+                  </span>
+                  <span className="text-xs text-[#FAF5E5]/80 flex items-center gap-1">
+                    <Star className="w-3.5 h-3.5 fill-[#D09A40] text-[#D09A40]" />
+                    <strong>{selectedStylist.rating.toFixed(1)}</strong> ({selectedStylist.reviewCount} Client Reviews)
+                  </span>
+                </div>
+                <h3 className="font-serif text-2xl sm:text-3xl font-bold text-[#FAF5E5]">
+                  {selectedStylist.name}
                 </h3>
-                <p className="text-xs text-[#4A4A4A]">
-                  {activePortfolioModal.role} · {activePortfolioModal.branch}
+                <p className="text-xs text-[#FAF5E5]/70 flex items-center gap-2">
+                  <MapPin className="w-3.5 h-3.5 text-[#D09A40]" />
+                  <span>{selectedStylist.branch}</span>
+                  <span>•</span>
+                  <span>{selectedStylist.experience} Experience</span>
                 </p>
               </div>
             </div>
 
-            {/* Portfolio Grid */}
-            <div className="mt-6 space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                {activePortfolioModal.portfolio.map((work, idx) => (
-                  <div
-                    key={idx}
-                    className="rounded-xl overflow-hidden border border-[#0F172A]/10 bg-[#FAF5E5]/30 flex flex-col group"
-                  >
-                    <div className="relative aspect-[4/3] w-full overflow-hidden bg-neutral-100">
+            {/* Modal Body */}
+            <div className="p-6 sm:p-8 space-y-6 max-h-[75vh] overflow-y-auto">
+              <div>
+                <h4 className="text-xs uppercase tracking-wider font-bold text-[#4A4A4A] mb-2">
+                  About the Specialist
+                </h4>
+                <p className="text-sm text-[#0F172A] leading-relaxed">
+                  {selectedStylist.bio}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="bg-[#FAF5E5] p-4 rounded-2xl border border-[#0F172A]/10">
+                  <h4 className="text-xs uppercase tracking-wider font-bold text-[#0F172A] mb-2.5 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-[#D09A40]" />
+                    <span>Signature Services</span>
+                  </h4>
+                  <ul className="space-y-1.5">
+                    {selectedStylist.specialties.map((spec, idx) => (
+                      <li key={idx} className="text-xs text-[#0F172A] flex items-center gap-2">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-[#10B981] shrink-0" />
+                        <span>{spec}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="bg-[#FAF5E5] p-4 rounded-2xl border border-[#0F172A]/10">
+                  <h4 className="text-xs uppercase tracking-wider font-bold text-[#0F172A] mb-2.5 flex items-center gap-1.5">
+                    <Award className="w-3.5 h-3.5 text-[#D09A40]" />
+                    <span>Academy & Certifications</span>
+                  </h4>
+                  <ul className="space-y-1.5">
+                    {selectedStylist.certifications.map((cert, idx) => (
+                      <li key={idx} className="text-xs text-[#0F172A] flex items-center gap-2">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-[#D09A40] shrink-0" />
+                        <span>{cert}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-xs uppercase tracking-wider font-bold text-[#4A4A4A] mb-3">
+                  Recent Client Transformations by {selectedStylist.name.split(' ')[0]}
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {selectedStylist.portfolio.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="rounded-2xl overflow-hidden border border-[#0F172A]/10 bg-[#FAF5E5]"
+                    >
                       <img
-                        src={work.image}
-                        alt={work.title}
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        src={item.image}
+                        alt={item.title}
+                        className="w-full h-36 object-cover"
                       />
-                    </div>
-                    <div className="p-3.5 flex-1 flex flex-col justify-between">
-                      <div>
-                        <h4 className="font-serif text-sm font-bold text-[#0F172A]">
-                          {work.title}
-                        </h4>
-                        <p className="text-xs text-[#4A4A4A] mt-1 leading-relaxed font-light">
-                          {work.description}
+                      <div className="p-3">
+                        <p className="font-serif font-bold text-xs text-[#0F172A]">
+                          {item.title}
+                        </p>
+                        <p className="text-[11px] text-[#4A4A4A] mt-0.5 leading-snug">
+                          {item.description}
                         </p>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
 
-              {/* Booking CTA from Modal */}
-              <div className="p-4 bg-[#FAF5E5] rounded-xl border border-[#D09A40]/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h4 className="font-serif font-bold text-[#0F172A] text-sm">
-                    Ready to book your session with {activePortfolioModal.name}?
-                  </h4>
-                  <p className="text-xs text-[#4A4A4A] mt-0.5">
-                    Available for both flagship salon appointments and doorstep royal bridal dispatches.
-                  </p>
-                </div>
+              <div className="pt-4 border-t border-[#0F172A]/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <p className="text-xs text-[#4A4A4A]">
+                  Available at <strong>{selectedStylist.branch}</strong> & for Bridal Venue Bookings
+                </p>
                 <button
-                  type="button"
                   onClick={() => {
-                    handleBook(activePortfolioModal);
-                    setActivePortfolioModal(null);
+                    const stylist = selectedStylist;
+                    setSelectedStylist(null);
+                    onBookWithStylist(stylist.name, stylist.branch);
                   }}
-                  className="px-5 py-2.5 text-xs font-bold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl transition-colors cursor-pointer shadow-sm whitespace-nowrap self-start sm:self-auto"
+                  className="w-full sm:w-auto bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A] font-bold text-xs sm:text-sm px-6 py-3 rounded-xl flex items-center justify-center gap-2 shadow-md cursor-pointer"
                 >
-                  Book Session with {activePortfolioModal.name.split(' ')[0]}
+                  <Calendar className="w-4 h-4" />
+                  <span>Book Appointment with {selectedStylist.name}</span>
                 </button>
               </div>
             </div>

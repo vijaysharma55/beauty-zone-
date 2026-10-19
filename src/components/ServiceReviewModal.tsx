@@ -63,7 +63,7 @@ export const ServiceReviewModal: React.FC<ServiceReviewModalProps> = ({
       onSubmitReview({
         serviceId: service.id,
         authorName: authorName.trim(),
-        location: location.trim() || 'Jaipur Client',
+        location: location.trim() || 'Verified Salon Client',
         rating,
         comment: comment.trim(),
         verifiedBooking: true,
@@ -154,7 +154,7 @@ export const ServiceReviewModal: React.FC<ServiceReviewModalProps> = ({
           </div>
 
           <span className="text-[11px] font-mono text-[#D09A40] font-semibold hidden sm:inline">
-            100% Genuine Jaipur Feedback
+            100% Genuine Client Feedback
           </span>
         </div>
 
@@ -181,7 +181,7 @@ export const ServiceReviewModal: React.FC<ServiceReviewModalProps> = ({
                     ))}
                   </div>
                   <p className="text-xs text-[#4A4A4A] mt-0.5">
-                    Based on {reviewCount} client ratings in Jaipur
+                    Based on {reviewCount} verified client ratings
                   </p>
                 </div>
               </div>
@@ -264,7 +264,7 @@ export const ServiceReviewModal: React.FC<ServiceReviewModalProps> = ({
                   Review Published Successfully!
                 </h4>
                 <p className="text-xs text-emerald-800">
-                  Thank you for rating {service.title}. Your feedback helps our Jaipur team maintain high standards.
+                  Thank you for rating {service.title}. Your feedback helps our salon team maintain high standards.
                 </p>
               </div>
             ) : (
@@ -303,7 +303,7 @@ export const ServiceReviewModal: React.FC<ServiceReviewModalProps> = ({
                   </div>
                 </div>
 
-                {/* Name & Jaipur Locality */}
+                {/* Name & Locality */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-[#0F172A] mb-1.5">
@@ -324,13 +324,13 @@ export const ServiceReviewModal: React.FC<ServiceReviewModalProps> = ({
 
                   <div>
                     <label className="block text-xs font-semibold text-[#0F172A] mb-1.5">
-                      Jaipur Area / Venue (Optional)
+                      Area / Venue (Optional)
                     </label>
                     <div className="relative">
                       <MapPin className="w-4 h-4 text-[#4A4A4A] absolute left-3 top-3" />
                       <input
                         type="text"
-                        placeholder="e.g. C-Scheme / Rambagh Palace"
+                        placeholder="e.g. Downtown / Grand Palace Resort"
                         value={location}
                         onChange={(e) => setLocation(e.target.value)}
                         className="w-full pl-9 pr-3 py-2 text-xs border border-[#0F172A]/15 rounded-xl focus:outline-none focus:border-[#D09A40] focus:ring-1 focus:ring-[#D09A40]"
@@ -357,7 +357,7 @@ export const ServiceReviewModal: React.FC<ServiceReviewModalProps> = ({
                 <div className="flex items-center justify-between pt-2 border-t border-[#0F172A]/10">
                   <div className="flex items-center gap-1.5 text-[11px] text-[#4A4A4A]">
                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Verified review published directly to Beauty Zone rate card</span>
+                    <span>Verified review published directly to our salon rate card</span>
                   </div>
 
                   <button

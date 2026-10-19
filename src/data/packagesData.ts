@@ -22,7 +22,7 @@ export const PACKAGE_PRESET_IMAGES = [
     category: 'Spa',
   },
   {
-    label: 'Jaipur Salon Atmosphere',
+    label: 'Luxury Salon Atmosphere',
     url: '/src/assets/images/hero_jaipur_salon_1790671992521.jpg',
     category: 'Salon',
   },
@@ -49,37 +49,37 @@ export interface PackagePresetTemplate {
 
 export const PACKAGE_PRESET_TEMPLATES: PackagePresetTemplate[] = [
   {
-    name: 'Royal Rajasthani Bridal Package',
+    name: 'Signature Royal Bridal Package',
     festivalName: 'Wedding Season Exclusive Deal',
     tagline: 'Complete head-to-toe makeover for your big day',
     taglineIdeas: [
       'Complete head-to-toe makeover for your big day',
-      'Radiate timeless bridal elegance with luxury Rajasthani touches',
-      'Look picture-perfect with HD airbrush finish & Kundan jewellery draping'
+      'Radiate timeless bridal elegance with luxury couture touches',
+      'Look picture-perfect with HD airbrush finish & fine jewellery draping'
     ],
-    description: 'Comprehensive 2-day royal makeover for Jaipur brides. Includes HD Airbrush makeup, 24K Gold Leaf facial, bridal nail extensions, and milk body spa.',
+    description: 'Comprehensive 2-day royal makeover for brides. Includes HD Airbrush makeup, 24K Gold Leaf facial, bridal nail extensions, and milk body spa.',
     duration: '2 Days (Wedding Eve & D-Day)',
     regularPrice: 38000,
     packagePrice: 28500,
     validity: 'Wedding Season Pass (Oct - Feb)',
     image: '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg',
     services: [
-      'Royal Rajasthani HD Bridal Makeover (Airbrush & Jewelry Setting)',
+      'Signature Royal HD Bridal Makeover (Airbrush & Jewelry Setting)',
       '24K Gold Leaf Glow Facial with Ultrasound Skin Firming',
       'Bridal Gel Nail Extensions with Swarovski Stones & Gold Foil Art',
       'Rose Petal & Milk Body Spa with Warm Almond Oil Massage'
     ]
   },
   {
-    name: 'Karwa Chauth Glow Combo',
-    festivalName: 'Karwa Chauth Special Offer',
+    name: 'Festive Celebration Glow Combo',
+    festivalName: 'Festive Special Offer',
     tagline: 'Get festive-ready glow with top hair & skin treatments',
     taglineIdeas: [
       'Get festive-ready glow with top hair & skin treatments',
-      'Radiate timeless bridal glow for your special Karwa Chauth evening',
+      'Radiate timeless bridal glow for your special celebration evening',
       'Head-to-toe festive pampering at exclusive festival savings'
     ],
-    description: 'Festive ready in 3 hours with instant glass skin gold facial, bouncy blowdry hair styling, hand manicure & traditional henna.',
+    description: 'Festive ready in 3 hours with instant glass skin gold facial, bouncy blowdry hair styling, hand manicure & luxury spa care.',
     duration: '180 mins',
     regularPrice: 12000,
     packagePrice: 8400,
@@ -113,15 +113,15 @@ export const PACKAGE_PRESET_TEMPLATES: PackagePresetTemplate[] = [
     ]
   },
   {
-    name: 'Diwali Party Prep Pack',
-    festivalName: 'Diwali Shubh Deepawali Sale',
-    tagline: 'Sparkle bright this Diwali with 7-step glass skin glow & glam makeup',
+    name: 'Grand Party & Gala Prep Pack',
+    festivalName: 'Festive Gala Sale',
+    tagline: 'Sparkle bright this season with 7-step glass skin glow & glam makeup',
     taglineIdeas: [
-      'Sparkle bright this Diwali with 7-step glass skin glow & glam makeup',
+      'Sparkle bright this season with 7-step glass skin glow & glam makeup',
       'Get festive celebration ready in just 3 hours with deep pampering',
       'Save big on our most requested luxury salon services'
     ],
-    description: 'The ultimate Diwali party glow package featuring waterproof HD makeup, 24K Gold luxury facial, and festive nail art extensions.',
+    description: 'The ultimate party glow package featuring waterproof HD makeup, 24K Gold luxury facial, and festive nail art extensions.',
     duration: '190 mins',
     regularPrice: 13500,
     packagePrice: 9450,
@@ -138,11 +138,11 @@ export const PACKAGE_PRESET_TEMPLATES: PackagePresetTemplate[] = [
     festivalName: 'Summer Sun Shield & De-Tan Sale',
     tagline: 'Deep hydration, cooling cleanse and herbal de-tan for glowing summer skin',
     taglineIdeas: [
-      'Beat the Jaipur summer heat with refreshing icy HydraFacial',
+      'Beat the summer heat with refreshing icy HydraFacial',
       'Complete sun damage repair and cooling mint body polish',
       'Deeply hydrate, tone and protect your skin against harsh UV damage'
     ],
-    description: 'Cooling, purifying package designed for Jaipur summers. Removes sun tan, extracts blackheads, and delivers deep hyaluronic skin hydration.',
+    description: 'Cooling, purifying package designed for warm weather. Removes sun tan, extracts blackheads, and delivers deep hyaluronic skin hydration.',
     duration: '150 mins',
     regularPrice: 9500,
     packagePrice: 6650,
@@ -162,7 +162,7 @@ export function generateTaglineIdeas(packageName: string): [string, string, stri
   if (lower.includes('bridal') || lower.includes('wedding') || lower.includes('dulhan')) {
     return [
       'Complete head-to-toe makeover for your big day',
-      'Radiate timeless bridal elegance with luxury Rajasthani touches',
+      'Radiate timeless bridal elegance with luxury couture touches',
       'Look picture-perfect with HD airbrush finish and royal jewellery draping'
     ];
   }
@@ -177,7 +177,7 @@ export function generateTaglineIdeas(packageName: string): [string, string, stri
     return [
       'Get festive-ready glow with top hair & skin treatments',
       'Recharge tired skin with deep ultrasound hydration & 24K gold leaf',
-      'Flawless glass skin radiance designed for Jaipur weather'
+      'Flawless glass skin radiance designed for all-season comfort'
     ];
   }
   if (lower.includes('party') || lower.includes('sangeet') || lower.includes('glam') || lower.includes('diwali')) {
@@ -195,11 +195,11 @@ export function generateTaglineIdeas(packageName: string): [string, string, stri
 }
 
 export const OUTLET_OPTIONS = [
-  'All Jaipur Outlets',
-  'C-Scheme Flagship Salon',
-  'Malviya Nagar Studio',
-  'Vaishali Nagar Luxury Salon',
-  'Doorstep Home Service (Jaipur)'
+  'All Salon Outlets',
+  'Downtown Flagship Salon',
+  'South Avenue Studio & Academy',
+  'Westside Luxury Salon',
+  'Doorstep Home Service'
 ];
 
 export const VALIDITY_OPTIONS = [
@@ -213,7 +213,7 @@ export const VALIDITY_OPTIONS = [
 
 export const DEFAULT_USAGE_RULES = [
   'Please book your appointment at least 24 hours in advance',
-  'Valid across selected Beauty Zone Jaipur salons',
+  'Valid across selected salon studio branches',
   'Cannot be transferred to another person once started',
   'Includes free skin & hair consultation before the service',
   'Can be used across 2 visits within the validity period'
@@ -236,7 +236,7 @@ export const INITIAL_PACKAGES: SalonPackage[] = [
     name: 'The Royal Bridal Glow & Draping Package',
     description: 'Our complete wedding package. Includes HD airbrush bridal makeup, 24K gold glow facial, gel nail extensions with stone work, and rose petal milk body spa.',
     services: [
-      'Royal Rajasthani HD Bridal Makeover (Airbrush & Jewelry Setting)',
+      'Signature Royal HD Bridal Makeover (Airbrush & Jewelry Setting)',
       '24K Gold Leaf Glow Facial with Ultrasound Skin Firming',
       'Bridal Gel Nail Extensions with Swarovski Stones & Gold Foil Art',
       'Rose Petal & Milk Body Spa with Warm Almond Oil Massage'
@@ -250,10 +250,10 @@ export const INITIAL_PACKAGES: SalonPackage[] = [
     usage_rules: [
       'Please book at least 7 days before your wedding date',
       'Includes free makeup shade matching and consultation',
-      'Available at our private bridal suite or at your hotel/wedding venue in Jaipur',
+      'Available at our private bridal suite or at your hotel/wedding venue',
       'Valid for one bride; non-transferable'
     ],
-    outlets: ['All Jaipur Outlets', 'Doorstep Home Service (Jaipur)'],
+    outlets: ['All Salon Outlets', 'Doorstep Home Service'],
     image: '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg',
     active: true,
     featured: true,
@@ -277,10 +277,10 @@ export const INITIAL_PACKAGES: SalonPackage[] = [
     usage_rules: [
       'Booking 48 hours in advance recommended',
       'Free patch test done 24 hours before Nanoplastia treatment',
-      'Valid at C-Scheme and Malviya Nagar salons',
+      'Valid across all flagship & studio branches',
       'Can be availed in 1 full day or across 2 consecutive visits'
     ],
-    outlets: ['C-Scheme Flagship Salon', 'Malviya Nagar Studio'],
+    outlets: ['All Salon Outlets'],
     image: '/src/assets/images/hair_styling_luxe_1790672021591.jpg',
     active: true,
     featured: true,
@@ -305,7 +305,7 @@ export const INITIAL_PACKAGES: SalonPackage[] = [
       'Includes free eyelash application and makeup setting spray',
       'Non-refundable once the first service is taken'
     ],
-    outlets: ['All Jaipur Outlets'],
+    outlets: ['All Salon Outlets'],
     image: '/src/assets/images/home_salon_service_1790676110547.jpg',
     active: true,
     featured: false,
@@ -328,16 +328,16 @@ export const INITIAL_PACKAGES: SalonPackage[] = [
     usage_rules: [
       'Prior appointment required based on spa room availability',
       'Please inform our team of any skin sensitivities beforehand',
-      'Valid across all Beauty Zone salons in Jaipur'
+      'Valid across all salon branches'
     ],
-    outlets: ['C-Scheme Flagship Salon', 'Vaishali Nagar Luxury Salon'],
+    outlets: ['All Salon Outlets'],
     image: '/src/assets/images/prebridal_spa_ritual_1790676123541.jpg',
     active: true,
     featured: false,
   },
   {
     id: 'pkg-executive-glow',
-    name: 'Jaipur Express Quick Glow Makeover',
+    name: 'Express Quick Glow Makeover',
     description: 'A quick 90-minute package for working professionals and busy days. Includes quick Hydra-Glow facial, clean manicure, and bouncy blowdry styling.',
     services: [
       'Hydra-Facial Quick Clean (45 mins)',
@@ -352,16 +352,16 @@ export const INITIAL_PACKAGES: SalonPackage[] = [
     validity: '30 Days from purchase',
     usage_rules: [
       'Walk-ins welcome based on stylist availability; booking recommended',
-      'Valid at all 3 Jaipur salon branches'
+      'Valid at all salon branches'
     ],
-    outlets: ['All Jaipur Outlets'],
+    outlets: ['All Salon Outlets'],
     image: '/src/assets/images/hero_jaipur_salon_1790671992521.jpg',
     active: true,
     featured: false,
   }
 ];
 
-const PACKAGES_STORAGE_KEY = 'beautyzone_jaipur_packages_v1';
+const PACKAGES_STORAGE_KEY = 'whitelabel_salon_packages_v2';
 
 export function getStoredPackages(): SalonPackage[] {
   if (typeof window === 'undefined') return INITIAL_PACKAGES;

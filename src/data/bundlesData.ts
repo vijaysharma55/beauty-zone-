@@ -4,14 +4,14 @@ export const CURATED_BUNDLES: BundlePackage[] = [
   {
     id: 'bundle-bridal-glow',
     title: 'The Royal Bridal Glow & Draping Package',
-    tagline: 'Complete Bridal Package for Destination & Jaipur Weddings',
+    tagline: 'Complete Bridal Package for Destination & Grand Weddings',
     description: 'Our most popular wedding package. Combines HD airbrush bridal makeup, 24K gold glow facial, gel nail extensions with stone art, and relaxing rose petal milk body spa.',
     originalPrice: 37496,
     discountedPrice: 29999,
     savings: 7497,
     duration: '2 Sessions (Wedding Eve & Wedding Day)',
     servicesIncluded: [
-      'Royal Rajasthani HD Bridal Makeover (Airbrush Makeup & Jewelry Setting)',
+      'Signature Royal HD Bridal Makeover (Airbrush Makeup & Jewelry Setting)',
       '24K Gold Leaf Glow Facial with Ultrasound Skin Firming',
       'Bridal Gel Nail Extensions with Swarovski Stones & Gold Foil Art',
       'Rose Petal & Milk Body Spa with Warm Almond Oil Massage'

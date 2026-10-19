@@ -1,7 +1,9 @@
+export type ServiceCategory = 'bridal' | 'hair' | 'skin' | 'nails' | 'spa' | 'academy';
+
 export interface ServiceItem {
   id: string;
   title: string;
-  category: 'bridal' | 'hair' | 'skin' | 'nails' | 'spa' | 'academy';
+  category: ServiceCategory;
   price: number;
   duration: string;
   description: string;
@@ -217,4 +219,292 @@ export interface LoyaltyCustomer {
   activities: LoyaltyActivity[];
   redeemedRewards: RedeemedReward[];
 }
+
+export type BrandLogoIcon = 'crown' | 'sparkles' | 'scissors' | 'gem' | 'heart' | 'flower' | 'star' | 'shield';
+
+export type SupportedLanguage = 'en' | 'hi' | 'mr' | 'gu' | 'pa' | 'ar' | 'es';
+
+export interface TranslationDictionary {
+  // Navigation
+  navReels: string;
+  navPackages: string;
+  navServices: string;
+  navBridal: string;
+  navGallery: string;
+  navGiftCards: string;
+  navRewards: string;
+  navLocations: string;
+  navBookAppointment: string;
+  navHomeServiceAvailable: string;
+  navWhiteLabelStudio: string;
+  navCatalogAdmin: string;
+
+  // Hero
+  heroBookBtn: string;
+  heroExploreBtn: string;
+  heroCertifiedArtists: string;
+  heroGenuineProducts: string;
+  heroHomeService: string;
+  heroOpenToday: string;
+  heroHappyClients: string;
+
+  // Section Headings & Overlines
+  reelsOverline: string;
+  reelsTitle: string;
+  reelsSubtitle: string;
+
+  packagesOverline: string;
+  packagesTitle: string;
+  packagesSubtitle: string;
+  packagesBookCombo: string;
+
+  servicesOverline: string;
+  servicesTitle: string;
+  servicesSearchPlaceholder: string;
+  servicesBookNow: string;
+
+  bridalBookConsult: string;
+  bridalViewMenu: string;
+  bridalDirectDesk: string;
+
+  galleryOverline: string;
+  galleryTitle: string;
+  gallerySubtitle: string;
+
+  bookingOverline: string;
+  bookingTitle: string;
+  bookingSubtitle: string;
+  bookingWhereQuestion: string;
+  bookingVisitSalon: string;
+  bookingHomeService: string;
+  bookingFullName: string;
+  bookingPhone: string;
+  bookingSelectService: string;
+  bookingSelectStylist: string;
+  bookingPreferredDate: string;
+  bookingPreferredTime: string;
+  bookingConfirmBtn: string;
+  bookingEstimatedTotal: string;
+
+  rewardsTitle: string;
+  rewardsSubtitle: string;
+  rewardsCheckPoints: string;
+
+  giftCardBadge: string;
+  giftCardGenerateBtn: string;
+
+  stylistsOverline: string;
+  stylistsTitle: string;
+  stylistsSubtitle: string;
+
+  founderOverline: string;
+  founderBookConsult: string;
+
+  testimonialsOverline: string;
+  testimonialsTitle: string;
+  testimonialsSubtitle: string;
+
+  locationsOverline: string;
+  locationsTitle: string;
+  locationsSubtitle: string;
+  locationsDirections: string;
+  locationsBookHomeVisit: string;
+
+  faqOverline: string;
+  faqTitle: string;
+  faqSubtitle: string;
+  faqAskWhatsapp: string;
+
+  footerQuickLinks: string;
+  footerPopularServices: string;
+  footerContactBookings: string;
+}
+
+export interface WhiteLabelLocalizationConfig {
+  defaultLanguage: SupportedLanguage;
+  activeLanguage: SupportedLanguage;
+  enabledLanguages: SupportedLanguage[];
+  showLanguageSwitcher: boolean;
+  customTranslations: Partial<Record<SupportedLanguage, Partial<TranslationDictionary>>>;
+}
+
+export interface WhiteLabelDomainSeoConfig {
+  customDomain: string;
+  subdomainSlug: string;
+  dnsVerified: boolean;
+  sslEnabled: boolean;
+  forceHttps: boolean;
+  wwwRedirect: boolean;
+  cnameTarget: string;
+  aRecordIp: string;
+  faviconUrl: string;
+  appleTouchIconUrl: string;
+  themeColorHex: string;
+  seoTitle: string;
+  seoDescription: string;
+  seoKeywords: string;
+  canonicalUrl: string;
+  ogTitle: string;
+  ogDescription: string;
+  ogImageUrl: string;
+  twitterCardType: 'summary_large_image' | 'summary';
+  robotsIndexing: boolean;
+  googleAnalyticsId: string;
+  metaPixelId: string;
+  googleSiteVerification: string;
+}
+
+export interface BookingFormState {
+  fullName: string;
+  phone: string;
+  locationType: 'salon' | 'home';
+  selectedBranch: string;
+  homeAddress: string;
+  locality: string;
+  distanceKm: number;
+  serviceCategory: string;
+  selectedService: string;
+  preferredStylist: string;
+  appointmentDate: string;
+  timeSlot: string;
+  bridalTrialRequired: boolean;
+  specialNotes: string;
+  advancePaymentVerified: boolean;
+  advancePaymentRef: string;
+  advancePaymentMethod: 'upi' | 'card';
+}
+
+export interface WhiteLabelTheme {
+  id: string;
+  name: string;
+  bgColor: string;
+  primaryColor: string;
+  accentColor: string;
+  accentHoverColor: string;
+  textMutedColor: string;
+  surfaceColor: string;
+  fontHeading: string;
+  fontBody: string;
+}
+
+export interface LocalityZone {
+  name: string;
+  distanceKm: number;
+  zone: string;
+}
+
+export interface TrustHighlightItem {
+  title: string;
+  subtitle: string;
+  icon: string;
+}
+
+export interface FAQItem {
+  id?: string;
+  category?: string;
+  question: string;
+  answer: string;
+}
+
+export interface WhiteLabelSectionToggles {
+  showTrustBar: boolean;
+  showReels: boolean;
+  showPackages: boolean;
+  showServices: boolean;
+  showBridalSpotlight: boolean;
+  showGallery: boolean;
+  showBooking: boolean;
+  showRewards: boolean;
+  showGiftCards: boolean;
+  showStylists: boolean;
+  showFoundersNote: boolean;
+  showTestimonials: boolean;
+  showLocations: boolean;
+  showFAQ: boolean;
+  showFloatingActions: boolean;
+}
+
+export interface WhiteLabelConfig {
+  presetId: string;
+  brandName: string;
+  brandSubtext: string;
+  tagline: string;
+  logoUrl: string;
+  logoIcon: BrandLogoIcon;
+  cityName: string;
+  stateName: string;
+  countryName: string;
+  establishedYear: string;
+  currencySymbol: string;
+  currencyCode: string;
+
+  phoneDisplay: string;
+  phoneRaw: string;
+  whatsappNumber: string;
+  email: string;
+  instagramHandle: string;
+  instagramUrl: string;
+  youtubeUrl: string;
+  facebookUrl: string;
+  googleMapsUrl: string;
+
+  upiId: string;
+  bookingPrefix: string;
+  giftCardPrefix: string;
+  loyaltyPrefix: string;
+  homeServiceBaseFee: number;
+  homeServicePerKmRate: number;
+  homeServiceFreeThreshold: number;
+  advancePercentage: number;
+
+  heroBadgeText: string;
+  heroHeadlineLine1: string;
+  heroHeadlineHighlight: string;
+  heroHeadlineLine2: string;
+  heroDescription: string;
+  heroImage: string;
+  heroPrimaryCta: string;
+  heroSecondaryCta: string;
+  heroFloatingCardTitle: string;
+  heroFloatingCardSubtitle: string;
+  heroPromoPillText: string;
+
+  trustHighlights: TrustHighlightItem[];
+
+  bridalBadgeText: string;
+  bridalHeadline: string;
+  bridalSubheadline: string;
+  bridalImage: string;
+  bridalFeatures: string[];
+
+  founderName: string;
+  founderRole: string;
+  founderExperienceBadge: string;
+  founderQuoteHeadline: string;
+  founderBioParagraph1: string;
+  founderBioParagraph2: string;
+  founderImage: string;
+  founderStats: { value: string; label: string }[];
+
+  loyaltyClubName: string;
+  loyaltyTagline: string;
+  giftCardTitle: string;
+  giftCardSubtitle: string;
+
+  footerDescription: string;
+  copyrightText: string;
+  showPoweredByBadge: boolean;
+
+  theme: WhiteLabelTheme;
+  sections: WhiteLabelSectionToggles;
+  localization: WhiteLabelLocalizationConfig;
+  domainSeo: WhiteLabelDomainSeoConfig;
+
+  branches: SalonBranch[];
+  localities: LocalityZone[];
+  stylists: Stylist[];
+  testimonials: Testimonial[];
+  faqs: FAQItem[];
+}
+
 

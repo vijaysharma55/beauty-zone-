@@ -553,7 +553,7 @@ export const ServiceCompareModal: React.FC<ServiceCompareModalProps> = ({
         <div className="p-3 sm:p-4 bg-neutral-50 border-t border-[#0F172A]/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[#4A4A4A]">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-[#0F172A]">Need personalized consultation?</span>
-            <span>Visit our Malviya Nagar or Vaishali Nagar salon in Jaipur.</span>
+            <span>Visit any of our flagship studio branches or book online.</span>
           </div>
 
           <div className="flex items-center gap-2 self-end sm:self-auto">

@@ -1,217 +1,180 @@
 @import "tailwindcss";
 
-@theme {
-  --font-serif: 'Playfair Display', Georgia, serif;
-  --font-sans: 'Source Sans 3', 'Inter', system-ui, sans-serif;
-  --font-tight: 'Inter Tight', 'Inter', sans-serif;
-
-  --color-bz-cream: #FAF5E5;
-  --color-bz-slate: #0F172A;
-  --color-bz-charcoal: #4A4A4A;
-  --color-bz-gold: #D09A40;
-  --color-bz-amber: #DCA54A;
-  --color-bz-white: #FFFFFF;
-
-  --shadow-token: rgba(0, 0, 0, 0.24) 0px 64px 120px -48px;
-  --shadow-sm-token: rgba(10, 13, 18, 0.04) 0px 3px 3px -1.5px, rgba(10, 13, 18, 0.03) 0px 8px 8px -4px, rgba(10, 13, 18, 0.08) 0px 20px 24px -4px;
+:root {
+  --wl-bg: #FAF5E5;
+  --wl-primary: #0F172A;
+  --wl-accent: #D09A40;
+  --wl-accent-hover: #DCA54A;
+  --wl-text-muted: #4A4A4A;
+  --wl-surface: #FFFFFF;
+  --wl-font-heading: 'Playfair Display', Georgia, serif;
+  --wl-font-body: 'Source Sans 3', 'Inter', system-ui, sans-serif;
 }
 
-html, body, #root {
-  width: 100%;
-  max-width: 100%;
-  min-height: 100%;
-  min-height: 100dvh;
-  overflow-x: hidden;
+@theme inline {
+  --color-bz-slate: var(--wl-primary);
+  --color-bz-gold: var(--wl-accent);
+  --color-bz-amber: var(--wl-accent-hover);
+  --color-bz-cream: var(--wl-bg);
+  --color-bz-white: var(--wl-surface);
+  --color-bz-charcoal: var(--wl-text-muted);
+  --color-bz-emerald: #10B981;
+  --color-bz-warning: #F59E0B;
+
+  --font-serif: var(--wl-font-heading);
+  --font-display: 'Inter Tight', system-ui, sans-serif;
+  --font-sans: var(--wl-font-body);
 }
 
-* {
-  box-sizing: border-box;
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    background-color: var(--wl-bg);
+    color: var(--wl-primary);
+    font-family: var(--wl-font-body);
+  }
+
+  body {
+    background-color: var(--wl-bg);
+    color: var(--wl-primary);
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, .font-serif-editorial {
+    font-family: var(--wl-font-heading);
+  }
 }
 
-body {
-  margin: 0;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-  font-family: var(--font-sans);
-  background-color: #FAF5E5;
-  color: #0F172A;
+/* Dynamic White-Label Theme Bindings for Arbitrary Hex Classes */
+.bg-\[\#FAF5E5\] {
+  background-color: var(--wl-bg) !important;
+}
+.bg-\[\#0F172A\] {
+  background-color: var(--wl-primary) !important;
+}
+.text-\[\#0F172A\] {
+  color: var(--wl-primary) !important;
+}
+.border-\[\#0F172A\] {
+  border-color: var(--wl-primary) !important;
+}
+.bg-\[\#D09A40\] {
+  background-color: var(--wl-accent) !important;
+}
+.text-\[\#D09A40\] {
+  color: var(--wl-accent) !important;
+}
+.border-\[\#D09A40\] {
+  border-color: var(--wl-accent) !important;
+}
+.text-\[\#4A4A4A\] {
+  color: var(--wl-text-muted) !important;
+}
+.hover\:bg-\[\#D09A40\]:hover {
+  background-color: var(--wl-accent) !important;
+}
+.hover\:bg-\[\#DCA54A\]:hover {
+  background-color: var(--wl-accent-hover) !important;
+}
+.hover\:bg-\[\#0F172A\]:hover {
+  background-color: var(--wl-primary) !important;
+}
+.hover\:text-\[\#D09A40\]:hover {
+  color: var(--wl-accent) !important;
+}
+.hover\:border-\[\#D09A40\]:hover {
+  border-color: var(--wl-accent) !important;
+}
+.focus\:border-\[\#D09A40\]:focus {
+  border-color: var(--wl-accent) !important;
 }
 
-/* Safe area padding utilities */
-.pb-safe {
-  padding-bottom: env(safe-area-inset-bottom, 16px);
-}
-.pt-safe {
-  padding-top: env(safe-area-inset-top, 0px);
+/* Custom Design Token Utilities */
+.elevation-soft {
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.12);
 }
 
-/* Custom scrollbar for sleek panels */
+.elevation-subtle {
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.06);
+}
+
+.card-lift {
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.card-lift:hover {
+  transform: scale(1.02) translateY(-4px);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.12);
+}
+
+.gold-shimmer-border {
+  border: 1px solid color-mix(in srgb, var(--wl-accent) 28%, transparent);
+}
+
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--wl-bg);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(208, 154, 64, 0.35);
-  border-radius: 9999px;
+  background: var(--wl-accent);
+  border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(208, 154, 64, 0.6);
+  background: var(--wl-primary);
 }
 
-/* Hide scrollbar for clean horizontal carousels */
-.scrollbar-none,
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-.scrollbar-none::-webkit-scrollbar,
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-
-/* Ensure crisp typography and eliminate text blurriness */
-html, body, button, input, textarea, select {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
+/* ---------- White-Label i18n: RTL & Indic/Arabic Script Support ---------- */
+/* Logical-property flip helpers for Arabic (RTL) storefront mode */
+[dir='rtl'] .space-x-2 > :not([hidden]) ~ :not([hidden]),
+[dir='rtl'] .space-x-3 > :not([hidden]) ~ :not([hidden]),
+[dir='rtl'] .space-x-4 > :not([hidden]) ~ :not([hidden]),
+[dir='rtl'] .space-x-5 > :not([hidden]) ~ :not([hidden]),
+[dir='rtl'] .space-x-6 > :not([hidden]) ~ :not([hidden]) {
+  --tw-space-x-reverse: 1;
 }
 
-/* Ensure form inputs, dropdowns, and borders render with 100% opacity, sharp borders, and no filter haze */
-input, textarea, select {
-  opacity: 1 !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+[dir='rtl'] .-space-x-2 > :not([hidden]) ~ :not([hidden]) {
+  --tw-space-x-reverse: 1;
 }
 
-/* Mandatory horizontal scroll-snapping for native-app feel */
-.snap-mandatory {
-  scroll-snap-type: x mandatory !important;
-}
-.snap-start {
-  scroll-snap-align: start !important;
-}
-
-/* Disable desktop hover transforms on mobile touch devices */
-@media (max-width: 767px) {
-  .luxe-card-hover:hover,
-  .luxe-card-lift:hover {
-    transform: none !important;
-  }
+/* Keep phone numbers, prices, codes and URLs left-to-right inside RTL text */
+[dir='rtl'] a[href^='tel:'],
+[dir='rtl'] .font-mono,
+[dir='rtl'] input[type='tel'],
+[dir='rtl'] input[type='number'] {
+  direction: ltr;
+  unicode-bidi: embed;
 }
 
-/* Major Cards micro-interactions without rasterization blur */
-.luxe-card-hover {
-  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.2s ease;
-}
-@media (min-width: 768px) {
-  .luxe-card-hover:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
-  }
+/* Native script font stacks: Devanagari, Gujarati, Gurmukhi, Arabic */
+html[lang='hi'] body,
+html[lang='mr'] body {
+  font-family: var(--wl-font-body), 'Noto Sans Devanagari', 'Mangal', system-ui, sans-serif;
 }
 
-.luxe-card-lift {
-  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.2s ease;
-}
-@media (min-width: 768px) {
-  .luxe-card-lift:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.08);
-  }
+html[lang='gu'] body {
+  font-family: var(--wl-font-body), 'Noto Sans Gujarati', system-ui, sans-serif;
 }
 
-.luxe-logo-hover {
-  transition: transform 0.25s ease;
-}
-.luxe-logo-hover:hover {
-  transform: translateY(-1px);
+html[lang='pa'] body {
+  font-family: var(--wl-font-body), 'Noto Sans Gurmukhi', 'Raavi', system-ui, sans-serif;
 }
 
-/* Button Hover Animations */
-.luxe-btn {
-  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-@media (min-width: 768px) {
-  .luxe-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.14);
-  }
-}
-.luxe-btn:active {
-  transform: translateY(0);
+html[lang='ar'] body {
+  font-family: var(--wl-font-body), 'Noto Sans Arabic', 'Segoe UI', Tahoma, sans-serif;
+  letter-spacing: 0 !important;
 }
 
-/* Navigation Underline Animation */
-.nav-link-underline {
-  position: relative;
-  display: inline-block;
-  padding-top: 4px;
-  padding-bottom: 4px;
-}
-.nav-link-underline::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  width: 0;
-  height: 2px;
-  background-color: #D09A40;
-  border-radius: 9999px;
-  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), left 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.nav-link-underline:hover::after {
-  width: 100%;
-  left: 0;
+/* Arabic headlines render better without italic serif styling */
+html[lang='ar'] .font-serif {
+  font-style: normal;
 }
 
-/* Luxury Image Zoom on Hover */
-.luxe-img-zoom {
-  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.group:hover .luxe-img-zoom {
-  transform: scale(1.05);
-}
-
-/* Subtle Floating Effects */
-@keyframes floatSubtle {
-  0%, 100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-4px);
-  }
-}
-.animate-float-subtle {
-  animation: floatSubtle 4.5s ease-in-out infinite;
-}
-
-/* Modal Entrance Animation */
-@keyframes modalEnter {
-  from {
-    opacity: 0;
-    transform: scale(0.97) translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-.animate-modal-enter {
-  animation: modalEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-/* Slide Up Drawer Animation */
-@keyframes slideUp {
-  from {
-    transform: translateY(100%);
-  }
-  to {
-    transform: translateY(0);
-  }
-}
-.animate-slide-up {
-  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+/* Underline offset can clip Arabic diacritics — give descenders room */
+html[lang='ar'] .underline {
+  text-underline-offset: 6px;
 }

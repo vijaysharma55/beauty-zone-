@@ -1,7 +1,7 @@
 import { ServiceItem } from '../types';
 import { SALON_SERVICES } from './salonData';
 
-const SERVICES_STORAGE_KEY = 'bz_salon_services_v1';
+const SERVICES_STORAGE_KEY = 'whitelabel_salon_services_v2';
 
 export const getStoredServices = (): ServiceItem[] => {
   try {

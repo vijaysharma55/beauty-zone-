@@ -3,6 +3,7 @@ import { GalleryItem, GalleryUploadType, VideoItem } from '../types';
 import { BeforeAfterSlider } from './BeforeAfterSlider';
 import { RevealOnScroll } from './RevealOnScroll';
 import { InstagramIcon, FacebookIcon, YouTubeIcon } from './SocialIcons';
+import { useBrand } from '../context/BrandContext';
 import { 
   Sparkles, 
   Layers, 
@@ -39,6 +40,7 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
   onOpenManagement,
   initialView = 'photos',
 }) => {
+  const { t } = useBrand();
   const [mainView, setMainView] = useState<'photos' | 'videos'>(initialView);
   const [selectedType, setSelectedType] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -134,19 +136,16 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
             <div className="max-w-2xl">
               <div className="flex items-center gap-2 text-xs font-semibold text-[#D09A40] tracking-wider uppercase mb-2">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Customer Photos, Reels & Makeover Results</span>
-                <span aria-hidden="true">·</span>
-                <span>Real Transformations</span>
+                <span>{t('galleryOverline')}</span>
               </div>
               <h2
                 className="text-3xl sm:text-4xl font-bold text-[#0F172A] tracking-tight"
                 style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
               >
-                Customer Gallery & Video Reels
+                {t('galleryTitle')}
               </h2>
               <p className="mt-2 text-sm sm:text-base text-[#4A4A4A] leading-relaxed font-light">
-                Watch real client makeovers, viral Instagram transformation reels, before-after results, 
-                and bridal tutorials created by our senior salon team in Jaipur.
+                {t('gallerySubtitle')} 
               </p>
             </div>
 

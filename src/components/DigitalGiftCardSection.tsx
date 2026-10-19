@@ -7,19 +7,13 @@ import {
   Copy,
   Check,
   Printer,
-  Share2,
-  Send,
-  CreditCard,
   CheckCircle2,
-  ArrowRight,
   ShieldCheck,
   Clock,
-  Tag,
-  Download,
   RotateCcw,
 } from 'lucide-react';
-import { RevealOnScroll } from './RevealOnScroll';
 import { WhatsAppIcon } from './SocialIcons';
+import { useBrand } from '../context/BrandContext';
 
 export interface GiftCardItem {
   id: string;
@@ -72,6 +66,7 @@ const GIFT_CARD_THEMES = [
 const PRESET_AMOUNTS = [1000, 2500, 5000, 10000, 25000];
 
 export const DigitalGiftCardSection: React.FC = () => {
+  const { brand, convertPrice, t } = useBrand();
   const [amount, setAmount] = useState<number>(2500);
   const [customAmount, setCustomAmount] = useState<string>('');
   const [recipientName, setRecipientName] = useState<string>('');
@@ -86,7 +81,7 @@ export const DigitalGiftCardSection: React.FC = () => {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [savedCards, setSavedCards] = useState<GiftCardItem[]>(() => {
     try {
-      const stored = localStorage.getItem('rani_salon_gift_cards');
+      const stored = localStorage.getItem('whitelabel_salon_gift_cards_v2');
       return stored ? JSON.parse(stored) : [];
     } catch {
       return [];
@@ -95,7 +90,7 @@ export const DigitalGiftCardSection: React.FC = () => {
 
   useEffect(() => {
     try {
-      localStorage.setItem('rani_salon_gift_cards', JSON.stringify(savedCards));
+      localStorage.setItem('whitelabel_salon_gift_cards_v2', JSON.stringify(savedCards));
     } catch {
       // ignore
     }
@@ -104,7 +99,8 @@ export const DigitalGiftCardSection: React.FC = () => {
   const currentTheme =
     GIFT_CARD_THEMES.find((t) => t.id === selectedThemeId) || GIFT_CARD_THEMES[0];
 
-  const effectiveAmount = customAmount ? Number(customAmount) || amount : amount;
+  const displayPresetAmounts = PRESET_AMOUNTS.map((a) => convertPrice(a));
+  const effectiveAmount = customAmount ? Number(customAmount) || convertPrice(amount) : convertPrice(amount);
 
   const handleCopyCode = (code: string) => {
     navigator.clipboard.writeText(code);
@@ -122,7 +118,8 @@ export const DigitalGiftCardSection: React.FC = () => {
     setIsPurchasing(true);
 
     setTimeout(() => {
-      const randomCode = `RANI-GIFT-${Math.floor(1000 + Math.random() * 9000)}-${Math.random()
+      const prefix = brand.giftCardPrefix || 'GIFT';
+      const randomCode = `${prefix}-${Math.floor(1000 + Math.random() * 9000)}-${Math.random()
         .toString(36)
         .substring(2, 6)
         .toUpperCase()}`;
@@ -147,7 +144,7 @@ export const DigitalGiftCardSection: React.FC = () => {
       setSavedCards((prev) => [newCard, ...prev]);
       setSuccessCard(newCard);
       setIsPurchasing(false);
-    }, 1200);
+    }, 800);
   };
 
   const handlePrintCard = (card: GiftCardItem) => {
@@ -156,7 +153,7 @@ export const DigitalGiftCardSection: React.FC = () => {
     printWindow.document.write(`
       <html>
         <head>
-          <title>Gift Card - ₹${card.amount.toLocaleString('en-IN')}</title>
+          <title>Gift Card - ${brand.currencySymbol}${card.amount.toLocaleString()}</title>
           <style>
             body { font-family: 'Inter', sans-serif; background: #FAF5E5; color: #0F172A; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
             .card { width: 600px; background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%); color: white; border-radius: 20px; padding: 40px; border: 3px solid #D09A40; box-shadow: 0 20px 40px rgba(0,0,0,0.2); position: relative; overflow: hidden; }
@@ -175,14 +172,14 @@ export const DigitalGiftCardSection: React.FC = () => {
           <div class="card">
             <div class="header">
               <div>
-                <div class="logo">RANI'S LUXURY SALON</div>
-                <div style="font-size: 12px; color: #D09A40; letter-spacing: 2px;">JAIPUR • DIGITAL GIFT VOUCHER</div>
+                <div class="logo">${brand.brandName.toUpperCase()}</div>
+                <div style="font-size: 12px; color: #D09A40; letter-spacing: 2px;">${brand.cityName.toUpperCase()} • DIGITAL GIFT VOUCHER</div>
               </div>
               <div class="badge">${card.occasion}</div>
             </div>
             
             <div style="font-size: 13px; color: #94A3B8; text-transform: uppercase; letter-spacing: 1px;">Gift Voucher Worth</div>
-            <div class="amount">₹${card.amount.toLocaleString('en-IN')}</div>
+            <div class="amount">${brand.currencySymbol}${card.amount.toLocaleString()}</div>
             
             <div class="details">
               <div class="row"><span><strong>To:</strong> ${card.recipientName}</span><span><strong>From:</strong> ${card.senderName}</span></div>
@@ -194,7 +191,7 @@ export const DigitalGiftCardSection: React.FC = () => {
             </div>
 
             <div class="footer">
-              Valid at all Rani's Luxury Salon & Spa branches across Jaipur. Redeemable against any hair, skin, bridal, or spa services. No expiry date.
+              Valid at all ${brand.brandName} branches across ${brand.cityName}. Redeemable against any hair, skin, bridal, or spa services. No expiry date.
             </div>
           </div>
           <script>
@@ -208,7 +205,7 @@ export const DigitalGiftCardSection: React.FC = () => {
 
   const handleShareWhatsApp = (card: GiftCardItem) => {
     const text = encodeURIComponent(
-      `🎁 *Digital Gift Card from Rani's Luxury Salon, Jaipur!*\n\nHey ${card.recipientName},\n${card.senderName} has sent you a luxury salon gift card worth *₹${card.amount.toLocaleString('en-IN')}*!\n\nOccasion: ${card.occasion}\nMessage: "${card.message}"\n\n🎟️ *Gift Code:* \`${card.code}\`\n\nRedeem this code at any Rani's Salon branch or when booking online!`
+      `🎁 *Digital Gift Card from ${brand.brandName}, ${brand.cityName}!*\n\nHey ${card.recipientName},\n${card.senderName} has sent you a luxury salon gift card worth *${brand.currencySymbol}${card.amount.toLocaleString()}*!\n\nOccasion: ${card.occasion}\nMessage: "${card.message}"\n\n🎟️ *Gift Code:* \`${card.code}\`\n\nRedeem this code at any ${brand.brandName} branch in ${brand.cityName} or when booking online!`
     );
     window.open(`https://wa.me/?text=${text}`, '_blank');
   };
@@ -220,127 +217,136 @@ export const DigitalGiftCardSection: React.FC = () => {
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-[#0F172A]/5 rounded-full blur-3xl pointer-events-none" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <RevealOnScroll>
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <div className="inline-flex items-center gap-2 bg-[#0F172A]/5 text-[#0F172A] px-4 py-1.5 rounded-full text-xs font-semibold tracking-wider uppercase mb-4 border border-[#0F172A]/10">
-              <Gift className="w-4 h-4 text-[#D09A40]" />
-              <span>Digital Gift Cards</span>
-            </div>
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-serif font-bold text-[#0F172A] mb-4 tracking-tight">
-              Gift the Joy of <span className="text-[#D09A40]">Luxury & Glow</span>
-            </h2>
-            <p className="text-slate-600 text-base sm:text-lg">
-              Surprise your loved ones in Jaipur with an instant digital gift card for royal haircuts, bridal makeovers, gold facials, or relaxing spa treatments.
-            </p>
+        <div className="text-center max-w-3xl mx-auto mb-16">
+          <div className="inline-flex items-center gap-2 bg-[#0F172A]/5 text-[#0F172A] px-4 py-1.5 rounded-full text-xs font-semibold tracking-wider uppercase mb-4 border border-[#0F172A]/10">
+            <Gift className="w-4 h-4 text-[#D09A40]" />
+            <span>{brand.giftCardTitle}</span>
           </div>
-        </RevealOnScroll>
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-serif font-bold text-[#0F172A] mb-4 tracking-tight">
+            Gift the Joy of <span className="text-[#D09A40]">Luxury & Glow</span>
+          </h2>
+          <p className="text-slate-600 text-base sm:text-lg">
+            {brand.giftCardSubtitle ||
+              `Surprise your loved ones in ${brand.cityName} with an instant digital gift card for signature haircuts, bridal makeovers, gold facials, or relaxing spa treatments.`}
+          </p>
+        </div>
 
         {successCard ? (
-          <RevealOnScroll>
-            <div className="max-w-2xl mx-auto bg-white rounded-3xl p-8 sm:p-10 shadow-2xl border-2 border-[#D09A40] text-center">
-              <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
-                <CheckCircle2 className="w-10 h-10" />
-              </div>
-              <span className="bg-[#D09A40]/10 text-[#0F172A] px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-                Successfully Generated!
+          <div className="max-w-2xl mx-auto bg-white rounded-3xl p-8 sm:p-10 shadow-2xl border-2 border-[#D09A40] text-center">
+            <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+              <CheckCircle2 className="w-10 h-10" />
+            </div>
+            <span className="bg-[#D09A40]/10 text-[#0F172A] px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
+              Successfully Generated!
+            </span>
+            <h3 className="text-2xl sm:text-3xl font-serif font-bold text-[#0F172A] mt-3 mb-2">
+              Your Gift Card is Ready
+            </h3>
+            <p className="text-slate-600 text-sm mb-8">
+              Sent to <span className="font-semibold">{successCard.recipientName}</span> for{' '}
+              <span className="font-semibold text-[#D09A40]">
+                {brand.currencySymbol}
+                {successCard.amount.toLocaleString()}
               </span>
-              <h3 className="text-2xl sm:text-3xl font-serif font-bold text-[#0F172A] mt-3 mb-2">
-                Your Gift Card is Ready
-              </h3>
-              <p className="text-slate-600 text-sm mb-8">
-                Sent to <span className="font-semibold">{successCard.recipientName}</span> for{' '}
-                <span className="font-semibold text-[#D09A40]">
-                  ₹{successCard.amount.toLocaleString('en-IN')}
-                </span>
-              </p>
+            </p>
 
-              {/* Gift Card visual voucher */}
-              <div
-                className={`bg-gradient-to-br ${currentTheme.bgGradient} text-white rounded-2xl p-6 sm:p-8 shadow-xl border-2 border-[#D09A40] text-left relative overflow-hidden mb-8`}
-              >
-                <div className="absolute top-0 right-0 w-48 h-48 bg-[#D09A40]/10 rounded-full blur-2xl pointer-events-none" />
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <h4 className="font-serif font-bold text-lg text-white">RANI'S LUXURY SALON</h4>
-                    <p className="text-xs text-[#D09A40] tracking-widest uppercase">Jaipur • Gift Voucher</p>
-                  </div>
-                  <span className="bg-[#D09A40] text-[#0F172A] px-3 py-1 rounded-full text-[11px] font-bold">
-                    {successCard.occasion}
+            {/* Gift Card visual voucher */}
+            <div
+              className={`bg-gradient-to-br ${currentTheme.bgGradient} text-white rounded-2xl p-6 sm:p-8 shadow-xl border-2 border-[#D09A40] text-left relative overflow-hidden mb-8`}
+            >
+              <div className="absolute top-0 right-0 w-48 h-48 bg-[#D09A40]/10 rounded-full blur-2xl pointer-events-none" />
+              <div className="flex justify-between items-start mb-6">
+                <div>
+                  <h4 className="font-serif font-bold text-lg text-white">
+                    {brand.brandName.toUpperCase()}
+                  </h4>
+                  <p className="text-xs text-[#D09A40] tracking-widest uppercase">
+                    {brand.cityName} • Gift Voucher
+                  </p>
+                </div>
+                <span className="bg-[#D09A40] text-[#0F172A] px-3 py-1 rounded-full text-[11px] font-bold">
+                  {successCard.occasion}
+                </span>
+              </div>
+
+              <div className="text-xs text-slate-300 uppercase tracking-wider">Gift Amount</div>
+              <div className="text-3xl sm:text-4xl font-extrabold text-[#D09A40] my-1">
+                {brand.currencySymbol}
+                {successCard.amount.toLocaleString()}
+              </div>
+
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 my-4 text-sm">
+                <div className="flex justify-between mb-1">
+                  <span className="text-slate-300">
+                    To: <strong className="text-white">{successCard.recipientName}</strong>
+                  </span>
+                  <span className="text-slate-300">
+                    From: <strong className="text-white">{successCard.senderName}</strong>
                   </span>
                 </div>
-
-                <div className="text-xs text-slate-300 uppercase tracking-wider">Gift Amount</div>
-                <div className="text-3xl sm:text-4xl font-extrabold text-[#D09A40] my-1">
-                  ₹{successCard.amount.toLocaleString('en-IN')}
-                </div>
-
-                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 my-4 text-sm">
-                  <div className="flex justify-between mb-1">
-                    <span className="text-slate-300">To: <strong className="text-white">{successCard.recipientName}</strong></span>
-                    <span className="text-slate-300">From: <strong className="text-white">{successCard.senderName}</strong></span>
-                  </div>
-                  <p className="text-xs text-slate-200 italic mt-2">"{successCard.message}"</p>
-                </div>
-
-                <div className="bg-white text-[#0F172A] rounded-xl p-3 text-center border-2 border-dashed border-[#D09A40]">
-                  <div className="text-[11px] uppercase tracking-wider text-slate-500 font-bold">Unique Code</div>
-                  <div className="text-lg sm:text-xl font-black tracking-wider text-[#0F172A] mt-0.5">
-                    {successCard.code}
-                  </div>
-                </div>
+                <p className="text-xs text-slate-200 italic mt-2">"{successCard.message}"</p>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex flex-wrap gap-4 justify-center">
-                <button
-                  onClick={() => handleCopyCode(successCard.code)}
-                  className="flex items-center gap-2 bg-[#0F172A] hover:bg-[#1E293B] text-white px-6 py-3 rounded-xl font-semibold text-sm transition shadow-md"
-                >
-                  {copiedCode === successCard.code ? (
-                    <>
-                      <Check className="w-4 h-4 text-emerald-400" />
-                      <span>Code Copied!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-4 h-4 text-[#D09A40]" />
-                      <span>Copy Gift Code</span>
-                    </>
-                  )}
-                </button>
-
-                <button
-                  onClick={() => handlePrintCard(successCard)}
-                  className="flex items-center gap-2 bg-[#D09A40] hover:bg-[#B88530] text-[#0F172A] px-6 py-3 rounded-xl font-bold text-sm transition shadow-md"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>Print Gift Card</span>
-                </button>
-
-                <button
-                  onClick={() => handleShareWhatsApp(successCard)}
-                  className="flex items-center gap-2 bg-[#25D366] hover:bg-[#22bf5b] text-white px-6 py-3 rounded-xl font-semibold text-sm transition shadow-md"
-                >
-                  <WhatsAppIcon className="w-4 h-4 text-white" />
-                  <span>Share via WhatsApp</span>
-                </button>
-              </div>
-
-              <div className="mt-8 pt-6 border-t border-slate-100 flex justify-center">
-                <button
-                  onClick={() => {
-                    setSuccessCard(null);
-                    setRecipientName('');
-                    setSenderName('');
-                  }}
-                  className="flex items-center gap-2 text-[#0F172A] hover:text-[#D09A40] text-sm font-semibold transition"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  <span>Create Another Gift Card</span>
-                </button>
+              <div className="bg-white text-[#0F172A] rounded-xl p-3 text-center border-2 border-dashed border-[#D09A40]">
+                <div className="text-[11px] uppercase tracking-wider text-slate-500 font-bold">
+                  Unique Code
+                </div>
+                <div className="text-lg sm:text-xl font-black tracking-wider text-[#0F172A] mt-0.5">
+                  {successCard.code}
+                </div>
               </div>
             </div>
-          </RevealOnScroll>
+
+            {/* Action Buttons */}
+            <div className="flex flex-wrap gap-4 justify-center">
+              <button
+                onClick={() => handleCopyCode(successCard.code)}
+                className="flex items-center gap-2 bg-[#0F172A] hover:bg-[#1E293B] text-white px-6 py-3 rounded-xl font-semibold text-sm transition shadow-md cursor-pointer"
+              >
+                {copiedCode === successCard.code ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-400" />
+                    <span>Code Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 text-[#D09A40]" />
+                    <span>Copy Gift Code</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => handlePrintCard(successCard)}
+                className="flex items-center gap-2 bg-[#D09A40] hover:bg-[#B88530] text-[#0F172A] px-6 py-3 rounded-xl font-bold text-sm transition shadow-md cursor-pointer"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Print Gift Card</span>
+              </button>
+
+              <button
+                onClick={() => handleShareWhatsApp(successCard)}
+                className="flex items-center gap-2 bg-[#25D366] hover:bg-[#22bf5b] text-white px-6 py-3 rounded-xl font-semibold text-sm transition shadow-md cursor-pointer"
+              >
+                <WhatsAppIcon className="w-4 h-4 text-white" />
+                <span>Share via WhatsApp</span>
+              </button>
+            </div>
+
+            <div className="mt-8 pt-6 border-t border-slate-100 flex justify-center">
+              <button
+                onClick={() => {
+                  setSuccessCard(null);
+                  setRecipientName('');
+                  setSenderName('');
+                }}
+                className="flex items-center gap-2 text-[#0F172A] hover:text-[#D09A40] text-sm font-semibold transition cursor-pointer"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Create Another Gift Card</span>
+              </button>
+            </div>
+          </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
             {/* Form Column */}
@@ -360,7 +366,7 @@ export const DigitalGiftCardSection: React.FC = () => {
                           key={theme.id}
                           type="button"
                           onClick={() => setSelectedThemeId(theme.id)}
-                          className={`p-3 rounded-2xl text-left transition border-2 flex flex-col justify-between ${
+                          className={`p-3 rounded-2xl text-left transition border-2 flex flex-col justify-between cursor-pointer ${
                             isSelected
                               ? 'border-[#D09A40] bg-[#FAF5E5] shadow-md'
                               : 'border-slate-200 bg-white hover:border-slate-300'
@@ -377,7 +383,9 @@ export const DigitalGiftCardSection: React.FC = () => {
                           </div>
                           <div>
                             <div className="font-bold text-xs text-[#0F172A]">{theme.name}</div>
-                            <div className="text-[10px] text-slate-500 mt-0.5">{theme.badgeText}</div>
+                            <div className="text-[10px] text-slate-500 mt-0.5">
+                              {theme.badgeText}
+                            </div>
                           </div>
                         </button>
                       );
@@ -388,31 +396,35 @@ export const DigitalGiftCardSection: React.FC = () => {
                 {/* 2. Select Amount */}
                 <div>
                   <label className="block text-sm font-bold text-[#0F172A] mb-3">
-                    2. Select Gift Amount (INR)
+                    2. Select Gift Amount ({brand.currencyCode})
                   </label>
                   <div className="grid grid-cols-3 sm:grid-cols-5 gap-2.5 mb-3">
-                    {PRESET_AMOUNTS.map((amt) => (
-                      <button
-                        key={amt}
-                        type="button"
-                        onClick={() => {
-                          setAmount(amt);
-                          setCustomAmount('');
-                        }}
-                        className={`py-2.5 px-3 rounded-xl font-bold text-sm transition border ${
-                          amount === amt && !customAmount
-                            ? 'bg-[#0F172A] text-[#D09A40] border-[#0F172A] shadow-md'
-                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                        }`}
-                      >
-                        ₹{amt.toLocaleString('en-IN')}
-                      </button>
-                    ))}
+                    {PRESET_AMOUNTS.map((rawAmt, idx) => {
+                      const convertedAmt = displayPresetAmounts[idx];
+                      return (
+                        <button
+                          key={rawAmt}
+                          type="button"
+                          onClick={() => {
+                            setAmount(rawAmt);
+                            setCustomAmount('');
+                          }}
+                          className={`py-2.5 px-3 rounded-xl font-bold text-sm transition border cursor-pointer ${
+                            amount === rawAmt && !customAmount
+                              ? 'bg-[#0F172A] text-[#D09A40] border-[#0F172A] shadow-md'
+                              : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {brand.currencySymbol}
+                          {convertedAmt.toLocaleString()}
+                        </button>
+                      );
+                    })}
                   </div>
                   <div>
                     <input
                       type="number"
-                      placeholder="Or enter custom amount (e.g. ₹3500)"
+                      placeholder={`Or enter custom amount in ${brand.currencySymbol}`}
                       value={customAmount}
                       onChange={(e) => setCustomAmount(e.target.value)}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40] transition"
@@ -424,7 +436,7 @@ export const DigitalGiftCardSection: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
-                      Recipient's Full Name *
+                      Recipient&apos;s Full Name *
                     </label>
                     <input
                       type="text"
@@ -482,7 +494,7 @@ export const DigitalGiftCardSection: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isPurchasing}
-                  className="w-full bg-[#0F172A] hover:bg-[#1E293B] text-[#D09A40] font-bold py-4 rounded-2xl transition shadow-lg flex items-center justify-center gap-3 text-base disabled:opacity-50"
+                  className="w-full bg-[#0F172A] hover:bg-[#1E293B] text-[#D09A40] font-bold py-4 rounded-2xl transition shadow-lg flex items-center justify-center gap-3 text-base disabled:opacity-50 cursor-pointer"
                 >
                   {isPurchasing ? (
                     <>
@@ -492,7 +504,10 @@ export const DigitalGiftCardSection: React.FC = () => {
                   ) : (
                     <>
                       <Gift className="w-5 h-5" />
-                      <span>Generate Digital Gift Card (₹{effectiveAmount.toLocaleString('en-IN')})</span>
+                      <span>
+                        {t('giftCardGenerateBtn')} ({brand.currencySymbol}
+                        {effectiveAmount.toLocaleString()})
+                      </span>
                     </>
                   )}
                 </button>
@@ -519,8 +534,12 @@ export const DigitalGiftCardSection: React.FC = () => {
 
                   <div className="flex justify-between items-start mb-4">
                     <div>
-                      <h4 className="font-serif font-bold text-base">RANI'S LUXURY SALON</h4>
-                      <p className="text-[10px] text-[#D09A40] tracking-widest uppercase">Jaipur • Gift Card</p>
+                      <h4 className="font-serif font-bold text-base">
+                        {brand.brandName.toUpperCase()}
+                      </h4>
+                      <p className="text-[10px] text-[#D09A40] tracking-widest uppercase">
+                        {brand.cityName} • Gift Card
+                      </p>
                     </div>
                     <span className="bg-[#D09A40] text-[#0F172A] px-2.5 py-0.5 rounded-full text-[10px] font-bold">
                       {currentTheme.badgeText}
@@ -529,28 +548,39 @@ export const DigitalGiftCardSection: React.FC = () => {
 
                   <div className="text-[11px] text-slate-300 uppercase tracking-wider">Value</div>
                   <div className="text-3xl font-extrabold text-[#D09A40] my-1">
-                    ₹{effectiveAmount.toLocaleString('en-IN')}
+                    {brand.currencySymbol}
+                    {effectiveAmount.toLocaleString()}
                   </div>
 
                   <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 my-3 text-xs">
                     <div className="flex justify-between mb-1">
-                      <span className="text-slate-300">To: <strong className="text-white">{recipientName || '[Recipient Name]'}</strong></span>
-                      <span className="text-slate-300">From: <strong className="text-white">{senderName || '[Your Name]'}</strong></span>
+                      <span className="text-slate-300">
+                        To:{' '}
+                        <strong className="text-white">
+                          {recipientName || '[Recipient Name]'}
+                        </strong>
+                      </span>
+                      <span className="text-slate-300">
+                        From:{' '}
+                        <strong className="text-white">{senderName || '[Your Name]'}</strong>
+                      </span>
                     </div>
                     <p className="text-[11px] text-slate-200 italic mt-1.5">
-                      "{message || 'Enjoy your gift!'}"
+                      &ldquo;{message || 'Enjoy your gift!'}&rdquo;
                     </p>
                   </div>
 
                   <div className="bg-white/90 text-[#0F172A] rounded-xl p-2.5 text-center font-mono text-sm font-bold tracking-wider">
-                    RANI-GIFT-XXXX-YYYY
+                    {brand.giftCardPrefix || 'GIFT'}-XXXX-YYYY
                   </div>
                 </div>
 
                 <div className="mt-6 space-y-3 text-xs text-slate-600">
                   <div className="flex items-center gap-2">
                     <ShieldCheck className="w-4 h-4 text-[#D09A40] shrink-0" />
-                    <span>Redeemable at all Rani's Salon branches in Jaipur.</span>
+                    <span>
+                      Redeemable at all {brand.brandName} branches in {brand.cityName}.
+                    </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Clock className="w-4 h-4 text-[#D09A40] shrink-0" />
@@ -573,11 +603,14 @@ export const DigitalGiftCardSection: React.FC = () => {
                       >
                         <div>
                           <div className="font-bold text-[#0F172A]">{card.recipientName}</div>
-                          <div className="text-slate-500 font-mono text-[10px]">{card.code} • ₹{card.amount.toLocaleString('en-IN')}</div>
+                          <div className="text-slate-500 font-mono text-[10px]">
+                            {card.code} • {brand.currencySymbol}
+                            {card.amount.toLocaleString()}
+                          </div>
                         </div>
                         <button
                           onClick={() => handleCopyCode(card.code)}
-                          className="bg-[#0F172A] text-[#D09A40] px-2.5 py-1.5 rounded-lg font-bold text-[10px] hover:bg-[#1E293B] transition"
+                          className="bg-[#0F172A] text-[#D09A40] px-2.5 py-1.5 rounded-lg font-bold text-[10px] hover:bg-[#1E293B] transition cursor-pointer"
                         >
                           {copiedCode === card.code ? 'Copied!' : 'Copy'}
                         </button>
