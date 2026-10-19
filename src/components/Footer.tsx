@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import {
   MapPin,
   Phone,
@@ -11,6 +12,7 @@ import {
 import { SocialLinksBar, InstagramIcon } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
 import { BrandEmblemIcon } from './WhiteLabelCustomizer';
+import { useAuth } from '../context/AuthContext';
 
 interface FooterProps {
   onNavigate: (sectionId: string) => void;
@@ -24,6 +26,8 @@ export const Footer: React.FC<FooterProps> = ({
   onOpenManagement,
 }) => {
   const { brand, setIsCustomizerOpen, t } = useBrand();
+  const { user } = useAuth();
+  const accountHref = user ? (user.role === 'super_admin' ? '/admin' : '/dashboard') : '/login';
 
   const branchNames =
     brand.branches.length > 0
@@ -223,6 +227,9 @@ export const Footer: React.FC<FooterProps> = ({
         {/* Bottom Copyright */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#FAF5E5]/50">
           <p>{brand.copyrightText}</p>
+          <Link to={accountHref} className="font-semibold text-[#D09A40] hover:underline">
+            {user ? 'Go to dashboard' : 'Salon owner login / sign up'}
+          </Link>
           {brand.showPoweredByBadge && (
             <p className="flex items-center gap-1.5">
               <span>Crafted with</span>

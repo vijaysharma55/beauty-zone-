@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
   MapPin,
   Phone,
@@ -8,11 +9,14 @@ import {
   Sliders,
   Settings,
   Palette,
+  UserCircle,
+  LayoutDashboard,
 } from 'lucide-react';
 import { SocialLinksBar } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
 import { BrandEmblemIcon } from './WhiteLabelCustomizer';
 import { LanguageSwitcher } from './LanguageSwitcher';
+import { useAuth } from '../context/AuthContext';
 
 interface NavbarProps {
   onNavigate: (sectionId: string) => void;
@@ -26,6 +30,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenManagement,
 }) => {
   const { brand, setIsCustomizerOpen, t } = useBrand();
+  const { user } = useAuth();
+  const accountHref = user ? (user.role === 'super_admin' ? '/admin' : '/dashboard') : '/login';
+  const accountLabel = user
+    ? user.role === 'super_admin'
+      ? 'Admin console'
+      : 'My dashboard'
+    : 'Owner login';
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -97,6 +108,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>{brand.phoneDisplay}</span>
             </a>
 
+            <Link
+              to={accountHref}
+              className="flex items-center gap-1.5 bg-white/10 text-[#FAF5E5] border border-white/20 px-2.5 py-1 rounded-full hover:bg-white/20 transition-all font-semibold"
+            >
+              <UserCircle className="w-3.5 h-3.5 text-[#D09A40]" />
+              <span>{accountLabel}</span>
+            </Link>
+
             {/* White-Label Brand Studio Trigger */}
             <button
               onClick={() => setIsCustomizerOpen(true)}
@@ -110,7 +129,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               onClick={onOpenManagement}
               className="flex items-center gap-1.5 bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2.5 py-0.5 rounded-full hover:bg-emerald-500/25 transition-all cursor-pointer font-medium"
-              title="Manage Services, Packages & Gallery"
+              title="Manage services, packages & gallery in your owner dashboard"
             >
               <Settings className="w-3 h-3" />
               <span>{t('navCatalogAdmin')}</span>
@@ -226,6 +245,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             ))}
           </div>
           <div className="pt-2 flex flex-col gap-3">
+            <Link
+              to={accountHref}
+              onClick={() => setMobileMenuOpen(false)}
+              className="w-full flex items-center justify-center gap-2 bg-[#D09A40] text-[#0F172A] font-bold py-3 rounded-full shadow-md"
+            >
+              <LayoutDashboard className="w-4 h-4" />
+              <span>{accountLabel}</span>
+            </Link>
             <button
               onClick={() => {
                 setMobileMenuOpen(false);
@@ -254,7 +281,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="w-full flex items-center justify-center gap-2 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-semibold py-2.5 rounded-full text-sm"
             >
               <Settings className="w-4 h-4" />
-              <span>Manage Services, Packages & Gallery</span>
+              <span>Manage catalog (owner)</span>
             </button>
           </div>
         </div>
