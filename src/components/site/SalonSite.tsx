@@ -44,8 +44,21 @@ export const SalonSite: React.FC<{
   const background = salon.theme?.background || '#FAF5E5';
   const surface = salon.theme?.surface || '#FFFFFF';
 
+  // Template presets change the layout/tonality; the salon's brand colours win.
+  const template = salon.templateId || 'luxe';
+  const light = template === 'minimal' || template === 'blush';
+  const headerBg = light ? surface : template === 'noir' ? '#0B0B0F' : primary;
+  const headerText = light ? primary : background;
+  const heroBg =
+    template === 'minimal' ? surface : template === 'blush' ? '#FBEDEC' : template === 'noir' ? '#0B0B0F' : primary;
+  const heroText = light ? primary : background;
+  const heroAccent = template === 'blush' ? '#C97C7C' : accent;
+  const cardRadius = template === 'noir' ? 'rounded-none' : template === 'minimal' ? 'rounded-lg' : 'rounded-2xl';
+  const headingClass = template === 'minimal' ? 'font-sans font-semibold' : 'font-serif';
+
   const categories = Array.from(new Set(services.map((s) => s.category)));
   const phoneRaw = (salon.whatsapp || salon.phone || '').replace(/[^\d]/g, '');
+  const timings = Array.isArray(salon.timings) ? salon.timings : [];
   const mapHref =
     salon.mapUrl ||
     (salon.addressLine
@@ -59,7 +72,7 @@ export const SalonSite: React.FC<{
       {/* Header */}
       <header
         className="sticky top-0 z-40 border-b backdrop-blur-md"
-        style={{ backgroundColor: `${primary}F2`, borderColor: `${accent}33` }}
+        style={{ backgroundColor: light ? `${surface}F2` : `${headerBg}F2`, borderColor: `${heroAccent}33` }}
       >
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <Link to={`/salon/${salon.slug}`} className="flex min-w-0 items-center gap-3">
@@ -80,15 +93,15 @@ export const SalonSite: React.FC<{
             )}
             <span className="min-w-0">
               <span
-                className="block truncate font-serif text-lg font-bold tracking-wide sm:text-xl"
-                style={{ color: background }}
+                className={`block truncate ${headingClass} text-lg font-bold tracking-wide sm:text-xl`}
+                style={{ color: headerText }}
               >
                 {salon.name}
               </span>
               {salon.tagline && (
                 <span
                   className="block truncate text-[10px] font-medium uppercase tracking-[0.18em]"
-                  style={{ color: accent }}
+                  style={{ color: heroAccent }}
                 >
                   {salon.tagline}
                 </span>
@@ -96,7 +109,7 @@ export const SalonSite: React.FC<{
             </span>
           </Link>
 
-          <nav className="hidden items-center gap-5 text-sm font-medium md:flex" style={{ color: `${background}CC` }}>
+          <nav className="hidden items-center gap-5 text-sm font-medium md:flex" style={{ color: `${headerText}B3` }}>
             {services.length > 0 && (
               <a href="#services" className="hover:opacity-100" style={{ color: 'inherit' }}>
                 Services
@@ -121,7 +134,7 @@ export const SalonSite: React.FC<{
             <a
               href={phoneRaw ? `tel:${phoneRaw}` : '#contact'}
               className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold sm:text-sm"
-              style={{ backgroundColor: accent, color: primary }}
+              style={{ backgroundColor: heroAccent, color: light ? '#FFFFFF' : primary }}
             >
               <Phone className="h-3.5 w-3.5" /> Book now
             </a>
@@ -130,7 +143,7 @@ export const SalonSite: React.FC<{
       </header>
 
       {/* Hero */}
-      <section className="relative overflow-hidden" style={{ backgroundColor: primary }}>
+      <section className="relative overflow-hidden" style={{ backgroundColor: heroBg }}>
         {salon.coverImage && (
           <img src={salon.coverImage} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" />
         )}
@@ -138,8 +151,12 @@ export const SalonSite: React.FC<{
           className="absolute inset-0"
           style={{
             background: salon.coverImage
-              ? `linear-gradient(90deg, ${primary}F5 0%, ${primary}99 60%, ${primary}55 100%)`
-              : `radial-gradient(circle at 20% 10%, ${accent}55 0, transparent 45%), linear-gradient(135deg, ${primary} 0%, ${primary} 100%)`,
+              ? light
+                ? `linear-gradient(90deg, ${surface}F2 0%, ${surface}B3 55%, ${surface}66 100%)`
+                : `linear-gradient(90deg, ${heroBg}F5 0%, ${heroBg}99 60%, ${heroBg}55 100%)`
+              : light
+                ? `radial-gradient(circle at 18% 12%, ${heroAccent}33 0, transparent 45%)`
+                : `radial-gradient(circle at 20% 10%, ${heroAccent}55 0, transparent 45%)`,
           }}
         />
         <div className="relative mx-auto max-w-6xl px-4 py-20 sm:px-6 lg:py-28">
@@ -151,11 +168,14 @@ export const SalonSite: React.FC<{
             {salon.city || 'Beauty studio'}
             {salon.state ? ` · ${salon.state}` : ''}
           </p>
-          <h1 className="mt-5 max-w-2xl font-serif text-4xl font-bold leading-tight sm:text-5xl lg:text-6xl" style={{ color: background }}>
+          <h1
+            className={`mt-5 max-w-2xl ${headingClass} text-4xl font-bold leading-tight sm:text-5xl lg:text-6xl`}
+            style={{ color: heroText }}
+          >
             {salon.heroTitle || salon.name}
           </h1>
           {salon.heroSubtitle && (
-            <p className="mt-4 max-w-2xl text-base leading-relaxed sm:text-lg" style={{ color: `${background}CC` }}>
+            <p className="mt-4 max-w-2xl text-base leading-relaxed sm:text-lg" style={{ color: `${heroText}B3` }}>
               {salon.heroSubtitle}
             </p>
           )}
@@ -164,7 +184,7 @@ export const SalonSite: React.FC<{
               <a
                 href={`tel:${phoneRaw}`}
                 className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-bold shadow-lg"
-                style={{ backgroundColor: accent, color: primary }}
+                style={{ backgroundColor: heroAccent, color: light ? '#FFFFFF' : primary }}
               >
                 <Phone className="h-4 w-4" /> Call to book
               </a>
@@ -175,7 +195,7 @@ export const SalonSite: React.FC<{
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-2 rounded-full border px-6 py-3 text-sm font-semibold"
-                style={{ borderColor: `${accent}66`, color: background }}
+                style={{ borderColor: `${heroAccent}66`, color: heroText }}
               >
                 <MessageCircle className="h-4 w-4" /> WhatsApp us
               </a>
@@ -184,7 +204,7 @@ export const SalonSite: React.FC<{
               <a
                 href="#services"
                 className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold underline-offset-4 hover:underline"
-                style={{ color: `${background}CC` }}
+                style={{ color: `${heroText}B3` }}
               >
                 View services <ArrowUpRight className="h-4 w-4" />
               </a>
@@ -217,7 +237,7 @@ export const SalonSite: React.FC<{
           <p className="text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: accent }}>
             About the studio
           </p>
-          <p className="mt-4 font-serif text-xl leading-relaxed sm:text-2xl">{salon.description}</p>
+          <p className={`mt-4 ${headingClass} text-xl leading-relaxed sm:text-2xl`}>{salon.description}</p>
         </section>
       )}
 
@@ -228,7 +248,7 @@ export const SalonSite: React.FC<{
             <p className="text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: accent }}>
               Menu & prices
             </p>
-            <h2 className="mt-1 font-serif text-3xl font-bold">Services</h2>
+            <h2 className={`mt-1 ${headingClass} text-3xl font-bold`}>Services</h2>
           </div>
           {categories.length > 0 && (
             <div className="flex flex-wrap gap-2">
@@ -257,7 +277,7 @@ export const SalonSite: React.FC<{
             {services.map((service) => (
               <article
                 key={service.id}
-                className="flex flex-col justify-between rounded-2xl border p-5 shadow-sm"
+                className={`flex flex-col justify-between ${cardRadius} border p-5 shadow-sm`}
                 style={{ backgroundColor: surface, borderColor: `${primary}12` }}
               >
                 <div>
@@ -297,7 +317,7 @@ export const SalonSite: React.FC<{
             <p className="text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: accent }}>
               Our artists
             </p>
-            <h2 className="mt-1 font-serif text-3xl font-bold">Meet the team</h2>
+            <h2 className={`mt-1 ${headingClass} text-3xl font-bold`}>Meet the team</h2>
             <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {staff.map((member) => (
                 <article
@@ -360,7 +380,7 @@ export const SalonSite: React.FC<{
           <p className="text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: accent }}>
             Lookbook
           </p>
-          <h2 className="mt-1 font-serif text-3xl font-bold">Recent work</h2>
+          <h2 className={`mt-1 ${headingClass} text-3xl font-bold`}>Recent work</h2>
           <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3">
             {salon.gallery.map((image, index) => (
               <figure
@@ -394,7 +414,7 @@ export const SalonSite: React.FC<{
             <p className="text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: accent }}>
               Visit or book
             </p>
-            <h2 className="mt-1 font-serif text-3xl font-bold" style={{ color: background }}>
+            <h2 className={`mt-1 ${headingClass} text-3xl font-bold`} style={{ color: background }}>
               We'd love to see you
             </h2>
             <ul className="mt-6 space-y-3 text-sm" style={{ color: `${background}CC` }}>
@@ -422,7 +442,32 @@ export const SalonSite: React.FC<{
                   </a>
                 </li>
               )}
+              {(salon.ownerName || salon.ownerPhone) && (
+                <li className="flex items-start gap-2.5">
+                  <Sparkles className="mt-0.5 h-4 w-4 shrink-0" style={{ color: accent }} />
+                  <span>
+                    Ask for {salon.ownerName || 'the owner'}
+                    {salon.ownerPhone ? ` · ${salon.ownerPhone}` : ''}
+                  </span>
+                </li>
+              )}
             </ul>
+
+            {timings.length > 0 && (
+              <div className="mt-6">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: accent }}>
+                  Opening hours
+                </p>
+                <ul className="mt-2 grid max-w-sm grid-cols-1 gap-1 text-sm sm:grid-cols-2">
+                  {timings.map((entry) => (
+                    <li key={entry.day} className="flex justify-between gap-3" style={{ color: `${background}CC` }}>
+                      <span className="capitalize">{entry.day}</span>
+                      <span>{entry.closed ? 'Closed' : `${entry.open} – ${entry.close}`}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <div className="mt-5 flex gap-2">
               {salon.instagram && (
                 <a

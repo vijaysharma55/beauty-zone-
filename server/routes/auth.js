@@ -29,8 +29,36 @@ import {
 } from '../security.js';
 import { requireAuth, asyncHandler, touchUserLogin } from '../middleware.js';
 import { verifyGoogleIdToken, googleConfigured } from '../google.js';
+import { sendMail, verificationEmail } from '../mailer.js';
+import { workflowInfo } from '../workflow.js';
 
 export const authRouter = Router();
+
+const EMAIL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const isProduction = () => process.env.NODE_ENV === 'production';
+
+function verificationUrl(req, token) {
+  const configured = (process.env.APP_URL || '').replace(/\/+$/, '');
+  const base = configured || `${req.protocol}://${req.get('host')}`;
+  return `${base}/verify-email?token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * Issues a fresh verification token (only its SHA-256 hash is stored) and emails
+ * the link. Returns the URL in non-production so local/dev flows stay testable
+ * without an SMTP provider.
+ */
+async function issueVerification(req, user) {
+  const token = createSessionToken();
+  const expires = new Date(Date.now() + EMAIL_TOKEN_TTL_MS).toISOString();
+  db.prepare(
+    'UPDATE users SET email_verification_token_hash = ?, email_verification_expires = ?, updated_at = ? WHERE id = ?'
+  ).run(hashToken(token), expires, nowIso(), user.id);
+  const url = verificationUrl(req, token);
+  const mail = verificationEmail({ name: user.name, url });
+  await sendMail({ to: user.email, ...mail, tag: 'verify-email' });
+  return { url, expires };
+}
 
 const loginLimiter = rateLimit({ windowMs: 10 * 60_000, max: 20, key: 'login' });
 const registerLimiter = rateLimit({ windowMs: 60 * 60_000, max: 10, key: 'register' });
@@ -55,6 +83,7 @@ function userPayload(userRow) {
   return {
     user,
     salon: salonRow ? serializeSalon(salonRow) : null,
+    workflow: salonRow ? workflowInfo(salonRow, userRow).workflow : null,
     subscription: salonRow ? serializeSubscription(getSubscriptionForSalon(salonRow.id)) : null,
     onboardingRequired: user.role === 'salon_owner' && !salonRow,
   };
@@ -116,7 +145,13 @@ authRouter.post(
     req.user = findUserById(id);
     audit(req, 'auth.register', 'user', id);
     const row = findUserById(id);
-    return res.status(201).json(userPayload(row));
+    const verification = await issueVerification(req, row);
+    return res.status(201).json({
+      ...userPayload(row),
+      emailVerificationSent: true,
+      // Exposed only outside production so the flow can be completed locally.
+      devVerificationUrl: isProduction() ? undefined : verification.url,
+    });
   })
 );
 
@@ -196,11 +231,9 @@ authRouter.post(
       }
       // Link the Google identity to the existing local account.
       if (!user.google_sub) {
-        db.prepare('UPDATE users SET google_sub = ?, updated_at = ? WHERE id = ?').run(
-          profile.sub,
-          nowIso(),
-          user.id
-        );
+        db.prepare(
+          'UPDATE users SET google_sub = ?, email_verified = 1, email_verified_at = COALESCE(email_verified_at, ?), updated_at = ? WHERE id = ?'
+        ).run(profile.sub, nowIso(), nowIso(), user.id);
       } else if (user.google_sub !== profile.sub) {
         throw new HttpError(409, 'This email is already linked to a different Google account.');
       }
@@ -212,9 +245,10 @@ authRouter.post(
       const id = newId();
       const ts = nowIso();
       db.prepare(
-        `INSERT INTO users (id, email, password_hash, auth_provider, google_sub, name, role, status, created_at, updated_at)
-         VALUES (?, ?, NULL, 'google', ?, ?, 'salon_owner', 'active', ?, ?)`
-      ).run(id, profile.email, profile.sub, profile.name.slice(0, 120), ts, ts);
+        `INSERT INTO users (id, email, password_hash, auth_provider, google_sub, name, role, status,
+           email_verified, email_verified_at, created_at, updated_at)
+         VALUES (?, ?, NULL, 'google', ?, ?, 'salon_owner', 'active', 1, ?, ?, ?)`
+      ).run(id, profile.email, profile.sub, profile.name.slice(0, 120), ts, ts, ts);
       user = findUserById(id);
     }
 
@@ -249,6 +283,53 @@ authRouter.post('/logout-all', requireAuth, (req, res) => {
   audit(req, 'auth.logout_all', 'user', req.user.id);
   return res.json({ ok: true });
 });
+
+/* ------------------------------------------------------------------ */
+/* Email verification                                                  */
+/* ------------------------------------------------------------------ */
+
+authRouter.post(
+  '/verify-email',
+  rateLimit({ windowMs: 15 * 60_000, max: 30, key: 'verify-email' }),
+  asyncHandler(async (req, res) => {
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+    if (!token || token.length > 500) throw new ValidationError('Verification link is invalid or has expired.');
+
+    const user = db
+      .prepare('SELECT * FROM users WHERE email_verification_token_hash = ?')
+      .get(hashToken(token));
+    if (!user) throw new ValidationError('Verification link is invalid or has expired.');
+    if (user.email_verification_expires && new Date(user.email_verification_expires).getTime() < Date.now()) {
+      throw new ValidationError('This verification link has expired. Please request a new one.');
+    }
+    if (!user.email_verified) {
+      db.prepare(
+        `UPDATE users SET email_verified = 1, email_verified_at = ?, email_verification_token_hash = NULL,
+           email_verification_expires = NULL, updated_at = ? WHERE id = ?`
+      ).run(nowIso(), nowIso(), user.id);
+      audit({ ...req, user: { id: user.id, email: user.email } }, 'auth.email_verified', 'user', user.id);
+    }
+    return res.json({ ok: true, email: user.email });
+  })
+);
+
+authRouter.post(
+  '/resend-verification',
+  requireAuth,
+  rateLimit({ windowMs: 15 * 60_000, max: 5, key: 'resend-verification' }),
+  asyncHandler(async (req, res) => {
+    const user = findUserById(req.user.id);
+    if (!user) throw new HttpError(401, 'Authentication required.');
+    if (user.email_verified) return res.json({ ok: true, alreadyVerified: true });
+    const verification = await issueVerification(req, user);
+    audit(req, 'auth.verification_resent', 'user', user.id);
+    return res.json({
+      ok: true,
+      emailVerificationSent: true,
+      devVerificationUrl: isProduction() ? undefined : verification.url,
+    });
+  })
+);
 
 /* ------------------------------------------------------------------ */
 /* Password change (self-service)                                      */

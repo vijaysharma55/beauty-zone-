@@ -47,6 +47,9 @@ import { AdminSalons } from './components/admin/AdminSalons';
 import { AdminSubscriptions } from './components/admin/AdminSubscriptions';
 import { AdminSettings } from './components/admin/AdminSettings';
 import { PublicSalonPage } from './components/site/PublicSalonPage';
+import { VerifyEmailPage } from './components/dashboard/VerifyEmailPage';
+import { ApprovalPage } from './components/dashboard/ApprovalPage';
+import { AdminApprovals } from './components/admin/AdminApprovals';
 import { Button } from './components/ui';
 
 function MarketingSite() {
@@ -329,6 +332,7 @@ export function App() {
       {/* Authentication */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/verify-email" element={<VerifyEmailPage />} />
 
       {/* Salon owner dashboard — protected, salon-owner role only */}
       <Route
@@ -344,6 +348,7 @@ export function App() {
         <Route path="website" element={<WebsiteEditor />} />
         <Route path="services" element={<ServicesPage />} />
         <Route path="staff" element={<StaffPage />} />
+        <Route path="approval" element={<ApprovalPage />} />
         <Route path="preview" element={<PreviewPage />} />
         <Route path="billing" element={<BillingPage />} />
         <Route path="account" element={<AccountPage />} />
@@ -360,6 +365,7 @@ export function App() {
       >
         <Route index element={<AdminOverview />} />
         <Route path="users" element={<AdminUsers />} />
+        <Route path="approvals" element={<AdminApprovals />} />
         <Route path="salons" element={<AdminSalons />} />
         <Route path="subscriptions" element={<AdminSubscriptions />} />
         <Route path="settings" element={<AdminSettings />} />

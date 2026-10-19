@@ -9,6 +9,7 @@ import {
   Menu,
   Settings,
   ShieldCheck,
+  ClipboardCheck,
   Users,
   X,
 } from 'lucide-react';
@@ -17,6 +18,7 @@ import { Button, cn } from '../ui';
 
 const navItems = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
+  { to: '/admin/approvals', label: 'Approvals', icon: ClipboardCheck },
   { to: '/admin/users', label: 'Salon owners', icon: Users },
   { to: '/admin/salons', label: 'Salons & websites', icon: Building2 },
   { to: '/admin/subscriptions', label: 'Subscriptions', icon: CreditCard },

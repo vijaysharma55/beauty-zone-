@@ -34,6 +34,10 @@ db.exec(`
     name TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'salon_owner' CHECK (role IN ('super_admin', 'salon_owner')),
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+    email_verified INTEGER NOT NULL DEFAULT 0,
+    email_verified_at TEXT,
+    email_verification_token_hash TEXT,
+    email_verification_expires TEXT,
     failed_logins INTEGER NOT NULL DEFAULT 0,
     locked_until TEXT,
     last_login_at TEXT,
@@ -78,6 +82,18 @@ db.exec(`
     theme_json TEXT NOT NULL DEFAULT '{}',
     website_published INTEGER NOT NULL DEFAULT 0,
     published_at TEXT,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','pending','approved','rejected','changes_requested')),
+    submitted_at TEXT,
+    approved_at TEXT,
+    review_note TEXT NOT NULL DEFAULT '',
+    reviewed_at TEXT,
+    suspended INTEGER NOT NULL DEFAULT 0,
+    suspended_reason TEXT NOT NULL DEFAULT '',
+    suspended_at TEXT,
+    template_id TEXT NOT NULL DEFAULT 'luxe',
+    timings_json TEXT NOT NULL DEFAULT '[]',
+    owner_name TEXT NOT NULL DEFAULT '',
+    owner_phone TEXT NOT NULL DEFAULT '',
     onboarding_completed INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -144,6 +160,21 @@ db.exec(`
 export const nowIso = () => new Date().toISOString();
 export const newId = () => crypto.randomUUID();
 
+/** Default weekly opening hours used for templates, seeds and new salons. */
+export const DEFAULT_TIMINGS = [
+  { day: 'mon', open: '10:00', close: '20:00', closed: false },
+  { day: 'tue', open: '10:00', close: '20:00', closed: false },
+  { day: 'wed', open: '10:00', close: '20:00', closed: false },
+  { day: 'thu', open: '10:00', close: '20:00', closed: false },
+  { day: 'fri', open: '10:00', close: '21:00', closed: false },
+  { day: 'sat', open: '09:00', close: '21:00', closed: false },
+  { day: 'sun', open: '11:00', close: '18:00', closed: false },
+];
+
+export const TEMPLATE_IDS = ['luxe', 'minimal', 'noir', 'blush'];
+
+export const SALON_STATUSES = ['draft', 'pending', 'approved', 'rejected', 'changes_requested'];
+
 export const DEFAULT_SETTINGS = {
   platformName: 'BeautyZone',
   supportEmail: 'support@beautyzone.app',
@@ -185,6 +216,15 @@ export function saveSettings(patch) {
 /* Serializers                                                         */
 /* ------------------------------------------------------------------ */
 
+export function safeJson(value, fallback) {
+  try {
+    const parsed = JSON.parse(value ?? '');
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export function publicUser(row) {
   if (!row) return null;
   return {
@@ -194,6 +234,7 @@ export function publicUser(row) {
     role: row.role,
     status: row.status,
     authProvider: row.auth_provider,
+    emailVerified: !!row.email_verified,
     lastLoginAt: row.last_login_at,
     createdAt: row.created_at,
   };
@@ -278,6 +319,18 @@ export function serializeSalon(row, { includeOwner = false, publicView = false }
     theme: theme && typeof theme === 'object' ? theme : {},
     published: !!row.website_published,
     publishedAt: row.published_at,
+    status: row.status || 'draft',
+    submittedAt: row.submitted_at || null,
+    approvedAt: row.approved_at || null,
+    reviewNote: row.review_note || '',
+    reviewedAt: row.reviewed_at || null,
+    suspended: !!row.suspended,
+    suspendedReason: row.suspended_reason || '',
+    suspendedAt: row.suspended_at || null,
+    templateId: row.template_id || 'luxe',
+    timings: safeJson(row.timings_json, []),
+    ownerName: row.owner_name || '',
+    ownerPhone: row.owner_phone || '',
     onboardingCompleted: !!row.onboarding_completed,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -425,20 +478,21 @@ export function seedIfEmpty(hashPassword) {
   const ts = nowIso();
 
   db.prepare(
-    `INSERT INTO users (id, email, password_hash, auth_provider, name, role, status, created_at, updated_at)
-     VALUES (?, ?, ?, 'password', ?, 'super_admin', 'active', ?, ?)`
-  ).run(adminId, adminEmail, hashPassword(adminPassword), 'Platform Super Admin', ts, ts);
+    `INSERT INTO users (id, email, password_hash, auth_provider, name, role, status, email_verified, email_verified_at, created_at, updated_at)
+     VALUES (?, ?, ?, 'password', ?, 'super_admin', 'active', 1, ?, ?, ?)`
+  ).run(adminId, adminEmail, hashPassword(adminPassword), 'Platform Super Admin', ts, ts, ts);
 
   db.prepare(
-    `INSERT INTO users (id, email, password_hash, auth_provider, name, role, status, created_at, updated_at)
-     VALUES (?, ?, ?, 'password', ?, 'salon_owner', 'active', ?, ?)`
-  ).run(ownerId, ownerEmail, hashPassword(ownerPassword), 'Aanya Sharma', ts, ts);
+    `INSERT INTO users (id, email, password_hash, auth_provider, name, role, status, email_verified, email_verified_at, created_at, updated_at)
+     VALUES (?, ?, ?, 'password', ?, 'salon_owner', 'active', 1, ?, ?, ?)`
+  ).run(ownerId, ownerEmail, hashPassword(ownerPassword), 'Aanya Sharma', ts, ts, ts);
 
   db.prepare(
     `INSERT INTO salons (id, owner_id, name, slug, tagline, description, logo_url, cover_image, gallery_json,
         phone, email, whatsapp, address_line, city, state, postal_code, country, map_url, instagram,
-        hero_title, hero_subtitle, theme_json, website_published, published_at, onboarding_completed, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, '', '', '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 1, ?, ?)`
+        hero_title, hero_subtitle, theme_json, website_published, published_at, onboarding_completed,
+        status, approved_at, template_id, timings_json, owner_name, owner_phone, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, '', '', '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 1, 'approved', ?, 'luxe', ?, 'Aanya Sharma', '919800012345', ?, ?)`
   ).run(
     salonId,
     ownerId,
@@ -460,6 +514,8 @@ export function seedIfEmpty(hashPassword) {
     'Award-winning bridal makeovers, luxury hair couture and clinical facials in the heart of Jaipur.',
     JSON.stringify({ accent: '#D09A40', primary: '#0F172A', background: '#FAF5E5', surface: '#FFFFFF' }),
     ts,
+    ts,
+    JSON.stringify(DEFAULT_TIMINGS),
     ts,
     ts
   );

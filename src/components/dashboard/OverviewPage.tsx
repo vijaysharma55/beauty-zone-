@@ -10,7 +10,7 @@ import {
   Rocket,
   Scissors,
   Users,
-  AlertTriangle,
+  FileCheck2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api, errorMessage } from '../../lib/api';
@@ -26,13 +26,13 @@ import {
   formatDate,
   formatCurrency,
 } from '../ui';
+import { WorkflowCard } from './WorkflowStatus';
 
 export const OverviewPage: React.FC = () => {
-  const { salon, subscription, user, refresh } = useAuth();
+  const { salon, subscription, user, workflow } = useAuth();
   const [services, setServices] = useState<SalonService[]>([]);
   const [staff, setStaff] = useState<SalonStaff[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -64,25 +64,6 @@ export const OverviewPage: React.FC = () => {
   const activeServices = services.filter((s) => s.active);
   const activeStaff = staff.filter((s) => s.active);
 
-  const togglePublish = async () => {
-    setBusy(true);
-    setMessage(null);
-    try {
-      if (salon.published) {
-        await api.post('/salon/unpublish');
-        setMessage({ tone: 'success', text: 'Your website is now unpublished. Visitors will no longer see it.' });
-      } else {
-        await api.post('/salon/publish');
-        setMessage({ tone: 'success', text: 'Your website is live! Share the link with your clients.' });
-      }
-      await refresh();
-    } catch (err) {
-      setMessage({ tone: 'error', text: errorMessage(err) });
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(liveUrl);
@@ -94,10 +75,12 @@ export const OverviewPage: React.FC = () => {
   };
 
   const checklist = [
-    { label: 'Salon profile details added', done: Boolean(salon.name && salon.city && salon.addressLine && salon.phone) },
-    { label: 'Services and prices published', done: activeServices.length > 0 },
+    { label: 'Salon profile & contact details added', done: Boolean(salon.name && salon.city && salon.addressLine && salon.phone) },
+    { label: 'Services and prices added', done: activeServices.length > 0 },
     { label: 'Team members added', done: activeStaff.length > 0 },
-    { label: 'Logo or cover photo uploaded', done: Boolean(salon.logoUrl || salon.coverImage) },
+    { label: 'Logo or hero image uploaded', done: Boolean(salon.logoUrl || salon.coverImage) },
+    { label: 'Email address verified', done: !!user?.emailVerified },
+    { label: 'Website submitted for approval', done: ['pending', 'approved'].includes(workflow?.status || salon.status) },
     { label: 'Website published live', done: salon.published },
   ];
   const completed = checklist.filter((c) => c.done).length;
@@ -107,7 +90,7 @@ export const OverviewPage: React.FC = () => {
       <PageHeader
         eyebrow={`Welcome, ${user?.name?.split(' ')[0] || 'there'}`}
         title="Salon overview"
-        description="Everything about your salon website, at a glance."
+        description="Track your setup, build your website and follow its approval status."
         actions={
           <>
             <Link to="/dashboard/preview">
@@ -115,30 +98,25 @@ export const OverviewPage: React.FC = () => {
                 <Eye className="h-4 w-4" /> Preview
               </Button>
             </Link>
-            <Button variant="gold" onClick={togglePublish} loading={busy}>
-              {salon.published ? (
-                <>
-                  <Globe className="h-4 w-4" /> Unpublish website
-                </>
-              ) : (
-                <>
-                  <Rocket className="h-4 w-4" /> Publish website
-                </>
-              )}
-            </Button>
+            <Link to="/dashboard/website">
+              <Button variant="gold">
+                <Rocket className="h-4 w-4" /> Manage website
+              </Button>
+            </Link>
           </>
         }
       />
 
       {message && <Alert tone={message.tone}>{message.text}</Alert>}
 
-      {/* Status banner */}
+      <WorkflowCard salon={salon} />
+
       <Card className="overflow-hidden">
         <div className="grid gap-0 md:grid-cols-[1.4fr_1fr]">
           <div className="p-5">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-lg font-semibold text-slate-900">{salon.name}</h2>
-              {salon.published ? <Badge tone="green">Website live</Badge> : <Badge tone="amber">Draft — not public</Badge>}
+              {salon.published ? <Badge tone="green">Website live</Badge> : <Badge tone="amber">Not live</Badge>}
               {subscription && <Badge tone="gold">{subscription.plan} plan</Badge>}
             </div>
             <p className="mt-1 text-sm text-slate-500">
@@ -147,7 +125,7 @@ export const OverviewPage: React.FC = () => {
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <code className="rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-700">/salon/{salon.slug}</code>
               <Button variant="secondary" size="sm" onClick={copyLink}>
-                <Copy className="h-3.5 w-3.5" /> {copied ? 'Copied!' : 'Copy live link'}
+                <Copy className="h-3.5 w-3.5" /> {copied ? 'Copied!' : 'Copy link'}
               </Button>
               {salon.published && (
                 <a href={`/salon/${salon.slug}`} target="_blank" rel="noreferrer">
@@ -202,17 +180,15 @@ export const OverviewPage: React.FC = () => {
         <StatCard
           label="Starting price"
           value={
-            activeServices.length
-              ? formatCurrency(Math.min(...activeServices.map((s) => s.pricePaise)))
-              : '—'
+            activeServices.length ? formatCurrency(Math.min(...activeServices.map((s) => s.pricePaise))) : '—'
           }
           hint="Lowest active service price"
           icon={<Scissors className="h-5 w-5" />}
         />
         <StatCard
-          label="Plan renews"
-          value={formatDate(subscription?.currentPeriodEnd)}
-          hint={subscription ? `${subscription.plan} · ${subscription.status}` : 'No subscription'}
+          label="Live version"
+          value={workflow?.approvedVersion ? `v${workflow.approvedVersion.version}` : '—'}
+          hint={workflow?.approvedAt ? `Approved ${formatDate(workflow.approvedAt)}` : 'Not approved yet'}
           icon={<Globe className="h-5 w-5" />}
         />
       </div>
@@ -221,17 +197,17 @@ export const OverviewPage: React.FC = () => {
         <Card>
           <CardHeader title="Quick actions" description="Jump straight into the most common tasks." />
           <div className="grid gap-2 p-4 sm:grid-cols-2">
-            <QuickLink to="/dashboard/website" icon={<Globe className="h-4 w-4" />} title="Edit website" subtitle="Brand, contact, gallery" />
+            <QuickLink to="/dashboard/website" icon={<Globe className="h-4 w-4" />} title="Edit website" subtitle="Brand, template, contact, gallery" />
             <QuickLink to="/dashboard/services" icon={<Scissors className="h-4 w-4" />} title="Services & prices" subtitle="Add or update menu" />
             <QuickLink to="/dashboard/staff" icon={<Users className="h-4 w-4" />} title="Manage team" subtitle="Artists and specialists" />
-            <QuickLink to="/dashboard/billing" icon={<Rocket className="h-4 w-4" />} title="Subscription" subtitle="Plan and billing cycle" />
+            <QuickLink to="/dashboard/approval" icon={<FileCheck2 className="h-4 w-4" />} title="Approvals" subtitle="Submit & track status" />
           </div>
         </Card>
 
         <Card>
           <CardHeader
             title="Recent services"
-            description="The first few items shown on your public website."
+            description="What visitors see on your public website."
             action={
               <Link to="/dashboard/services" className="text-xs font-semibold text-[#8a641f] hover:underline">
                 Manage all
@@ -267,18 +243,6 @@ export const OverviewPage: React.FC = () => {
           </div>
         </Card>
       </div>
-
-      {!salon.published && (
-        <Alert tone="info">
-          <span className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>
-              Your website is currently a private draft. Only you can see it (via Preview). Publish it to make
-              <strong> /salon/{salon.slug}</strong> accessible to the public.
-            </span>
-          </span>
-        </Alert>
-      )}
     </div>
   );
 };

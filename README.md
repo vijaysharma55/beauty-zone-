@@ -1,9 +1,23 @@
 # BeautyZone — White-Label Salon Websites with Authentication & RBAC
 
-A full-stack salon website platform. Salon owners sign up, build their salon website, manage
-services / prices / staff / gallery, and publish a unique public URL. A super admin console manages
-every user, salon, subscription and platform setting. Visitors browse published salon websites
-without logging in.
+A full-stack salon website platform. Salon owners sign up, verify their email, complete salon
+onboarding, build and submit their website for approval, then publish a unique public URL once a
+platform admin approves it. A super admin console manages every user, salon, submission,
+subscription and platform setting. Visitors browse published salon websites without logging in.
+
+### Approval lifecycle
+
+```
+Registered → Onboarding → Draft → Pending approval → Approved → Published
+```
+
+- **Draft** — only the owner can see it (`/dashboard/preview`).
+- **Pending** — a submission snapshot is waiting for a super admin. The owner keeps editing, but
+  the public site keeps serving the *previously approved* version.
+- **Changes requested / Rejected** — the site is taken offline and stays fully editable; the
+  owner can resubmit. A reviewer note is required and shown in the dashboard.
+- **Approved** — the owner can publish (email must be verified).
+- **Suspended** (admin) — publishing and submissions are blocked and the site goes offline.
 
 The original luxury salon showcase remains the public marketing homepage at `/`.
 
@@ -14,6 +28,10 @@ The original luxury salon showcase remains the public marketing homepage at `/`.
 | Capability | Super admin | Salon owner | Public visitor |
 | --- | :---: | :---: | :---: |
 | Browse marketing site | ✅ | ✅ | ✅ |
+| Verify email (link, 24 h, single use) | ✅ | ✅ | — |
+| Submit website for approval / resubmit | — | ✅ | — |
+| Review queue: approve / reject / request changes | ✅ | — | — |
+| Suspend / reinstate any salon (force offline) | ✅ | — | — |
 | Open a **published** salon website (`/salon/:slug`) | ✅ | ✅ | ✅ |
 | Register / sign in (email + password or Google) | ✅ | ✅ | — |
 | Edit own salon profile, logo, gallery, contact details | — | ✅ | — |
@@ -23,6 +41,7 @@ The original luxury salon showcase remains the public marketing homepage at `/`.
 | View own subscription | — | ✅ | — |
 | List / create / disable users, change roles | ✅ | — | — |
 | View every salon, inspect services/team, edit website details, force publish / unpublish | ✅ | — | — |
+| Approve only approved versions can be published (server-enforced) | ✅ | ✅ | — |
 | Manage all subscriptions & billing periods | ✅ | — | — |
 | Edit platform settings, view audit log | ✅ | — | — |
 
@@ -77,12 +96,21 @@ cookies automatically gain the `Secure` flag when `NODE_ENV=production`.
 ### Tests
 
 ```bash
-npm run test:api    # boots a real server on a temp DB and runs 22 API tests
+npm run test:api    # boots a real server on a temp DB and runs 34 API tests
 npm run lint        # TypeScript check
 ```
 
-The suite covers login lockout semantics, role gates, registration hardening, tenant isolation,
-publish/unpublish visibility, CSRF blocking, admin self-protection, password rotation and more.
+The suite covers the full approval lifecycle (email verification, submit, request changes, resubmit,
+approve, publish, rejected sites, suspension), snapshot isolation for unapproved edits, role gates,
+tenant isolation, CSRF blocking, admin self-protection, password rotation and more.
+
+### Email delivery
+
+Verification and review-notification emails are written to `data/outbox/*.json` and logged instead
+of being sent through an SMTP provider. Outside production the API also returns
+`devVerificationUrl` so registration → verification can be completed locally without mail. Set
+`APP_URL` so links point at the right host, and wire `sendMail` in `server/mailer.js` to a provider
+(Resend, SES, Postmark…) for real delivery.
 
 ---
 
@@ -91,26 +119,32 @@ publish/unpublish visibility, CSRF blocking, admin self-protection, password rot
 ### Salon owner
 1. `/register` — create an account (always provisioned as `salon_owner`; the client cannot choose a
    role). Google sign-in is available when `GOOGLE_CLIENT_ID` is configured.
-2. `/dashboard/onboarding` — salon name, unique website slug, contact + address. Slugs are validated
-   for format, reserved words and uniqueness; the API returns `409` on collision.
+2. `/dashboard/onboarding` — salon name, unique website slug, owner details, phone, complete address,
+   logo, hero image, weekly opening hours and a website template. Slugs are validated for format,
+   reserved words and uniqueness; the API returns `409` on collision.
 3. `/dashboard` — overview, setup checklist, publish status.
-4. `/dashboard/website` — brand identity, logo/cover upload, gallery, contact details, hero copy,
-   theme colours, slug and publish/unpublish controls.
-5. `/dashboard/services` — full CRUD for services (price in paise server-side, duration bounds).
-6. `/dashboard/staff` — full CRUD for team members, photo upload, specialties.
-7. `/dashboard/preview` — exactly the public rendering, private to the owner.
-8. `/dashboard/billing` — plan, status, renewal date (managed by the platform admin).
-9. `/dashboard/account` — password change and “sign out everywhere”.
+4. `/dashboard/website` — brand identity, logo/hero upload, gallery, contact details, hero copy,
+   template picker, opening hours, theme colours and the unique slug. Saves stay in Draft.
+5. `/dashboard/approval` — workflow stepper, blockers, submit/resubmit, publish/unpublish and the
+   full submission history with reviewer notes.
+6. `/dashboard/services` — full CRUD for services (price in paise server-side, duration bounds).
+7. `/dashboard/staff` — full CRUD for team members, photo upload, specialties.
+8. `/dashboard/preview` — the current draft rendering, private to the owner.
+9. `/dashboard/billing` — plan, status, renewal date (managed by the platform admin).
+10. `/dashboard/account` — password change and “sign out everywhere”.
 
 ### Super admin
-`/admin` — platform stats; `/admin/users` — create/disable accounts, change roles, reset passwords;
-`/admin/salons` — inspect any salon's profile, services, prices and team; edit website details; publish/unpublish on behalf of an owner; `/admin/subscriptions` —
-change plan/status/period or extend 30 days; `/admin/settings` — registration toggle, trial length,
-default plan, support email, maintenance message, audit log.
+`/admin` — platform stats including pending approvals; `/admin/approvals` — review queue with the
+submitted snapshot, approve / reject / request changes (with a required note); `/admin/users` —
+create/disable accounts, change roles, reset passwords; `/admin/salons` — inspect any salon's profile,
+services, prices and team; edit website details; publish/unpublish and suspend/reinstate;
+`/admin/subscriptions` — change plan/status/period or extend 30 days; `/admin/settings` —
+registration toggle, trial length, default plan, support email, maintenance message, audit log.
 
 ### Public visitor
-`/salon/:slug` renders only salons with `website_published = 1`. Unpublished or unknown slugs return
-the same 404 page, so drafts never leak. Inactive services and staff are filtered out.
+`/salon/:slug` renders only salons that are published, not suspended, and have an approved version.
+Draft, pending-only, rejected, suspended and unknown slugs all return the same 404 page, so
+unapproved content never leaks. Inactive services/staff and moderation fields are stripped.
 
 ---
 
@@ -129,19 +163,26 @@ All routes are JSON and cookie-authenticated. Writes require a same-origin `Orig
 | POST | `/logout` | auth | Revoke current session |
 | POST | `/logout-all` | auth | Revoke all sessions |
 | POST | `/password` | auth | Change password (re-issues session) |
+| POST | `/verify-email` | public | Consume a verification token |
+| POST | `/resend-verification` | auth | Re-send the verification email |
 
 ### Owner (`/api/salon`) — `salon_owner` only
-`GET /`, `POST /onboarding`, `PATCH /`, `POST /publish`, `POST /unpublish`, `GET /subscription`,
+`GET /` (includes `workflow` + version history), `POST /onboarding`, `PATCH /` (draft saves),
+`POST /submit`, `POST /publish`, `POST /unpublish`, `GET /versions`, `GET /subscription`,
 `GET|POST /services`, `PATCH|DELETE /services/:id`, `GET|POST /staff`, `PATCH|DELETE /staff/:id`,
 `POST /uploads?kind=logo|cover|gallery|staff` (raw image body, max 5 MB).
 
 ### Admin (`/api/admin`) — `super_admin` only
-`GET /overview`, `GET|POST /users`, `PATCH /users/:id`, `POST /users/:id/reset-password`,
+`GET /overview`, `GET /approvals`, `GET /approvals/:versionId`,
+`POST /approvals/:versionId/review` (`approve` | `reject` | `request_changes`),
+`GET /salons/:salonId/versions`,
+`GET|POST /users`, `PATCH /users/:id`, `POST /users/:id/reset-password`,
 `GET /salons`, `GET|PATCH /salons/:id`, `GET /subscriptions`, `PATCH /subscriptions/:id`,
 `GET|PATCH /settings`, `GET /audit-logs`.
 
 ### Public (`/api/public`) — no login
-`GET /salons` (published only), `GET /salons/:slug`, `GET /slug-available?slug=…`.
+`GET /salons` (live only), `GET /salons/:slug` (approved snapshot only), `GET /slug-available?slug=…`,
+`GET /templates`.
 
 ---
 
@@ -164,8 +205,13 @@ All routes are JSON and cookie-authenticated. Writes require a same-origin `Orig
   PNG/JPEG/WEBP/GIF by magic bytes and served with `X-Content-Type-Options: nosniff`.
 - **Headers:** CSP (Google sign-in allowlisted), `X-Frame-Options`, `Referrer-Policy`,
   `Permissions-Policy`, and HSTS in production.
-- **Audit log:** registrations, logins, salon/service/staff changes, publishes, admin actions and
-  settings edits are recorded with actor, target, IP and timestamp.
+- **Approvals:** `salon_versions` stores an immutable snapshot of each submission. The public site
+  reads the latest approved snapshot, so pending/rejected edits cannot leak. A unique partial index
+  guarantees only one pending submission per salon. Publishing re-checks approval server-side.
+- **Email verification:** 256-bit single-use token, only its hash stored, 24-hour expiry. Verified
+  email is required for submitting and publishing (Google accounts are verified by Google).
+- **Audit log:** registrations, logins, email verifications, submissions, approval decisions,
+  suspensions, salon/service/staff changes, publishes, admin actions and settings edits.
 
 ---
 
@@ -178,15 +224,18 @@ server/
   security.js       scrypt hashing, session tokens/cookies, rate limit, validators
   middleware.js     Security headers, CSRF, session loading, role/ownership guards
   google.js         Google ID token verification (JWKS)
+  workflow.js       Approval state machine, snapshots, publish gating
+  migrations.js     Idempotent ALTERs + legacy backfills
+  mailer.js         Outbox file mailer + verification/review templates
   routes/
-    auth.js         Register / login / Google / session / password
-    salon.js        Owner dashboard API (tenant-scoped)
-    admin.js        Super admin API
-    public.js       Published salon websites
-  tests/api.test.js End-to-end API + RBAC tests
+    auth.js         Register / login / Google / verification / session / password
+    salon.js        Owner dashboard API (tenant-scoped) + submit/publish
+    admin.js        Super admin API + approval review + suspension
+    public.js       Approved salon websites only
+  tests/api.test.js End-to-end API, RBAC & approval-workflow tests
 src/
   components/auth/       Login, register, route protection
-  components/dashboard/  Owner dashboard pages
+  components/dashboard/  Owner dashboard pages (incl. approval status & history)
   components/admin/      Super admin console pages
   components/site/       Public salon website renderer
   context/AuthContext.tsx
@@ -199,6 +248,7 @@ data/                    SQLite database + uploads (gitignored)
 ## 8. Deployment checklist
 
 1. Set a strong `SEED_ADMIN_PASSWORD` (or create the admin interactively) and remove demo accounts.
+   Set `APP_URL` so verification links point at your public host, and connect a real mail provider.
 2. Set `NODE_ENV=production` so cookies are `Secure`; terminate TLS at your proxy/load balancer.
 3. Back up `DATA_DIR` (SQLite file + uploads). WAL mode is enabled for concurrency.
 4. Configure `GOOGLE_CLIENT_ID` with your production origin if Google sign-in is required.

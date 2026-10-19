@@ -84,7 +84,8 @@ export const PreviewPage: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#D09A40]/30 bg-[#D09A40]/10 px-4 py-3">
         <p className="flex items-center gap-2 text-sm text-[#6d4f14]">
           <Eye className="h-4 w-4" />
-          Preview mode — this page is private to your account.
+          Preview of your <strong>current draft</strong> — private to your account. The public site shows the last
+          approved version.
         </p>
         <div className="flex items-center gap-2">
           <Badge tone={salon?.published ? 'green' : 'amber'}>{salon?.published ? 'Published' : 'Draft'}</Badge>

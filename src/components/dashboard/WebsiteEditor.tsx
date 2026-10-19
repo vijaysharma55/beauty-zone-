@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api, errorMessage } from '../../lib/api';
-import type { GalleryImage, Salon } from '../../types/auth';
+import type { GalleryImage, OpeningHours, Salon, TemplateId, WebsiteTemplate } from '../../types/auth';
 import {
   Alert,
   Badge,
@@ -28,6 +28,7 @@ import {
   Textarea,
 } from '../ui';
 import { ImageUploader } from './ImageUploader';
+import { StatusBadge, WorkflowActions } from './WorkflowStatus';
 
 interface FormState {
   name: string;
@@ -49,7 +50,37 @@ interface FormState {
   mapUrl: string;
   instagram: string;
   facebook: string;
+  ownerName: string;
+  ownerPhone: string;
+  templateId: TemplateId;
 }
+
+const DAY_LABELS: Record<OpeningHours['day'], string> = {
+  mon: 'Monday',
+  tue: 'Tuesday',
+  wed: 'Wednesday',
+  thu: 'Thursday',
+  fri: 'Friday',
+  sat: 'Saturday',
+  sun: 'Sunday',
+};
+
+const DEFAULT_FORM_TIMINGS: OpeningHours[] = [
+  { day: 'mon', open: '10:00', close: '20:00', closed: false },
+  { day: 'tue', open: '10:00', close: '20:00', closed: false },
+  { day: 'wed', open: '10:00', close: '20:00', closed: false },
+  { day: 'thu', open: '10:00', close: '20:00', closed: false },
+  { day: 'fri', open: '10:00', close: '21:00', closed: false },
+  { day: 'sat', open: '09:00', close: '21:00', closed: false },
+  { day: 'sun', open: '11:00', close: '18:00', closed: false },
+];
+
+const TEMPLATE_FALLBACK: WebsiteTemplate[] = [
+  { id: 'luxe', name: 'Luxe Gold', description: 'Rich navy + gold editorial layout with image-led hero.', premium: false },
+  { id: 'minimal', name: 'Minimal Ivory', description: 'Airy, typography-first layout for modern studios.', premium: false },
+  { id: 'noir', name: 'Noir Studio', description: 'High-contrast dark hero with bold service cards.', premium: true },
+  { id: 'blush', name: 'Blush Atelier', description: 'Soft rose palette with a gentle, romantic feel.', premium: false },
+];
 
 const toForm = (salon: Salon): FormState => ({
   name: salon.name,
@@ -71,12 +102,17 @@ const toForm = (salon: Salon): FormState => ({
   mapUrl: salon.mapUrl,
   instagram: salon.instagram,
   facebook: salon.facebook,
+  ownerName: salon.ownerName || '',
+  ownerPhone: salon.ownerPhone || '',
+  templateId: salon.templateId || 'luxe',
 });
 
 export const WebsiteEditor: React.FC = () => {
-  const { salon, refresh } = useAuth();
+  const { salon, refresh, workflow } = useAuth();
   const [form, setForm] = useState<FormState | null>(salon ? toForm(salon) : null);
   const [gallery, setGallery] = useState<GalleryImage[]>(salon?.gallery || []);
+  const [timings, setTimings] = useState<OpeningHours[]>(salon?.timings || []);
+  const [templates, setTemplates] = useState<WebsiteTemplate[]>(TEMPLATE_FALLBACK);
   const [theme, setTheme] = useState({
     accent: salon?.theme?.accent || '#D09A40',
     primary: salon?.theme?.primary || '#0F172A',
@@ -87,14 +123,21 @@ export const WebsiteEditor: React.FC = () => {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
-  const [publishing, setPublishing] = useState(false);
   const [uploadingGallery, setUploadingGallery] = useState(false);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    api
+      .get<{ templates: WebsiteTemplate[] }>('/public/templates')
+      .then((res) => setTemplates(res.templates))
+      .catch(() => setTemplates(TEMPLATE_FALLBACK));
+  }, []);
 
   useEffect(() => {
     if (!salon) return;
     setForm(toForm(salon));
     setGallery(salon.gallery || []);
+    setTimings(salon.timings || []);
     setTheme({
       accent: salon.theme?.accent || '#D09A40',
       primary: salon.theme?.primary || '#0F172A',
@@ -107,6 +150,9 @@ export const WebsiteEditor: React.FC = () => {
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => (prev ? { ...prev, [key]: value } : prev));
+
+  const updateTiming = (index: number, patch: Partial<OpeningHours>) =>
+    setTimings((prev) => prev.map((entry, i) => (i === index ? { ...entry, ...patch } : entry)));
 
   const checkSlug = async (slug: string) => {
     if (!slug || slug.length < 3) {
@@ -141,6 +187,7 @@ export const WebsiteEditor: React.FC = () => {
         ...form,
         gallery,
         theme,
+        timings,
       });
       await refresh();
       setNotice('Changes saved successfully.');
@@ -149,22 +196,6 @@ export const WebsiteEditor: React.FC = () => {
       setError(errorMessage(err));
     } finally {
       setSaving(false);
-    }
-  };
-
-  const togglePublish = async () => {
-    setError('');
-    setPublishing(true);
-    try {
-      // Persist any pending edits first so the published site always matches this form.
-      await api.patch('/salon', { ...form, gallery, theme });
-      if (salon.published) await api.post('/salon/unpublish');
-      else await api.post('/salon/publish');
-      await refresh();
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setPublishing(false);
     }
   };
 
@@ -212,24 +243,23 @@ export const WebsiteEditor: React.FC = () => {
       {error && <Alert tone="error">{error}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}
 
-      {/* Publish state */}
+      {/* Approval status */}
       <Card className="p-5">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-semibold text-slate-900">Publishing</h2>
-              {salon.published ? <Badge tone="green">Live</Badge> : <Badge tone="amber">Draft</Badge>}
+              <h2 className="text-base font-semibold text-slate-900">Approval & publishing</h2>
+              <StatusBadge status={workflow?.status || salon.status} suspended={workflow?.suspended || salon.suspended} />
             </div>
             <p className="mt-1 max-w-xl text-sm text-slate-500">
-              {salon.published
-                ? 'Your website is visible to anyone with the link. Unpublishing hides it immediately.'
-                : 'Publish to make your unique website URL public. You can unpublish at any time.'}
+              Save your work as a draft any time. Only an approved version can be published, and the live site always
+              shows the last approved content.
             </p>
             <code className="mt-2 inline-block rounded-lg bg-slate-100 px-2.5 py-1 text-xs text-slate-700">
               {liveUrl}
             </code>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {salon.published && (
               <a href={`/salon/${salon.slug}`} target="_blank" rel="noreferrer">
                 <Button variant="secondary">
@@ -237,9 +267,9 @@ export const WebsiteEditor: React.FC = () => {
                 </Button>
               </a>
             )}
-            <Button variant={salon.published ? 'secondary' : 'primary'} onClick={togglePublish} loading={publishing}>
-              <Rocket className="h-4 w-4" />
-              {salon.published ? 'Unpublish website' : 'Publish website'}
+            <WorkflowActions salon={salon} />
+            <Button variant="gold" onClick={save} loading={saving}>
+              <Save className="h-4 w-4" /> Save draft
             </Button>
           </div>
         </div>
@@ -306,6 +336,119 @@ export const WebsiteEditor: React.FC = () => {
               placeholder="Award-winning bridal makeovers in the heart of the city."
             />
           </Field>
+        </div>
+      </Card>
+
+      {/* Template */}
+      <Card>
+        <CardHeader
+          title="Website template"
+          description="Pick a starting layout. Your brand colours and content are applied on top of it."
+        />
+        <div className="grid gap-3 p-5 sm:grid-cols-2">
+          {templates.map((template) => {
+            const selected = form.templateId === template.id;
+            return (
+              <button
+                key={template.id}
+                type="button"
+                onClick={() => set('templateId', template.id)}
+                aria-pressed={selected}
+                className={[
+                  'rounded-xl border p-4 text-left transition-colors',
+                  selected
+                    ? 'border-[#D09A40] bg-[#D09A40]/10 ring-1 ring-[#D09A40]/40'
+                    : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50',
+                ].join(' ')}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-slate-900">{template.name}</span>
+                  {selected ? (
+                    <Check className="h-4 w-4 text-[#8a641f]" />
+                  ) : template.premium ? (
+                    <Badge tone="gold">Premium</Badge>
+                  ) : null}
+                </div>
+                <p className="mt-1 text-xs text-slate-500">{template.description}</p>
+                <TemplatePreview id={template.id} theme={theme} />
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* Owner & timings */}
+      <Card>
+        <CardHeader
+          title="Owner details & opening hours"
+          description="Shown on your website so clients know who to ask for and when you are open."
+        />
+        <div className="grid gap-4 p-5 sm:grid-cols-2">
+          <Field label="Owner / manager name" htmlFor="owner-name">
+            <Input id="owner-name" value={form.ownerName} onChange={(e) => set('ownerName', e.target.value)} />
+          </Field>
+          <Field label="Owner contact number" htmlFor="owner-phone">
+            <Input
+              id="owner-phone"
+              value={form.ownerPhone}
+              onChange={(e) => set('ownerPhone', e.target.value)}
+              inputMode="tel"
+            />
+          </Field>
+        </div>
+        <div className="border-t border-slate-100 px-5 py-4">
+          <p className="text-sm font-medium text-slate-700">Opening hours</p>
+          <p className="mb-3 text-xs text-slate-500">Times use 24-hour format. Mark a day closed if you do not open.</p>
+          <div className="space-y-2">
+            {timings.length === 0 && (
+              <p className="text-xs text-slate-500">No hours set yet — add your weekly schedule.</p>
+            )}
+            {timings.map((entry, index) => (
+              <div key={entry.day} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
+                <span className="w-24 text-sm font-medium text-slate-700">{DAY_LABELS[entry.day] || entry.day}</span>
+                <input
+                  type="time"
+                  value={entry.open}
+                  disabled={entry.closed}
+                  onChange={(e) => updateTiming(index, { open: e.target.value })}
+                  className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                  aria-label={`${entry.day} opening time`}
+                />
+                <span className="text-slate-400">to</span>
+                <input
+                  type="time"
+                  value={entry.close}
+                  disabled={entry.closed}
+                  onChange={(e) => updateTiming(index, { close: e.target.value })}
+                  className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                  aria-label={`${entry.day} closing time`}
+                />
+                <label className="ml-auto flex items-center gap-1.5 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={entry.closed}
+                    onChange={(e) => updateTiming(index, { closed: e.target.checked })}
+                    className="h-3.5 w-3.5 rounded border-slate-300"
+                  />
+                  Closed
+                </label>
+              </div>
+            ))}
+          </div>
+          {timings.length < 7 && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="mt-3"
+              onClick={() =>
+                setTimings(
+                  DEFAULT_FORM_TIMINGS.filter((day) => !timings.some((entry) => entry.day === day.day))
+                )
+              }
+            >
+              Add missing days
+            </Button>
+          )}
         </div>
       </Card>
 
@@ -510,6 +653,34 @@ export const WebsiteEditor: React.FC = () => {
             <Save className="h-4 w-4" /> Save changes
           </Button>
         </div>
+      </div>
+    </div>
+  );
+};
+
+/** Small abstract preview so owners can compare templates at a glance. */
+const TemplatePreview: React.FC<{ id: TemplateId; theme: { accent: string; primary: string; background: string; surface: string } }> = ({
+  id,
+  theme,
+}) => {
+  const palettes: Record<TemplateId, { bg: string; bar: string; block: string }> = {
+    luxe: { bg: theme.primary, bar: theme.accent, block: 'rgba(255,255,255,0.18)' },
+    minimal: { bg: theme.surface, bar: theme.primary, block: 'rgba(15,23,42,0.08)' },
+    noir: { bg: '#0b0b0f', bar: theme.accent, block: 'rgba(255,255,255,0.14)' },
+    blush: { bg: '#FBEDEC', bar: '#C97C7C', block: 'rgba(201,124,124,0.2)' },
+  };
+  const palette = palettes[id] || palettes.luxe;
+  return (
+    <div className="mt-3 overflow-hidden rounded-lg border border-black/5" aria-hidden="true">
+      <div className="h-14 p-2" style={{ backgroundColor: palette.bg }}>
+        <div className="h-1.5 w-10 rounded-full" style={{ backgroundColor: palette.bar }} />
+        <div className="mt-2 h-2 w-24 rounded-full" style={{ backgroundColor: palette.bar, opacity: 0.85 }} />
+        <div className="mt-1.5 h-1.5 w-16 rounded-full" style={{ backgroundColor: palette.bar, opacity: 0.4 }} />
+      </div>
+      <div className="grid grid-cols-3 gap-1 p-2" style={{ backgroundColor: theme.background }}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="h-6 rounded" style={{ backgroundColor: palette.block }} />
+        ))}
       </div>
     </div>
   );

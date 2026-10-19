@@ -15,22 +15,27 @@ import {
   Globe,
   ShieldCheck,
   X,
+  FileCheck2,
+  Rocket,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Badge, Button, cn } from '../ui';
+import { EmailVerificationBanner } from './VerifyEmailPage';
+import { STATUS_META, StatusBadge } from './WorkflowStatus';
 
 const navItems = [
   { to: '/dashboard', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/dashboard/website', label: 'My Website', icon: Globe },
   { to: '/dashboard/services', label: 'Services & Prices', icon: Scissors },
   { to: '/dashboard/staff', label: 'Team', icon: Users },
+  { to: '/dashboard/approval', label: 'Approvals', icon: FileCheck2 },
   { to: '/dashboard/preview', label: 'Preview', icon: Eye },
   { to: '/dashboard/billing', label: 'Subscription', icon: CreditCard },
   { to: '/dashboard/account', label: 'Account & Security', icon: Settings },
 ];
 
 export const DashboardLayout: React.FC = () => {
-  const { user, salon, subscription, logout } = useAuth();
+  const { user, salon, subscription, workflow, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -62,7 +67,10 @@ export const DashboardLayout: React.FC = () => {
         <p className="truncate text-sm font-semibold text-slate-900">{salon?.name || 'Your salon'}</p>
         <p className="truncate text-xs text-slate-500">{salon ? `/salon/${salon.slug}` : 'Onboarding in progress'}</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {salon?.published ? <Badge tone="green">Live</Badge> : <Badge tone="amber">Draft</Badge>}
+          {salon && (
+            <StatusBadge status={workflow?.status || salon.status} suspended={workflow?.suspended || salon.suspended} />
+          )}
+          {salon?.published && <Badge tone="green">Live</Badge>}
           {subscription && (
             <Badge tone="gold">
               {subscription.plan.charAt(0).toUpperCase() + subscription.plan.slice(1)} · {subscription.status}
@@ -162,11 +170,23 @@ export const DashboardLayout: React.FC = () => {
             <div>
               <p className="text-sm font-semibold text-slate-900">Owner dashboard</p>
               <p className="hidden text-xs text-slate-500 sm:block">
-                {salon?.published ? 'Your website is live and accepting visitors.' : 'Your website is not published yet.'}
+                {salon?.suspended
+                  ? 'Your website is suspended by the platform.'
+                  : salon?.published
+                    ? 'Your website is live and accepting visitors.'
+                    : (STATUS_META[workflow?.status || salon?.status || 'draft'] || STATUS_META.draft).description}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {workflow?.status === 'approved' && !salon?.published && (
+              <Link
+                to="/dashboard/approval"
+                className="hidden items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 sm:inline-flex"
+              >
+                <Rocket className="h-3.5 w-3.5" /> Approved — publish now
+              </Link>
+            )}
             {salon?.published && (
               <a
                 href={`/salon/${salon.slug}`}
@@ -178,15 +198,17 @@ export const DashboardLayout: React.FC = () => {
               </a>
             )}
             <Link
-              to="/dashboard/website"
+              to={workflow?.status === 'approved' || workflow?.status === 'pending' ? '/dashboard/approval' : '/dashboard/website'}
               className="inline-flex items-center gap-1.5 rounded-lg bg-[#D09A40] px-3 py-2 text-xs font-semibold text-slate-900 hover:bg-[#DCA54A]"
             >
-              <Calendar className="h-3.5 w-3.5" /> Manage website
+              <Calendar className="h-3.5 w-3.5" />
+              {workflow?.status === 'approved' ? 'Publish website' : workflow?.status === 'pending' ? 'Review status' : 'Manage website'}
             </Link>
           </div>
         </header>
 
         <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:py-8">
+          <EmailVerificationBanner />
           <Outlet />
         </main>
       </div>

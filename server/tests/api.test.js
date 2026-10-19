@@ -347,10 +347,11 @@ test('super admin can manage users, salons and settings', async () => {
   assert.ok(salons.data.salons.length >= 2);
 
   const salon = salons.data.salons.find((s) => s.slug === 'second-studio');
-  const pub = await admin.patch(`/api/admin/salons/${salon.id}`, { published: true });
-  assert.equal(pub.status, 200);
-  assert.equal(pub.data.salon.published, true);
-  assert.equal((await fetch(`${BASE}/api/public/salons/second-studio`)).status, 200);
+
+  // Server-side approval gate: nothing can be published before an approved version exists.
+  const earlyPublish = await admin.patch(`/api/admin/salons/${salon.id}`, { published: true });
+  assert.equal(earlyPublish.status, 400);
+  assert.equal((await fetch(`${BASE}/api/public/salons/second-studio`)).status, 404);
 
   const settings = await admin.patch('/api/admin/settings', {
     platformName: 'BeautyZone Test',
@@ -369,6 +370,281 @@ test('super admin can manage users, salons and settings', async () => {
   assert.equal(reg.status, 403);
 
   await admin.patch('/api/admin/settings', { allowRegistrations: true });
+});
+
+/* ------------------------------------------------------------------ */
+/* Onboarding & approval workflow                                      */
+/* ------------------------------------------------------------------ */
+
+const flow = { client: null, admin: null, salon: null, versionId: null };
+
+test('new owners must verify their email before submitting', async () => {
+  flow.client = makeClient();
+  const reg = await flow.client.post('/api/auth/register', {
+    name: 'Flow Owner',
+    email: 'flow@test.local',
+    password: 'Flow@12345',
+  });
+  assert.equal(reg.status, 201);
+  assert.equal(reg.data.user.emailVerified, false);
+  assert.ok(reg.data.devVerificationUrl, 'dev verification link is exposed outside production');
+  flow.verificationUrl = reg.data.devVerificationUrl;
+
+  const onboarding = await flow.client.post('/api/salon/onboarding', {
+    name: 'Flow Studio',
+    slug: 'flow-studio',
+    city: 'Ajmer',
+    addressLine: '1 Flow Road',
+    phone: '+91 90000 33333',
+    email: 'flow@test.local',
+    ownerName: 'Flow Owner',
+    ownerPhone: '+91 90000 33333',
+    templateId: 'blush',
+    timings: [
+      { day: 'mon', open: '10:00', close: '19:00', closed: false },
+      { day: 'sun', open: '11:00', close: '16:00', closed: true },
+    ],
+  });
+  assert.equal(onboarding.status, 201);
+  assert.equal(onboarding.data.salon.status, 'draft');
+  assert.equal(onboarding.data.salon.templateId, 'blush');
+  assert.equal(onboarding.data.salon.timings.length, 2);
+  flow.salon = onboarding.data.salon;
+
+  const rejected = await flow.client.post('/api/salon/services', {
+    name: 'Signature Cut',
+    category: 'hair',
+    pricePaise: 45000,
+    durationMinutes: 45,
+  });
+  assert.equal(rejected.status, 201);
+
+  const early = await flow.client.post('/api/salon/submit');
+  assert.equal(early.status, 400);
+  assert.equal(early.data.code, 'EMAIL_UNVERIFIED');
+
+  const publishEarly = await flow.client.post('/api/salon/publish');
+  assert.equal(publishEarly.status, 403);
+  assert.equal(publishEarly.data.code, 'EMAIL_UNVERIFIED');
+});
+
+test('invalid opening hours and templates are rejected', async () => {
+  const badHours = await flow.client.patch('/api/salon', {
+    timings: [{ day: 'mon', open: '18:00', close: '09:00', closed: false }],
+  });
+  assert.equal(badHours.status, 400);
+  const badTemplate = await flow.client.patch('/api/salon', { templateId: 'not-a-template' });
+  assert.equal(badTemplate.status, 400);
+});
+
+test('email verification token works once', async () => {
+  const token = new URL(flow.verificationUrl).searchParams.get('token');
+  const ok = await flow.client.post('/api/auth/verify-email', { token });
+  assert.equal(ok.status, 200);
+  const me = await flow.client.get('/api/auth/me');
+  assert.equal(me.data.user.emailVerified, true);
+
+  const reused = await makeClient().post('/api/auth/verify-email', { token });
+  assert.equal(reused.status, 400);
+});
+
+test('owner submits a draft and cannot publish until approved', async () => {
+  const submit = await flow.client.post('/api/salon/submit');
+  assert.equal(submit.status, 201);
+  assert.equal(submit.data.version.status, 'pending');
+  assert.equal(submit.data.salon.status, 'pending');
+  flow.versionId = submit.data.version.id;
+
+  const duplicate = await flow.client.post('/api/salon/submit');
+  assert.equal(duplicate.status, 409);
+
+  const publish = await flow.client.post('/api/salon/publish');
+  assert.equal(publish.status, 409);
+  assert.equal(publish.data.code, 'APPROVAL_REQUIRED');
+
+  assert.equal((await fetch(`${BASE}/api/public/salons/flow-studio`)).status, 404);
+
+  const status = await flow.client.get('/api/salon');
+  assert.equal(status.data.workflow.status, 'pending');
+  assert.equal(status.data.workflow.pendingVersion.id, flow.versionId);
+  assert.equal(status.data.versions.length, 1);
+});
+
+test('owner cannot see another salon’s submission', async () => {
+  const other = await flow.client.get('/api/salon/versions');
+  assert.equal(other.status, 200);
+  assert.equal(other.data.versions.length, 1);
+  assert.equal(other.data.versions[0].salonId, flow.salon.id);
+});
+
+test('admin review requires a note when rejecting or requesting changes', async () => {
+  flow.admin = await loginAs('admin@test.local', 'Admin@12345');
+  const pending = await flow.admin.get('/api/admin/approvals?status=pending');
+  assert.equal(pending.status, 200);
+  assert.equal(pending.data.pendingCount, 1);
+  assert.equal(pending.data.approvals[0].id, flow.versionId);
+  assert.equal(pending.data.approvals[0].owner.emailVerified, true);
+
+  const snapshot = await flow.admin.get(`/api/admin/approvals/${flow.versionId}`);
+  assert.equal(snapshot.status, 200);
+  assert.equal(snapshot.data.snapshot.salon.name, 'Flow Studio');
+  assert.equal(snapshot.data.snapshot.salon.templateId, 'blush');
+  assert.equal(snapshot.data.snapshot.services.length, 1);
+
+  const noNote = await flow.admin.post(`/api/admin/approvals/${flow.versionId}/review`, {
+    action: 'request_changes',
+  });
+  assert.equal(noNote.status, 400);
+
+  const badAction = await flow.admin.post(`/api/admin/approvals/${flow.versionId}/review`, {
+    action: 'publish-now',
+    note: 'x',
+  });
+  assert.equal(badAction.status, 400);
+});
+
+test('requesting changes keeps the site offline and lets the owner resubmit', async () => {
+  const review = await flow.admin.post(`/api/admin/approvals/${flow.versionId}/review`, {
+    action: 'request_changes',
+    note: 'Add a hero image and one more service.',
+  });
+  assert.equal(review.status, 200);
+  assert.equal(review.data.version.status, 'changes_requested');
+  assert.equal(review.data.salon.status, 'changes_requested');
+
+  const ownerView = await flow.client.get('/api/salon');
+  assert.equal(ownerView.data.workflow.status, 'changes_requested');
+  assert.match(ownerView.data.workflow.reviewNote, /hero image/);
+  assert.equal(ownerView.data.workflow.canSubmit, true);
+  assert.equal((await fetch(`${BASE}/api/public/salons/flow-studio`)).status, 404);
+
+  // Editing is still allowed while rejected/changes requested.
+  const edit = await flow.client.patch('/api/salon', { coverImage: 'https://example.com/hero.jpg' });
+  assert.equal(edit.status, 200);
+
+  const resubmit = await flow.client.post('/api/salon/submit');
+  assert.equal(resubmit.status, 201);
+  assert.equal(resubmit.data.version.version, 2);
+  flow.versionId = resubmit.data.version.id;
+});
+
+test('approval unlocks publishing with the approved snapshot', async () => {
+  const approve = await flow.admin.post(`/api/admin/approvals/${flow.versionId}/review`, {
+    action: 'approve',
+    note: 'Looks great — approved.',
+  });
+  assert.equal(approve.status, 200);
+  assert.equal(approve.data.version.status, 'approved');
+  assert.equal(approve.data.salon.status, 'approved');
+
+  const publish = await flow.client.post('/api/salon/publish');
+  assert.equal(publish.status, 200);
+  assert.equal(publish.data.salon.published, true);
+
+  const publicRes = await fetch(`${BASE}/api/public/salons/flow-studio`);
+  assert.equal(publicRes.status, 200);
+  const body = await publicRes.json();
+  assert.equal(body.salon.name, 'Flow Studio');
+  assert.equal(body.salon.coverImage, 'https://example.com/hero.jpg');
+  assert.equal(body.salon.websiteVersion, 2);
+  assert.equal(body.salon.status, undefined, 'moderation status is internal');
+  assert.equal(body.salon.reviewNote, undefined, 'review notes must not leak publicly');
+  assert.equal(body.salon.suspendedReason, undefined);
+  assert.equal(body.salon.ownerId, undefined);
+  assert.equal(body.services.length, 1);
+});
+
+test('edits after approval never leak until the new version is approved', async () => {
+  const secret = 'SECRET-EDIT-' + Date.now();
+  const edit = await flow.client.patch('/api/salon', { tagline: secret });
+  assert.equal(edit.status, 200);
+
+  const publicBody = await (await fetch(`${BASE}/api/public/salons/flow-studio`)).json();
+  assert.notEqual(publicBody.salon.tagline, secret, 'unapproved edits must not be published');
+  assert.equal(publicBody.salon.websiteVersion, 2);
+
+  const ownerView = await flow.client.get('/api/salon');
+  assert.equal(ownerView.data.workflow.hasUnpublishedChanges, true);
+
+  const submit = await flow.client.post('/api/salon/submit');
+  assert.equal(submit.status, 201);
+  assert.equal(submit.data.version.version, 3);
+  flow.versionId = submit.data.version.id;
+
+  // Still serving the previously approved snapshot while pending.
+  const stillOld = await (await fetch(`${BASE}/api/public/salons/flow-studio`)).json();
+  assert.notEqual(stillOld.salon.tagline, secret);
+
+  const approve = await flow.admin.post(`/api/admin/approvals/${flow.versionId}/review`, {
+    action: 'approve',
+    note: 'Approved update',
+  });
+  assert.equal(approve.status, 200);
+  const nowLive = await (await fetch(`${BASE}/api/public/salons/flow-studio`)).json();
+  assert.equal(nowLive.salon.tagline, secret);
+  assert.equal(nowLive.salon.websiteVersion, 3);
+});
+
+test('rejecting keeps the owner able to edit and resubmit', async () => {
+  await flow.client.patch('/api/salon', { tagline: 'Rejected edition' });
+  const submit = await flow.client.post('/api/salon/submit');
+  assert.equal(submit.status, 201);
+  const versionId = submit.data.version.id;
+
+  const reject = await flow.admin.post(`/api/admin/approvals/${versionId}/review`, {
+    action: 'reject',
+    note: 'Content does not meet our guidelines.',
+  });
+  assert.equal(reject.status, 200);
+  assert.equal(reject.data.salon.status, 'rejected');
+  assert.equal(reject.data.salon.published, false, 'rejecting takes the site offline');
+
+  const publicStatus = await fetch(`${BASE}/api/public/salons/flow-studio`);
+  assert.equal(publicStatus.status, 404);
+
+  const ownerView = await flow.client.get('/api/salon');
+  assert.equal(ownerView.data.workflow.status, 'rejected');
+  assert.equal(ownerView.data.workflow.canSubmit, true);
+});
+
+test('suspension blocks publishing and public access until reinstated', async () => {
+  const salons = await flow.admin.get('/api/admin/salons');
+  const salon = salons.data.salons.find((s) => s.slug === 'flow-studio');
+
+  const suspendNoReason = await flow.admin.patch(`/api/admin/salons/${salon.id}`, { suspended: true });
+  assert.equal(suspendNoReason.status, 200);
+  assert.ok(suspendNoReason.data.salon.suspendedReason, 'a default reason is stored');
+
+  const suspended = await flow.admin.patch(`/api/admin/salons/${salon.id}`, {
+    suspended: true,
+    suspendReason: 'Policy violation reported by a client',
+  });
+  assert.equal(suspended.status, 200);
+  assert.equal(suspended.data.salon.suspended, true);
+  assert.equal(suspended.data.salon.published, false);
+  assert.equal((await fetch(`${BASE}/api/public/salons/flow-studio`)).status, 404);
+
+  const ownerPublish = await flow.client.post('/api/salon/publish');
+  assert.equal(ownerPublish.status, 403);
+  assert.equal(ownerPublish.data.code, 'SUSPENDED');
+
+  const ownerSubmit = await flow.client.post('/api/salon/submit');
+  assert.equal(ownerSubmit.status, 400);
+  assert.equal(ownerSubmit.data.code, 'SUSPENDED');
+
+  const reinstated = await flow.admin.patch(`/api/admin/salons/${salon.id}`, { suspended: false });
+  assert.equal(reinstated.status, 200);
+  assert.equal(reinstated.data.salon.suspended, false);
+});
+
+test('admin approval decisions are recorded in the audit log', async () => {
+  const logs = await flow.admin.get('/api/admin/audit-logs');
+  const actions = logs.data.logs.map((entry) => entry.action);
+  assert.ok(actions.includes('admin.submission_approve'));
+  assert.ok(actions.includes('admin.submission_request_changes'));
+  assert.ok(actions.includes('admin.submission_reject'));
+  assert.ok(actions.includes('salon.submitted_for_review'));
+  assert.ok(actions.includes('auth.email_verified'));
 });
 
 test('admin can inspect and edit any published website', async () => {

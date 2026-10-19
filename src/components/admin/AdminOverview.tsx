@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Building2, CreditCard, ExternalLink, Globe, IndianRupee, Users } from 'lucide-react';
+import { Building2, ClipboardCheck, CreditCard, ExternalLink, Globe, IndianRupee, Users } from 'lucide-react';
 import { api, errorMessage } from '../../lib/api';
 import { Alert, Badge, Card, CardHeader, PageHeader, StatCard, formatCurrency, formatDate } from '../ui';
 
@@ -13,6 +13,8 @@ interface OverviewResponse {
     services: number;
     activeSubscriptions: number;
     mrrPaise: number;
+    pendingApprovals: number;
+    suspended: number;
   };
   recentSalons: Array<{
     id: string;
@@ -51,7 +53,13 @@ export const AdminOverview: React.FC = () => {
 
       {error && <Alert tone="error">{error}</Alert>}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <StatCard
+          label="Pending approvals"
+          value={loading ? '—' : data?.stats.pendingApprovals ?? 0}
+          hint="Websites awaiting review"
+          icon={<ClipboardCheck className="h-5 w-5" />}
+        />
         <StatCard
           label="Salon owners"
           value={loading ? '—' : data?.stats.owners ?? 0}
@@ -146,6 +154,10 @@ export const AdminOverview: React.FC = () => {
                 <dt className="text-slate-500">Admin accounts</dt>
                 <dd className="font-semibold text-slate-900">{data?.stats.admins ?? '—'}</dd>
               </div>
+              <div className="flex items-center justify-between">
+                <dt className="text-slate-500">Suspended salons</dt>
+                <dd className="font-semibold text-slate-900">{data?.stats.suspended ?? '—'}</dd>
+              </div>
             </dl>
           </Card>
 
@@ -157,12 +169,14 @@ export const AdminOverview: React.FC = () => {
               <li>• Manage plans, billing periods and platform settings.</li>
               <li>• Review the audit trail of sensitive actions.</li>
             </ul>
-            <Link
-              to="/admin/users"
-              className="mt-3 inline-block text-xs font-semibold text-[#8a641f] hover:underline"
-            >
-              Manage users →
-            </Link>
+            <div className="mt-3 flex gap-3">
+              <Link to="/admin/approvals" className="text-xs font-semibold text-[#8a641f] hover:underline">
+                Review submissions →
+              </Link>
+              <Link to="/admin/users" className="text-xs font-semibold text-[#8a641f] hover:underline">
+                Manage users →
+              </Link>
+            </div>
           </Card>
         </div>
       </div>

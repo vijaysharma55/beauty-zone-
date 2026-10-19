@@ -27,6 +27,16 @@ import {
   sanitizeText,
 } from '../security.js';
 import { requireAuth, requireRole, asyncHandler } from '../middleware.js';
+import {
+  workflowInfo,
+  reviewSubmission,
+  serializeVersion,
+  getPendingVersion,
+  getApprovedVersion,
+  hashSnapshot,
+  buildSalonSnapshot,
+} from '../workflow.js';
+import { sendMail, reviewNotificationEmail } from '../mailer.js';
 
 export const adminRouter = Router();
 
@@ -50,6 +60,8 @@ adminRouter.get('/overview', (req, res) => {
       published: count('SELECT COUNT(*) AS n FROM salons WHERE website_published = 1'),
       services: count('SELECT COUNT(*) AS n FROM services'),
       activeSubscriptions: count("SELECT COUNT(*) AS n FROM subscriptions WHERE status IN ('active','trialing')"),
+      pendingApprovals: count("SELECT COUNT(*) AS n FROM salon_versions WHERE status = 'pending'"),
+      suspended: count('SELECT COUNT(*) AS n FROM salons WHERE suspended = 1'),
       mrrPaise: db
         .prepare(
           `SELECT COALESCE(SUM(CASE plan WHEN 'starter' THEN 149900 WHEN 'pro' THEN 299900 WHEN 'elite' THEN 599900 ELSE 0 END), 0) AS n
@@ -86,7 +98,7 @@ adminRouter.get('/users', (req, res) => {
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const rows = db
     .prepare(
-      `SELECT u.*, s.id AS salon_id, s.name AS salon_name, s.slug AS salon_slug, s.website_published,
+      `SELECT u.*, s.id AS salon_id, s.name AS salon_name, s.slug AS salon_slug, s.website_published, s.status AS salon_status, s.suspended,
               sub.plan AS plan, sub.status AS sub_status
        FROM users u
        LEFT JOIN salons s ON s.owner_id = u.id
@@ -100,7 +112,14 @@ adminRouter.get('/users', (req, res) => {
     users: rows.map((row) => ({
       ...publicUser(row),
       salon: row.salon_id
-        ? { id: row.salon_id, name: row.salon_name, slug: row.salon_slug, published: !!row.website_published }
+        ? {
+            id: row.salon_id,
+            name: row.salon_name,
+            slug: row.salon_slug,
+            published: !!row.website_published,
+            status: row.salon_status,
+            suspended: !!row.suspended,
+          }
         : null,
       subscription: row.plan ? { plan: row.plan, status: row.sub_status } : null,
     })),
@@ -226,8 +245,10 @@ adminRouter.get('/salons/:salonId', (req, res) => {
     )
     .get(req.params.salonId);
   if (!row) return res.status(404).json({ error: 'Salon not found' });
+  const owner = db.prepare('SELECT * FROM users WHERE id = ?').get(row.owner_id);
   res.json({
     salon: serializeSalon(row, { includeOwner: true }),
+    workflow: workflowInfo(row, owner).workflow,
     services: getServicesForSalon(row.id).map(serializeService),
     staff: getStaffForSalon(row.id).map(serializeStaff),
     subscription: serializeSubscription(
@@ -241,8 +262,33 @@ adminRouter.patch('/salons/:salonId', (req, res) => {
   if (!salon) return res.status(404).json({ error: 'Salon not found' });
   const updates = {};
   if (req.body?.published !== undefined) {
-    updates.website_published = bool(req.body.published) ? 1 : 0;
-    if (updates.website_published) updates.published_at = salon.published_at || nowIso();
+    const publish = bool(req.body.published);
+    if (publish) {
+      if (salon.suspended) {
+        throw new ValidationError('Unsuspend this salon before publishing its website.');
+      }
+      const publishable = salon.status === 'approved' || salon.status === 'pending';
+      if (!getApprovedVersion(salon.id) || !publishable) {
+        throw new ValidationError('Approve a submitted version before publishing this website.');
+      }
+    }
+    updates.website_published = publish ? 1 : 0;
+    if (publish) updates.published_at = salon.published_at || nowIso();
+  }
+  if (req.body?.suspended !== undefined) {
+    const suspend = bool(req.body.suspended);
+    updates.suspended = suspend ? 1 : 0;
+    if (suspend) {
+      updates.suspended_at = nowIso();
+      updates.suspended_reason =
+        str(req.body.suspendReason, { max: 500, field: 'Suspension reason' }) ||
+        salon.suspended_reason ||
+        'Suspended by platform administration.';
+      updates.website_published = 0;
+    } else {
+      updates.suspended_reason = '';
+      updates.suspended_at = null;
+    }
   }
   if (req.body?.name !== undefined) {
     updates.name = str(req.body.name, { min: 2, max: 120, field: 'Salon name', required: true });
@@ -341,6 +387,139 @@ adminRouter.patch('/subscriptions/:subscriptionId', (req, res) => {
   audit(req, 'admin.subscription_updated', 'subscription', sub.id, { fields: cols });
   res.json({
     subscription: serializeSubscription(db.prepare('SELECT * FROM subscriptions WHERE id = ?').get(sub.id)),
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Website approvals                                                   */
+/* ------------------------------------------------------------------ */
+
+adminRouter.get('/approvals', (req, res) => {
+  const status = str(req.query.status, { max: 30, field: 'Status' }) || 'pending';
+  const allowed = ['pending', 'approved', 'rejected', 'changes_requested', 'superseded', 'all'];
+  if (!allowed.includes(status)) throw new ValidationError('Invalid approval status filter');
+
+  const where = status === 'all' ? '' : 'WHERE v.status = ?';
+  const params = status === 'all' ? [] : [status];
+  const rows = db
+    .prepare(
+      `SELECT v.*, s.name AS salon_name, s.slug AS salon_slug, s.city AS salon_city,
+              s.website_published, s.suspended, s.status AS salon_status,
+              u.name AS owner_name, u.email AS owner_email, u.email_verified
+       FROM salon_versions v
+       JOIN salons s ON s.id = v.salon_id
+       JOIN users u ON u.id = s.owner_id
+       ${where}
+       ORDER BY v.submitted_at DESC
+       LIMIT 200`
+    )
+    .all(...params);
+
+  const pendingCount = db
+    .prepare("SELECT COUNT(*) AS n FROM salon_versions WHERE status = 'pending'")
+    .get().n;
+
+  res.json({
+    pendingCount,
+    approvals: rows.map((row) => ({
+      ...serializeVersion(row),
+      salon: {
+        id: row.salon_id,
+        name: row.salon_name,
+        slug: row.salon_slug,
+        city: row.salon_city,
+        published: !!row.website_published,
+        suspended: !!row.suspended,
+        status: row.salon_status,
+      },
+      owner: {
+        name: row.owner_name,
+        email: row.owner_email,
+        emailVerified: !!row.email_verified,
+      },
+    })),
+  });
+});
+
+adminRouter.get('/approvals/:versionId', (req, res) => {
+  const version = db.prepare('SELECT * FROM salon_versions WHERE id = ?').get(req.params.versionId);
+  if (!version) return res.status(404).json({ error: 'Submission not found' });
+  const salon = db.prepare('SELECT * FROM salons WHERE id = ?').get(version.salon_id);
+  const owner = db.prepare('SELECT * FROM users WHERE id = ?').get(salon.owner_id);
+  let snapshot = null;
+  try {
+    snapshot = JSON.parse(version.snapshot_json);
+  } catch {
+    snapshot = null;
+  }
+  res.json({
+    version: serializeVersion(version),
+    snapshot,
+    salon: serializeSalon(salon, { includeOwner: true }),
+    workflow: workflowInfo(salon, owner).workflow,
+    isLiveVersion: getApprovedVersion(salon.id)?.id === version.id,
+  });
+});
+
+adminRouter.post(
+  '/approvals/:versionId/review',
+  asyncHandler(async (req, res) => {
+    const action = String(req.body?.action || '');
+    if (!['approve', 'reject', 'request_changes'].includes(action)) {
+      throw new ValidationError('Choose approve, reject or request changes.');
+    }
+    const note = str(req.body?.note, { max: 1000, field: 'Reviewer note' });
+
+    const result = reviewSubmission({
+      versionId: req.params.versionId,
+      action,
+      note,
+      adminId: req.user.id,
+    });
+    audit(req, `admin.submission_${action}`, 'salon', result.salon.id, {
+      version: result.version.version,
+      note: note || null,
+    });
+
+    const owner = db.prepare('SELECT * FROM users WHERE id = ?').get(result.salon.owner_id);
+    if (owner) {
+      const base = (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+      const dashboardUrl = `${base}/dashboard`;
+      const mail = reviewNotificationEmail({
+        ownerName: owner.name,
+        salonName: result.salon.name,
+        outcome: action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'changes_requested',
+        note,
+        dashboardUrl,
+      });
+      try {
+        await sendMail({ to: owner.email, ...mail, tag: 'review-outcome' });
+      } catch (err) {
+        console.error('[mail] review notification failed', err.message);
+      }
+    }
+
+    return res.json({
+      version: serializeVersion(result.version),
+      salon: serializeSalon(result.salon, { includeOwner: true }),
+    });
+  })
+);
+
+adminRouter.get('/salons/:salonId/versions', (req, res) => {
+  const salon = db.prepare('SELECT * FROM salons WHERE id = ?').get(req.params.salonId);
+  if (!salon) return res.status(404).json({ error: 'Salon not found' });
+  const owner = db.prepare('SELECT * FROM users WHERE id = ?').get(salon.owner_id);
+  const rows = db
+    .prepare('SELECT * FROM salon_versions WHERE salon_id = ? ORDER BY version DESC')
+    .all(salon.id);
+  const approved = getApprovedVersion(salon.id);
+  const currentHash = hashSnapshot(buildSalonSnapshot(salon));
+  res.json({
+    versions: rows.map(serializeVersion),
+    workflow: workflowInfo(salon, owner).workflow,
+    hasUnpublishedChanges: !!approved && approved.content_hash !== currentHash,
+    pending: serializeVersion(getPendingVersion(salon.id)),
   });
 });
 

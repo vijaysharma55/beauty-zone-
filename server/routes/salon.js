@@ -18,6 +18,8 @@ import {
   getSettings,
   audit,
   UPLOAD_DIR,
+  DEFAULT_TIMINGS,
+  TEMPLATE_IDS,
 } from '../db.js';
 import {
   str,
@@ -31,6 +33,7 @@ import {
   rateLimit,
 } from '../security.js';
 import { requireAuth, requireRole, asyncHandler } from '../middleware.js';
+import { workflowInfo, submitForApproval, listVersions, serializeVersion } from '../workflow.js';
 
 export const salonRouter = Router();
 
@@ -74,7 +77,44 @@ const SALON_FIELD_MAP = {
   facebook: { column: 'facebook', validate: (v) => str(v, { max: 200, field: 'Facebook' }) },
   heroTitle: { column: 'hero_title', validate: (v) => str(v, { max: 160, field: 'Hero title' }) },
   heroSubtitle: { column: 'hero_subtitle', validate: (v) => str(v, { max: 400, field: 'Hero subtitle' }) },
+  ownerName: { column: 'owner_name', validate: (v) => str(v, { max: 120, field: 'Owner name' }) },
+  ownerPhone: { column: 'owner_phone', validate: (v) => str(v, { max: 40, field: 'Owner phone' }) },
+  templateId: {
+    column: 'template_id',
+    validate: (v) => {
+      const id = str(v, { max: 30, field: 'Template' }).toLowerCase();
+      if (id && !TEMPLATE_IDS.includes(id)) throw new ValidationError('Unknown website template');
+      return id || 'luxe';
+    },
+  },
 };
+
+const DAY_IDS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** Validates weekly opening hours: 7 entries, HH:MM times, open < close. */
+export function validateTimings(input) {
+  if (!Array.isArray(input)) throw new ValidationError('Opening hours must be a list of days');
+  if (input.length > 7) throw new ValidationError('Opening hours can only cover the seven weekdays');
+  const seen = new Set();
+  return input.map((entry) => {
+    if (!entry || typeof entry !== 'object') throw new ValidationError('Invalid opening hours entry');
+    const day = String(entry.day || '').toLowerCase();
+    if (!DAY_IDS.includes(day)) throw new ValidationError('Invalid weekday in opening hours');
+    if (seen.has(day)) throw new ValidationError('Each weekday can only appear once');
+    seen.add(day);
+    const closed = bool(entry.closed, false);
+    const open = str(entry.open ?? '10:00', { max: 5, field: 'Opening time' }) || '10:00';
+    const close = str(entry.close ?? '20:00', { max: 5, field: 'Closing time' }) || '20:00';
+    if (!closed) {
+      if (!TIME_RE.test(open) || !TIME_RE.test(close)) {
+        throw new ValidationError('Opening hours must use 24-hour HH:MM format');
+      }
+      if (open >= close) throw new ValidationError('Closing time must be after opening time');
+    }
+    return { day, open, close, closed };
+  });
+}
 
 function imageField(label) {
   return (value) => {
@@ -106,6 +146,10 @@ salonRouter.get('/', (req, res) => {
   const salon = findSalonByOwner(req.user.id);
   return res.json({
     salon: salon ? serializeSalon(salon) : null,
+    workflow: salon ? workflowInfo(salon, req.user).workflow : null,
+    versions: salon
+      ? listVersions(salon.id).map(serializeVersion)
+      : [],
     subscription: salon ? serializeSubscription(getSubscriptionForSalon(salon.id)) : null,
   });
 });
@@ -125,6 +169,13 @@ salonRouter.post(
     const ts = nowIso();
     const fields = collectSalonFields(req.body, { includeEmpty: true });
     fields.hero_title = fields.hero_title || name;
+    fields.status = 'draft';
+    fields.owner_name = fields.owner_name || req.user.name || '';
+    fields.owner_phone = fields.owner_phone || fields.phone || '';
+    fields.timings_json = JSON.stringify(
+      req.body?.timings !== undefined ? validateTimings(req.body.timings) : DEFAULT_TIMINGS
+    );
+    if (!fields.template_id) fields.template_id = TEMPLATE_IDS[0];
 
     const columns = ['id', 'owner_id', 'name', 'slug', 'created_at', 'updated_at', 'onboarding_completed'];
     const values = [id, req.user.id, name, slug, ts, ts, 1];
@@ -175,6 +226,9 @@ salonRouter.patch('/', (req, res) => {
   if (req.body?.theme !== undefined) {
     updates.theme_json = JSON.stringify(sanitizeTheme(req.body.theme));
   }
+  if (req.body?.timings !== undefined) {
+    updates.timings_json = JSON.stringify(validateTimings(req.body.timings));
+  }
 
   if (Object.keys(updates).length === 0) {
     return res.json({ salon: serializeSalon(salon) });
@@ -186,34 +240,101 @@ salonRouter.patch('/', (req, res) => {
     salon.id
   );
   audit(req, 'salon.updated', 'salon', salon.id, { fields: cols.filter((c) => c !== 'updated_at') });
-  return res.json({ salon: serializeSalon(findSalonByOwner(req.user.id)) });
+  const updated = findSalonByOwner(req.user.id);
+  return res.json({
+    salon: serializeSalon(updated),
+    workflow: workflowInfo(updated, req.user).workflow,
+  });
 });
 
 salonRouter.post(
   '/publish',
   asyncHandler(async (req, res) => {
     const salon = requireOwnSalon(req);
-    const servicesCount = getServicesForSalon(salon.id, { onlyActive: true }).length;
-    const missing = [];
-    if (!salon.name) missing.push('salon name');
-    if (!salon.city) missing.push('city');
-    if (!salon.address_line) missing.push('address');
-    if (!salon.phone) missing.push('phone');
-    if (servicesCount === 0) missing.push('at least one active service');
-    if (missing.length > 0) {
-      return res.status(400).json({
-        error: `Before publishing, please add: ${missing.join(', ')}.`,
-        missing,
+    const { workflow } = workflowInfo(salon, req.user);
+
+    if (salon.suspended) {
+      return res.status(403).json({
+        error: `This salon is suspended by the platform: ${salon.suspended_reason || 'contact support.'}`,
+        code: 'SUSPENDED',
       });
     }
+    if (!req.user.email_verified) {
+      return res.status(403).json({
+        error: 'Verify your email address before publishing your website.',
+        code: 'EMAIL_UNVERIFIED',
+      });
+    }
+    if (!workflow.canPublish) {
+      return res.status(409).json({
+        error:
+          salon.status === 'pending'
+            ? 'Your first submission is still awaiting review. You can publish as soon as it is approved.'
+            : 'Your website must be approved by a platform admin before it can go live.',
+        code: 'APPROVAL_REQUIRED',
+        status: salon.status,
+      });
+    }
+
     const ts = nowIso();
     db.prepare(
       'UPDATE salons SET website_published = 1, published_at = COALESCE(published_at, ?), updated_at = ? WHERE id = ?'
     ).run(ts, ts, salon.id);
-    audit(req, 'salon.published', 'salon', salon.id);
-    return res.json({ salon: serializeSalon(findSalonByOwner(req.user.id)), url: `/salon/${salon.slug}` });
+    audit(req, 'salon.published', 'salon', salon.id, { version: workflow.approvedVersion.version });
+    const updated = findSalonByOwner(req.user.id);
+    return res.json({
+      salon: serializeSalon(updated),
+      workflow: workflowInfo(updated, req.user).workflow,
+      url: `/salon/${salon.slug}`,
+    });
   })
 );
+
+salonRouter.post('/unpublish', (req, res) => {
+  const salon = requireOwnSalon(req);
+  db.prepare('UPDATE salons SET website_published = 0, updated_at = ? WHERE id = ?').run(nowIso(), salon.id);
+  audit(req, 'salon.unpublished', 'salon', salon.id);
+  const updated = findSalonByOwner(req.user.id);
+  return res.json({
+    salon: serializeSalon(updated),
+    workflow: workflowInfo(updated, req.user).workflow,
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Approval workflow                                                   */
+/* ------------------------------------------------------------------ */
+
+salonRouter.post(
+  '/submit',
+  asyncHandler(async (req, res) => {
+    const salon = requireOwnSalon(req);
+    const { workflow } = workflowInfo(salon, req.user);
+    if (workflow.blockers.length > 0) {
+      const blocker = workflow.blockers[0];
+      return res.status(400).json({ error: blocker.message, code: blocker.code, blockers: workflow.blockers });
+    }
+    const version = submitForApproval(salon, req.user.id);
+    audit(req, 'salon.submitted_for_review', 'salon', salon.id, { version: version.version });
+    const updated = findSalonByOwner(req.user.id);
+    return res.status(201).json({
+      salon: serializeSalon(updated),
+      workflow: workflowInfo(updated, req.user).workflow,
+      version: serializeVersion(version),
+    });
+  })
+);
+
+salonRouter.get('/versions', (req, res) => {
+  const salon = requireOwnSalon(req);
+  res.json({
+    versions: listVersions(salon.id).map((row) => ({
+      ...serializeVersion(row),
+      pendingChanges: row.status === 'pending',
+    })),
+    workflow: workflowInfo(salon, req.user).workflow,
+  });
+});
 
 salonRouter.post('/unpublish', (req, res) => {
   const salon = requireOwnSalon(req);

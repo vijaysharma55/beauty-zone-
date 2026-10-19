@@ -1,11 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../lib/api';
-import type { AuthResponse, AuthUser, MembershipPlan, Salon } from '../types/auth';
+import type { AuthResponse, AuthUser, MembershipPlan, Salon, SalonWorkflow } from '../types/auth';
 
 interface AuthContextValue {
   user: AuthUser | null;
   salon: Salon | null;
   subscription: MembershipPlan | null;
+  workflow: SalonWorkflow | null;
   loading: boolean;
   isAdmin: boolean;
   isOwner: boolean;
@@ -24,6 +25,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<AuthUser | null>(null);
   const [salon, setSalon] = useState<Salon | null>(null);
   const [subscription, setSubscription] = useState<MembershipPlan | null>(null);
+  const [workflow, setWorkflow] = useState<SalonWorkflow | null>(null);
   const [loading, setLoading] = useState(true);
 
   const apply = useCallback((data: AuthResponse | null) => {
@@ -31,11 +33,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
       setSalon(null);
       setSubscription(null);
+      setWorkflow(null);
       return;
     }
     setUser(data.user);
     setSalon(data.salon ?? null);
     setSubscription(data.subscription ?? null);
+    setWorkflow(data.workflow ?? null);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -113,6 +117,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (data.user !== undefined) setUser(data.user);
     if (data.salon !== undefined) setSalon(data.salon);
     if (data.subscription !== undefined) setSubscription(data.subscription);
+    if (data.workflow !== undefined) setWorkflow(data.workflow ?? null);
   }, []);
 
   const value = useMemo<AuthContextValue>(
@@ -120,6 +125,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user,
       salon,
       subscription,
+      workflow,
       loading,
       isAdmin: user?.role === 'super_admin',
       isOwner: user?.role === 'salon_owner',
@@ -131,7 +137,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       refresh,
       setSession,
     }),
-    [user, salon, subscription, loading, login, register, loginWithGoogle, logout, logoutAll, refresh, setSession]
+    [
+      user,
+      salon,
+      subscription,
+      workflow,
+      loading,
+      login,
+      register,
+      loginWithGoogle,
+      logout,
+      logoutAll,
+      refresh,
+      setSession,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

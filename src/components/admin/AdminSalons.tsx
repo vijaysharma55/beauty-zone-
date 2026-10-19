@@ -9,10 +9,13 @@ import {
   Pencil,
   Save,
   Scissors,
+  ShieldAlert,
+  ShieldCheck,
   Users,
   X,
 } from 'lucide-react';
 import { api, errorMessage } from '../../lib/api';
+import { StatusBadge } from '../dashboard/WorkflowStatus';
 import type { Salon, SalonService, SalonStaff } from '../../types/auth';
 import {
   Alert,
@@ -74,6 +77,8 @@ export const AdminSalons: React.FC = () => {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<EditDraft | null>(null);
   const [saving, setSaving] = useState(false);
+  const [suspendReason, setSuspendReason] = useState('');
+  const [suspendBusy, setSuspendBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -100,6 +105,7 @@ export const AdminSalons: React.FC = () => {
     setDetailError('');
     setEditing(false);
     setDetailLoading(true);
+    setSuspendReason('');
     try {
       const res = await api.get<AdminSalonDetail>(`/admin/salons/${salon.id}`);
       setDetail({ salon: res.salon, services: res.services, staff: res.staff });
@@ -142,6 +148,30 @@ export const AdminSalons: React.FC = () => {
       setDetailError(message);
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const toggleSuspension = async () => {
+    if (!detail) return;
+    const suspending = !detail.salon.suspended;
+    if (suspending && !suspendReason.trim()) {
+      setDetailError('Please give a reason for suspending this salon — the owner will see it.');
+      return;
+    }
+    setSuspendBusy(true);
+    setDetailError('');
+    try {
+      const res = await api.patch<{ salon: Salon }>(`/admin/salons/${detail.salon.id}`, {
+        suspended: suspending,
+        suspendReason: suspendReason.trim(),
+      });
+      applySalonUpdate(res.salon);
+      setSuspendReason('');
+      flash(suspending ? 'Salon suspended and website taken offline.' : 'Salon reinstated.');
+    } catch (err) {
+      setDetailError(errorMessage(err));
+    } finally {
+      setSuspendBusy(false);
     }
   };
 
@@ -265,7 +295,10 @@ export const AdminSalons: React.FC = () => {
                     </td>
                     <td className="px-5 py-3 text-xs text-slate-600">{salon.serviceCount ?? 0}</td>
                     <td className="px-5 py-3">
-                      {salon.published ? <Badge tone="green">Live</Badge> : <Badge tone="amber">Draft</Badge>}
+                      <div className="flex flex-col items-start gap-1">
+                        <StatusBadge status={salon.status} suspended={salon.suspended} />
+                        {salon.published ? <Badge tone="green">Live</Badge> : <Badge tone="slate">Not live</Badge>}
+                      </div>
                     </td>
                     <td className="px-5 py-3 text-xs text-slate-500">{formatDate(salon.createdAt)}</td>
                     <td className="px-5 py-3">
@@ -350,8 +383,9 @@ export const AdminSalons: React.FC = () => {
             {detailError && <Alert tone="error">{detailError}</Alert>}
 
             <div className="flex flex-wrap items-center gap-2">
-              <Badge tone={detail.salon.published ? 'green' : 'amber'}>
-                {detail.salon.published ? 'Published' : 'Draft'}
+              <StatusBadge status={detail.salon.status} suspended={detail.salon.suspended} />
+              <Badge tone={detail.salon.published ? 'green' : 'slate'}>
+                {detail.salon.published ? 'Published' : 'Not live'}
               </Badge>
               <Badge tone="slate">/salon/{detail.salon.slug}</Badge>
               {detail.salon.subscription && (
@@ -467,6 +501,49 @@ export const AdminSalons: React.FC = () => {
                 </dl>
               </>
             )}
+
+            <div
+              className={`rounded-xl border p-4 ${
+                detail.salon.suspended ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-slate-50/60'
+              }`}
+            >
+              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                {detail.salon.suspended ? (
+                  <ShieldAlert className="h-3.5 w-3.5 text-red-600" />
+                ) : (
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                )}
+                {detail.salon.suspended ? 'Salon suspended' : 'Suspension'}
+              </p>
+              <p className="mt-1 text-xs text-slate-600">
+                {detail.salon.suspended
+                  ? `Website is offline. Reason: ${detail.salon.suspendedReason || '—'} (since ${formatDate(
+                      detail.salon.suspendedAt
+                    )}).`
+                  : 'Suspending takes the website offline immediately and blocks submissions and publishing until reinstated.'}
+              </p>
+              {!detail.salon.suspended && (
+                <div className="mt-2.5">
+                  <Input
+                    value={suspendReason}
+                    onChange={(e) => setSuspendReason(e.target.value)}
+                    placeholder="Reason shown to the salon owner"
+                    aria-label="Suspension reason"
+                    maxLength={500}
+                  />
+                </div>
+              )}
+              <div className="mt-2.5">
+                <Button
+                  variant={detail.salon.suspended ? 'secondary' : 'danger'}
+                  size="sm"
+                  loading={suspendBusy}
+                  onClick={toggleSuspension}
+                >
+                  {detail.salon.suspended ? 'Reinstate salon' : 'Suspend salon'}
+                </Button>
+              </div>
+            </div>
 
             <div className="rounded-xl border border-slate-200">
               <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
