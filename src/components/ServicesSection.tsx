@@ -987,16 +987,14 @@ const ServiceCardItem: React.FC<ServiceCardItemProps> = ({
           )}
         </div>
 
-        {/* Service Title */}
-        <h4 className="text-xs sm:text-sm font-bold text-[#0F172A] line-clamp-2 leading-snug group-hover/card:text-[#D09A40] transition-colors">
-          {service.title}
+        {/* Service Title with Duration Badge */}
+        <h4 className="text-xs sm:text-sm font-bold text-[#0F172A] leading-snug group-hover/card:text-[#D09A40] transition-colors flex items-start gap-1">
+          <span className="line-clamp-2">{service.title}</span>
+          <span className="inline-flex items-center gap-0.5 bg-[#FAF5E5] px-1.5 py-0.5 rounded-full text-[9px] text-[#D09A40] font-bold border border-[#D09A40]/20 mt-0.5 shrink-0">
+            <Clock className="w-2.5 h-2.5" />
+            {service.duration}
+          </span>
         </h4>
-
-        {/* Duration & Highlights */}
-        <div className="flex items-center gap-1.5 text-[11px] text-[#4A4A4A] mt-1 font-mono">
-          <Clock className="w-3 h-3 text-[#D09A40]" />
-          <span>{service.duration}</span>
-        </div>
 
         {service.highlights && service.highlights.length > 0 && (
           <p className="text-[10px] text-neutral-500 mt-1 line-clamp-1 italic">

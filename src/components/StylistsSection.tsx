@@ -117,12 +117,12 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
           {filteredStylists.map((stylist, index) => (
             <RevealOnScroll key={stylist.id} delay={index * 0.1} duration={0.6} className="shrink-0 snap-start h-full md:w-auto">
               <div
-                className="w-[82vw] max-w-[290px] shrink-0 snap-start md:w-auto bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] luxe-card-hover flex flex-col justify-between group h-full shadow-2xs"
+                className="w-[90vw] max-w-[400px] shrink-0 snap-start md:w-full md:max-w-none bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] luxe-card-hover flex flex-col justify-between group h-full shadow-2xs"
               >
-                <div className="p-6 sm:p-7 space-y-5">
+                <div className="p-4 space-y-3">
                   {/* Header: Avatar, Name, Role, Rating */}
-                  <div className="flex items-start gap-4">
-                    <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden shrink-0 bg-neutral-100 border border-[#0F172A]/10 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden shrink-0 bg-neutral-100 border border-[#0F172A]/10 shadow-sm">
                       <img
                         src={stylist.avatar}
                         alt={`${stylist.name} - ${stylist.role}`}
@@ -136,27 +136,27 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold text-[#D09A40] bg-[#FAF5E5] px-2 py-0.5 rounded-md uppercase tracking-wider">
+                        <span className="text-[9px] font-bold text-[#D09A40] bg-[#FAF5E5] px-2 py-0.5 rounded-md uppercase tracking-wider">
                           {stylist.category === 'skin' ? 'Clinical Skin' : stylist.category}
                         </span>
-                        <div className="flex items-center gap-1 text-xs font-bold text-[#0F172A]">
-                          <Star className="w-3.5 h-3.5 fill-[#D09A40] text-[#D09A40]" />
+                        <div className="flex items-center gap-1 text-[10px] font-bold text-[#0F172A]">
+                          <Star className="w-3 h-3 fill-[#D09A40] text-[#D09A40]" />
                           <span>{stylist.rating.toFixed(1)}</span>
-                          <span className="text-neutral-400 font-normal text-[11px]">
+                          <span className="text-neutral-400 font-normal text-[10px]">
                             ({stylist.reviewCount})
                           </span>
                         </div>
                       </div>
 
-                      <h3 className="font-serif text-xl sm:text-2xl font-bold text-[#0F172A] mt-1 group-hover:text-[#D09A40] transition-colors leading-snug">
+                      <h3 className="font-serif text-lg sm:text-xl font-bold text-[#0F172A] mt-0.5 group-hover:text-[#D09A40] transition-colors leading-snug truncate">
                         {stylist.name}
                       </h3>
-                      <p className="text-xs text-[#D09A40] font-medium mt-0.5">
+                      <p className="text-[11px] text-[#D09A40] font-medium">
                         {stylist.role}
                       </p>
 
-                      <div className="flex items-center gap-1.5 text-[11px] text-[#4A4A4A] mt-1">
-                        <MapPin className="w-3 h-3 text-[#D09A40]" />
+                      <div className="flex items-center gap-1 text-[10px] text-[#4A4A4A] mt-0.5">
+                        <MapPin className="w-2.5 h-2.5 text-[#D09A40]" />
                         <span>{stylist.branch}</span>
                       </div>
 
@@ -164,10 +164,10 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
                       {(() => {
                         const isAvailable = stylistAvailabilities[stylist.id] ?? true;
                         return (
-                          <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold font-mono border shadow-2xs transition-all duration-300">
-                            <span className={`w-2 h-2 rounded-full ${isAvailable ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                          <div className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold font-mono border shadow-2xs transition-all duration-300">
+                            <span className={`w-1.5 h-1.5 rounded-full ${isAvailable ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
                             <span className={isAvailable ? 'text-emerald-700' : 'text-amber-700'}>
-                              {isAvailable ? 'Available Now (Book Slot)' : 'Currently Booked (Next Free in 35m)'}
+                              {isAvailable ? 'Available Now' : 'Booked'}
                             </span>
                           </div>
                         );
@@ -176,58 +176,60 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
                   </div>
 
                   {/* Professional Bio */}
-                  <p className="text-xs sm:text-sm text-[#4A4A4A] leading-relaxed font-light">
+                  <p className="text-[11px] text-[#4A4A4A] leading-relaxed font-light line-clamp-2">
                     {stylist.bio}
                   </p>
 
                   {/* Specialties */}
                   <div>
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#0F172A] block mb-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#0F172A] block mb-1">
                       Specialties:
                     </span>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                      {stylist.specialties.map((spec, i) => (
-                        <div key={i} className="flex items-center gap-1.5 text-xs text-[#0F172A]/85">
-                          <Check className="w-3.5 h-3.5 text-[#D09A40] shrink-0" />
+                    <div className="flex flex-wrap gap-1">
+                      {stylist.specialties.slice(0, 4).map((spec, i) => (
+                        <div key={i} className="flex items-center gap-1 text-[10px] text-[#0F172A]/85 bg-neutral-50 px-1.5 py-0.5 rounded border border-neutral-100">
+                          <Check className="w-2.5 h-2.5 text-[#D09A40] shrink-0" />
                           <span className="truncate">{spec}</span>
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  {/* Certifications */}
-                  <div className="pt-2 border-t border-neutral-100 space-y-1">
-                    <span className="text-[10px] font-mono text-[#D09A40] uppercase tracking-wider font-semibold block">
-                      Certificates & Training:
-                    </span>
-                    {stylist.certifications.map((cert, idx) => (
-                      <div key={idx} className="flex items-center gap-1.5 text-[11px] text-neutral-600">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
-                        <span>{cert}</span>
-                      </div>
-                    ))}
+                  {/* Certifications (Condensed) */}
+                  <div className="pt-1 border-t border-neutral-100">
+                     <div className="text-[9px] font-mono text-[#D09A40] uppercase tracking-wider font-semibold mb-1">
+                      Certificates:
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {stylist.certifications.slice(0, 2).map((cert, idx) => (
+                        <div key={idx} className="flex items-center gap-1 text-[10px] text-neutral-600">
+                          <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                          <span>{cert}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Portfolio Preview Strip */}
                   <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-[#0F172A]">
-                        Recent Work Photos ({stylist.portfolio.length}):
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#0F172A]">
+                        Recent Work ({stylist.portfolio.length}):
                       </span>
                       <button
                         type="button"
                         onClick={() => setActivePortfolioModal(stylist)}
-                        className="text-[11px] text-[#D09A40] hover:underline font-semibold cursor-pointer"
+                        className="text-[10px] text-[#D09A40] hover:underline font-semibold cursor-pointer"
                       >
                         View Photos
                       </button>
                     </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {stylist.portfolio.map((item, idx) => (
+                    <div className="flex gap-1.5">
+                      {stylist.portfolio.slice(0, 4).map((item, idx) => (
                         <div
                           key={idx}
                           onClick={() => setActivePortfolioModal(stylist)}
-                          className="group/thumb relative aspect-square rounded-lg overflow-hidden border border-neutral-200 cursor-pointer bg-neutral-100"
+                          className="group/thumb relative w-12 h-12 rounded-md overflow-hidden border border-neutral-200 cursor-pointer bg-neutral-100 shrink-0"
                           title={item.title}
                         >
                           <img
@@ -236,11 +238,6 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
                             referrerPolicy="no-referrer"
                             className="w-full h-full object-cover group-hover/thumb:scale-110 transition-transform duration-300"
                           />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center p-1 text-center">
-                            <span className="text-[9px] font-bold text-white line-clamp-2">
-                              {item.title}
-                            </span>
-                          </div>
                         </div>
                       ))}
                     </div>
@@ -261,9 +258,9 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
                   <button
                     type="button"
                     onClick={() => handleBook(stylist)}
-                    className="px-5 py-2.5 text-xs font-bold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl luxe-btn shadow-sm flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    className="px-4 py-2 text-[11px] font-bold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl luxe-btn shadow-sm flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                   >
-                    <CalendarCheck className="w-3.5 h-3.5" />
+                    <CalendarCheck className="w-3 h-3" />
                     <span>Book with {stylist.name.split(' ')[0]}</span>
                   </button>
                 </div>
