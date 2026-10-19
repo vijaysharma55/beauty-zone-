@@ -32,7 +32,7 @@ export const VIDEO_PRESET_THUMBNAILS = [
     category: 'Skin & Facial Glow'
   },
   {
-    label: 'Jaipur Salon Ambience',
+    label: 'Luxury Salon Ambience',
     url: '/src/assets/images/hero_jaipur_salon_1790671992521.jpg',
     category: 'Salon Tour & Ambience'
   },
@@ -127,8 +127,8 @@ export const INITIAL_VIDEOS: VideoItem[] = [
     url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
     embedUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ?rel=0',
     platform: 'youtube',
-    title: 'Royal Rajasthani HD Bridal Makeover & Draping Process',
-    description: 'Step-by-step airbrush HD makeup, real Kundan jewellery setting, and rose water hydration glow on our real bride Pooja Sharma.',
+    title: 'Signature Royal HD Bridal Makeover & Draping Process',
+    description: 'Step-by-step airbrush HD makeup, fine jewellery setting, and rose water hydration glow on our real bride.',
     category: 'Bridal Reels',
     thumbnail: '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg',
     videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
@@ -141,7 +141,7 @@ export const INITIAL_VIDEOS: VideoItem[] = [
     engagementScore: 94,
     duration: '0:58',
     created_at: '2 days ago',
-    author: 'Sunita Meena (Senior Bridal Director)'
+    author: 'Senior Bridal Director'
   },
   {
     id: 'vid-nanoplastia-hair-reel',
@@ -149,7 +149,7 @@ export const INITIAL_VIDEOS: VideoItem[] = [
     embedUrl: 'https://www.instagram.com/reel/C8xYz123ABC/embed/captioned/',
     platform: 'instagram',
     title: 'Chemical-Free Moroccan Nanoplastia Smoothening Transformation',
-    description: 'Watch the dramatic frizz-to-glass transformation using our 0% formaldehyde nanoplastia formula at our C-Scheme Salon.',
+    description: 'Watch the dramatic frizz-to-glass transformation using our 0% formaldehyde nanoplastia formula at our Flagship Salon.',
     category: 'Hair Transformation',
     thumbnail: '/src/assets/images/hair_styling_luxe_1790672021591.jpg',
     videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
@@ -183,15 +183,15 @@ export const INITIAL_VIDEOS: VideoItem[] = [
     engagementScore: 88,
     duration: '1:15',
     created_at: '1 week ago',
-    author: 'Meenakshi Rathore (Nail Lead)'
+    author: 'Senior Nail Art Lead'
   },
   {
     id: 'vid-client-review-gold-facial',
-    url: 'https://www.facebook.com/beautyzonejaipur/videos/1029384756',
-    embedUrl: 'https://www.facebook.com/plugins/video.php?href=https%3A%2F%2Fwww.facebook.com%2Fbeautyzonejaipur%2Fvideos%2F1029384756&show_text=false&width=500',
+    url: 'https://www.facebook.com/watch/videos/1029384756',
+    embedUrl: 'https://www.facebook.com/plugins/video.php?href=https%3A%2F%2Fwww.facebook.com%2Fwatch%2Fvideos%2F1029384756&show_text=false&width=500',
     platform: 'facebook',
     title: 'Client Review & Before-After Glow: 24K Gold Leaf Facial',
-    description: 'Ananya Verma shares her honest experience after getting our signature ultrasound firming 24K gold facial before her sangeet ceremony.',
+    description: 'Ananya shares her honest experience after getting our signature ultrasound firming 24K gold facial before her sangeet ceremony.',
     category: 'Client Reviews',
     thumbnail: '/src/assets/images/skin_spa_treatment_1790672037475.jpg',
     videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4',
@@ -204,14 +204,14 @@ export const INITIAL_VIDEOS: VideoItem[] = [
     engagementScore: 82,
     duration: '1:30',
     created_at: '2 weeks ago',
-    author: 'Pooja Sharma (Jaipur Client)'
+    author: 'Verified Salon Client'
   },
   {
     id: 'vid-salon-tour-c-scheme',
     url: 'https://www.instagram.com/reel/D9yAbc456DEF/',
     embedUrl: 'https://www.instagram.com/reel/D9yAbc456DEF/embed/captioned/',
     platform: 'instagram',
-    title: 'Walkthrough of our Private Bridal Suite & Luxury Salon in C-Scheme',
+    title: 'Walkthrough of our Private Bridal Suite & Flagship Luxury Salon',
     description: 'Explore our newly renovated flagship salon featuring private dressing rooms, Italian spa chairs, and sterilized beauty stations.',
     category: 'Salon Tour & Ambience',
     thumbnail: '/src/assets/images/hero_jaipur_salon_1790671992521.jpg',
@@ -225,7 +225,7 @@ export const INITIAL_VIDEOS: VideoItem[] = [
     engagementScore: 96,
     duration: '0:50',
     created_at: '3 weeks ago',
-    author: 'Beauty Zone Jaipur Official'
+    author: 'Official Studio Showcase'
   },
   {
     id: 'vid-academy-bridal-masterclass',
@@ -233,7 +233,7 @@ export const INITIAL_VIDEOS: VideoItem[] = [
     embedUrl: 'https://www.youtube.com/embed/7NOSDKb0HlU?rel=0',
     platform: 'youtube',
     title: 'Bridal Makeup Masterclass: Eye Contouring & 16-Hour Waterproof Base',
-    description: 'Highlights from our 15-day professional bridal certification academy class held at the Vaishali Nagar academy branch.',
+    description: 'Highlights from our 15-day professional bridal certification academy class held at our Studio Academy branch.',
     category: 'Academy Masterclass',
     thumbnail: '/src/assets/images/academy_training_jaipur_1790676136151.jpg',
     videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
@@ -246,11 +246,11 @@ export const INITIAL_VIDEOS: VideoItem[] = [
     engagementScore: 91,
     duration: '2:10',
     created_at: '1 month ago',
-    author: 'Beauty Zone Academy Jaipur'
+    author: 'Master Academy Educators'
   }
 ];
 
-const VIDEOS_STORAGE_KEY = 'beautyzone_jaipur_videos_v1';
+const VIDEOS_STORAGE_KEY = 'whitelabel_salon_videos_v2';
 
 export function getStoredVideos(): VideoItem[] {
   if (typeof window === 'undefined') return INITIAL_VIDEOS;

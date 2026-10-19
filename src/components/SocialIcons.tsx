@@ -1,56 +1,206 @@
 import React from 'react';
+import { useBrand } from '../context/BrandContext';
+
+export interface SocialLinkItem {
+  id: 'instagram' | 'facebook' | 'youtube' | 'whatsapp' | 'maps';
+  label: string;
+  handle: string;
+  href: string;
+  followersBadge?: string;
+}
 
 export const InstagramIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
-  </svg>
-);
-
-export const WhatsAppIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-    <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.04 14.69 2 12.04 2M12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.58 20.15 12.04 20.15C10.56 20.15 9.11 19.76 7.85 19L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 14.99 3.8 13.47 3.8 11.91C3.81 7.37 7.5 3.67 12.05 3.67M9.11 7.5C8.94 7.5 8.66 7.56 8.42 7.82C8.18 8.08 7.5 8.72 7.5 10.02C7.5 11.32 8.45 12.57 8.58 12.74C8.71 12.92 10.41 15.54 13.04 16.67C15.22 17.61 15.67 17.42 16.14 17.38C16.61 17.34 17.67 16.75 17.89 16.13C18.11 15.51 18.11 14.98 18.04 14.87C17.97 14.76 17.8 14.7 17.54 14.57C17.28 14.44 16.03 13.83 15.8 13.74C15.57 13.65 15.4 13.61 15.23 13.87C15.06 14.13 14.58 14.7 14.43 14.87C14.28 15.04 14.14 15.06 13.88 14.93C13.62 14.8 12.78 14.53 11.78 13.64C11 12.94 10.47 12.08 10.34 11.85C10.21 11.62 10.33 11.5 10.46 11.37C10.58 11.25 10.72 11.06 10.85 10.91C10.98 10.76 11.02 10.65 11.11 10.48C11.2 10.31 11.15 10.16 11.09 10.03C11.03 9.9 10.54 8.7 10.34 8.21C10.14 7.73 9.94 7.79 9.79 7.78C9.65 7.78 9.48 7.77 9.31 7.77C9.14 7.77 8.86 7.83 8.62 8.09" />
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.85"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+    <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
   </svg>
 );
 
 export const FacebookIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.85"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
   </svg>
 );
 
 export const YouTubeIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.85"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17" />
+    <polygon points="10 15 15 12 10 9 10 15" fill="currentColor" stroke="none" />
   </svg>
 );
 
-export const SOCIAL_LINKS = {
-  instagram: {
-    name: 'Instagram',
-    handle: '@beautyzonejaipur',
-    url: 'https://instagram.com/beautyzonejaipur',
-    followers: '52K+ Followers',
-    desc: 'Daily Bridal Reels & Customer Transformations',
-  },
-  whatsapp: {
-    name: 'WhatsApp',
-    phone: '+91 98290 12345',
-    url: 'https://wa.me/919829012345?text=Hello%20Beauty%20Zone%20Jaipur%2C%20I%20would%20like%20to%20know%20more%20about%20your%20services%20and%20bridal%20packages.',
-    label: 'Instant WhatsApp Chat',
-    desc: 'Fast reply in 5 mins for booking & quotes',
-  },
-  facebook: {
-    name: 'Facebook',
-    handle: 'Beauty Zone Jaipur Official',
-    url: 'https://facebook.com/beautyzonejaipur',
-    followers: '28K+ Likes',
-    desc: 'Jaipur Salon Updates & Special Offers',
-  },
-  youtube: {
-    name: 'YouTube',
-    handle: 'Beauty Zone Jaipur',
-    url: 'https://youtube.com/@beautyzonejaipur',
-    followers: '35K+ Subscribers',
-    desc: 'Bridal Makeovers & Academy Tutorials',
+export const WhatsAppIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.85"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M3 21l1.65-3.8a9 9 0 1 1 3.4 2.9L3 21" />
+    <path d="M9 10a.5.5 0 0 0 1 0V9a.5.5 0 0 0-1 0v1a5 5 0 0 0 5 5h1a.5.5 0 0 0 0-1h-1a.5.5 0 0 0 0 1" />
+  </svg>
+);
+
+export const GoogleMapsPinIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.85"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+    <circle cx="12" cy="10" r="3" />
+  </svg>
+);
+
+interface SocialLinksBarProps {
+  variant?: 'header' | 'footer' | 'light';
+  showLabels?: boolean;
+  iconSize?: string;
+  className?: string;
+}
+
+export const SocialLinksBar: React.FC<SocialLinksBarProps> = ({
+  variant = 'footer',
+  showLabels = false,
+  iconSize = 'w-4 h-4',
+  className = '',
+}) => {
+  const { brand } = useBrand();
+
+  const socialLinks: SocialLinkItem[] = [
+    {
+      id: 'instagram',
+      label: 'Instagram',
+      handle: brand.instagramHandle,
+      href: brand.instagramUrl || 'https://instagram.com',
+      followersBadge: '48K+',
+    },
+    {
+      id: 'facebook',
+      label: 'Facebook',
+      handle: brand.brandName,
+      href: brand.facebookUrl || 'https://facebook.com',
+      followersBadge: '22K+',
+    },
+    {
+      id: 'youtube',
+      label: 'YouTube',
+      handle: `${brand.brandName} Studio`,
+      href: brand.youtubeUrl || 'https://youtube.com',
+      followersBadge: '15K+',
+    },
+    {
+      id: 'whatsapp',
+      label: 'WhatsApp',
+      handle: brand.phoneDisplay,
+      href: `https://wa.me/${brand.whatsappNumber}?text=${encodeURIComponent(
+        `Hi ${brand.brandName} (${brand.cityName}), I would like to book an appointment.`
+      )}`,
+    },
+    {
+      id: 'maps',
+      label: 'Google Maps',
+      handle: `${brand.brandName} ${brand.cityName}`,
+      href:
+        brand.googleMapsUrl ||
+        `https://maps.google.com/?q=${encodeURIComponent(`${brand.brandName} ${brand.cityName}`)}`,
+    },
+  ];
+
+  const renderIcon = (id: SocialLinkItem['id']) => {
+    switch (id) {
+      case 'instagram':
+        return <InstagramIcon className={iconSize} />;
+      case 'facebook':
+        return <FacebookIcon className={iconSize} />;
+      case 'youtube':
+        return <YouTubeIcon className={iconSize} />;
+      case 'whatsapp':
+        return <WhatsAppIcon className={iconSize} />;
+      case 'maps':
+        return <GoogleMapsPinIcon className={iconSize} />;
+    }
+  };
+
+  if (variant === 'header') {
+    return (
+      <div className={`flex items-center gap-2 ${className}`}>
+        {socialLinks.slice(0, 4).map((item) => (
+          <a
+            key={item.id}
+            href={item.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`${brand.brandName} on ${item.label}`}
+            title={`${item.label} (${item.handle})`}
+            className="w-6 h-6 rounded-full bg-white/5 hover:bg-[#D09A40] text-[#FAF5E5]/80 hover:text-[#0F172A] border border-white/10 hover:border-[#D09A40] flex items-center justify-center transition-all duration-200 hover:scale-110"
+          >
+            {renderIcon(item.id)}
+          </a>
+        ))}
+      </div>
+    );
   }
+
+  return (
+    <div className={`flex flex-wrap items-center gap-2.5 ${className}`}>
+      {socialLinks.map((item) => (
+        <a
+          key={item.id}
+          href={item.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`${brand.brandName} on ${item.label}`}
+          title={`Follow ${item.handle} on ${item.label}`}
+          className={
+            showLabels
+              ? 'group inline-flex items-center gap-2 px-3.5 py-2 rounded-full bg-white/5 hover:bg-[#D09A40] border border-white/10 hover:border-[#D09A40] text-[#FAF5E5]/85 hover:text-[#0F172A] text-xs font-medium transition-all duration-300'
+              : 'group w-9 h-9 rounded-full bg-white/5 hover:bg-[#D09A40] border border-white/10 hover:border-[#D09A40] flex items-center justify-center text-[#FAF5E5]/80 hover:text-[#0F172A] transition-all duration-300 hover:-translate-y-0.5 shadow-sm'
+          }
+        >
+          <span className="transition-transform duration-300 group-hover:scale-110">
+            {renderIcon(item.id)}
+          </span>
+          {showLabels && <span>{item.label}</span>}
+        </a>
+      ))}
+    </div>
+  );
 };

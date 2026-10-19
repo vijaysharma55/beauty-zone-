@@ -315,7 +315,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
   const [pkgValidity, setPkgValidity] = useState('60 Days from purchase');
   const [pkgUsageRules, setPkgUsageRules] = useState<string[]>(DEFAULT_USAGE_RULES.slice(0, 3));
   const [newRuleInput, setNewRuleInput] = useState('');
-  const [pkgOutlets, setPkgOutlets] = useState<string[]>(['All Jaipur Outlets']);
+  const [pkgOutlets, setPkgOutlets] = useState<string[]>(['All Salon Outlets']);
   const [pkgImage, setPkgImage] = useState('/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg');
   const [pkgActive, setPkgActive] = useState(true);
   const [pkgFeatured, setPkgFeatured] = useState(false);
@@ -413,10 +413,10 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
     setPkgValidity('60 Days from purchase');
     setPkgUsageRules([
       'Prior appointment mandatory (at least 24 hours in advance)',
-      'Valid across selected Jaipur studio locations',
+      'Valid across selected studio locations',
       'Non-transferable to other clients once commenced'
     ]);
-    setPkgOutlets(['All Jaipur Outlets']);
+    setPkgOutlets(['All Salon Outlets']);
     setPkgImage('/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg');
     setPkgActive(true);
     setPkgFeatured(false);
@@ -665,7 +665,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
     setGalBeforeImage(item.before_image || '');
     setGalFeatured(item.featured);
     setGalActive(item.active);
-    setGalArtist(item.artist || 'Beauty Zone Master Artist');
+    setGalArtist(item.artist || 'Senior Master Artist');
     setGalFormError(null);
     setIsGalleryFormOpen(true);
   };
@@ -756,7 +756,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
   const [vidThumbnail, setVidThumbnail] = useState('');
   const [vidFeatured, setVidFeatured] = useState(true);
   const [vidActive, setVidActive] = useState(true);
-  const [vidAuthor, setVidAuthor] = useState('Beauty Zone Master Stylist');
+  const [vidAuthor, setVidAuthor] = useState('Senior Master Stylist');
   const [vidDuration, setVidDuration] = useState('0:50');
   const [vidViewsCount, setVidViewsCount] = useState('45K views');
   const [vidFormError, setVidFormError] = useState<string | null>(null);
@@ -833,7 +833,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
     setVidThumbnail(item.thumbnail || '');
     setVidFeatured(item.featured);
     setVidActive(item.active);
-    setVidAuthor(item.author || 'Beauty Zone Stylist');
+    setVidAuthor(item.author || 'Senior Studio Stylist');
     setVidDuration(item.duration || '0:45');
     setVidViewsCount(item.viewsCount || '25K views');
     setVidFormError(null);
@@ -975,14 +975,14 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="font-serif text-lg sm:text-xl font-bold text-white tracking-wide">
-                  Beauty Zone Management Console
+                  White-Label Studio Catalog Console
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#D09A40] text-[#0F172A] uppercase">
                   Admin Real-Time
                 </span>
               </div>
               <p className="text-xs text-[#FAF5E5]/70 hidden sm:block">
-                Manage live services, festive combo packages, and real portfolio gallery looks across all Jaipur branches.
+                Manage live services, festive combo packages, and real portfolio gallery looks across all studio branches.
               </p>
             </div>
           </div>
@@ -3331,7 +3331,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      setVidUrl('https://www.facebook.com/beautyzonejaipur/videos/1029384756');
+                      setVidUrl('https://www.facebook.com/watch/videos/1029384756');
                       setVidTitle('Client Review & Before-After Glow Story');
                     }}
                     className="px-1.5 py-0.5 bg-blue-100 hover:bg-blue-200 rounded text-blue-800"

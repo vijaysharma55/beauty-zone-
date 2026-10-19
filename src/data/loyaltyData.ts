@@ -49,7 +49,7 @@ export const LOYALTY_TIERS: Record<
     perks: [
       '1.5x Points Multiplier on bridal & salon packages',
       'Free private VIP bridal suite reservation',
-      'Zero travel charge on home salon visits in Jaipur (up to 10 km)',
+      'Zero travel charge on doorstep home salon visits (up to 10 km)',
       'Direct personal stylist consultation anytime',
       'Complimentary 24K Gold Facial on wedding anniversary',
     ],
@@ -60,7 +60,7 @@ export const REWARD_OFFERS: RewardOffer[] = [
   {
     id: 'rew-1',
     title: '₹500 Instant Salon Voucher',
-    description: 'Use on any salon service or hair spa bill of ₹1,500 or more across Jaipur branches.',
+    description: 'Use on any salon service or hair spa bill of ₹1,500 or more across all studio branches.',
     pointsCost: 500,
     discountValue: '₹500 Flat Off',
     category: 'discount',
@@ -95,7 +95,7 @@ export const REWARD_OFFERS: RewardOffer[] = [
   {
     id: 'rew-5',
     title: '₹1,500 Royal Bridal Booking Discount',
-    description: 'Instant reduction on any Rajasthani HD or Airbrush bridal makeup package.',
+    description: 'Instant reduction on any Signature HD or Airbrush bridal makeup package.',
     pointsCost: 1500,
     discountValue: '₹1,500 Off Bridal',
     category: 'bridal',
@@ -104,7 +104,7 @@ export const REWARD_OFFERS: RewardOffer[] = [
   {
     id: 'rew-6',
     title: 'Free Home Salon Travel Pass',
-    description: 'Zero distance travel fee on home salon visits anywhere in Jaipur up to 15 km.',
+    description: 'Zero distance travel fee on doorstep home salon visits up to 15 km.',
     pointsCost: 400,
     discountValue: 'Free Home Travel (Worth ₹600)',
     category: 'discount',
@@ -115,7 +115,7 @@ export const DEMO_CUSTOMERS: LoyaltyCustomer[] = [
   {
     phone: '9829011223',
     name: 'Pooja Sharma',
-    memberId: 'BZ-GOLD-7429',
+    memberId: 'VIP-GOLD-7429',
     tier: 'gold',
     totalPoints: 1180,
     lifetimePoints: 2450,
@@ -125,7 +125,7 @@ export const DEMO_CUSTOMERS: LoyaltyCustomer[] = [
       {
         id: 'act-1',
         date: '24 Sep 2026',
-        branch: 'C-Scheme Flagship Salon',
+        branch: 'Downtown Flagship Salon',
         serviceTitle: '24K Gold Leaf Glow Facial + Blowout',
         billAmount: 5800,
         pointsEarned: 580,
@@ -134,7 +134,7 @@ export const DEMO_CUSTOMERS: LoyaltyCustomer[] = [
       {
         id: 'act-2',
         date: '12 Aug 2026',
-        branch: 'Malviya Nagar Studio',
+        branch: 'South Avenue Studio',
         serviceTitle: 'Moroccan Nanoplastia Hair Treatment',
         billAmount: 6999,
         pointsEarned: 450,
@@ -143,7 +143,7 @@ export const DEMO_CUSTOMERS: LoyaltyCustomer[] = [
       {
         id: 'act-3',
         date: '15 Jul 2026',
-        branch: 'Vaishali Nagar Salon',
+        branch: 'Westside Luxury Salon',
         serviceTitle: 'Spa Gel Manicure & Pedicure',
         billAmount: 2200,
         pointsEarned: 150,
@@ -152,7 +152,7 @@ export const DEMO_CUSTOMERS: LoyaltyCustomer[] = [
       {
         id: 'act-4',
         date: '01 Jun 2026',
-        branch: 'Jaipur Head Office',
+        branch: 'Online Concierge',
         serviceTitle: 'Friend Bridal Booking Referral Bonus',
         billAmount: 0,
         pointsEarned: 300,
@@ -163,7 +163,7 @@ export const DEMO_CUSTOMERS: LoyaltyCustomer[] = [
       {
         id: 'red-1',
         rewardTitle: '₹500 Instant Salon Voucher',
-        voucherCode: 'BZ-GLOW-500-POOJA',
+        voucherCode: 'VIP-GLOW-500-POOJA',
         pointsCost: 500,
         dateRedeemed: '20 Aug 2026',
         validTill: '20 Nov 2026',
@@ -175,7 +175,7 @@ export const DEMO_CUSTOMERS: LoyaltyCustomer[] = [
   {
     phone: '9829033445',
     name: 'Simran Rathore',
-    memberId: 'BZ-PLAT-9012',
+    memberId: 'VIP-PLAT-9012',
     tier: 'platinum',
     totalPoints: 2150,
     lifetimePoints: 4800,
@@ -185,8 +185,8 @@ export const DEMO_CUSTOMERS: LoyaltyCustomer[] = [
       {
         id: 'act-5',
         date: '18 Sep 2026',
-        branch: 'C-Scheme Flagship Salon',
-        serviceTitle: 'Royal Rajasthani HD Bridal Makeover',
+        branch: 'Downtown Flagship Salon',
+        serviceTitle: 'Signature Royal HD Bridal Makeover',
         billAmount: 24999,
         pointsEarned: 1250,
         type: 'visit',
@@ -194,7 +194,7 @@ export const DEMO_CUSTOMERS: LoyaltyCustomer[] = [
       {
         id: 'act-6',
         date: '05 Aug 2026',
-        branch: 'Home Visit (Civil Lines)',
+        branch: 'Doorstep Home Visit',
         serviceTitle: 'Pre-Bridal 7-Day Complete Glow Spa',
         billAmount: 28500,
         pointsEarned: 900,
@@ -217,7 +217,7 @@ export const DEMO_CUSTOMERS: LoyaltyCustomer[] = [
   {
     phone: '9829055667',
     name: 'Ananya Verma',
-    memberId: 'BZ-SILV-3180',
+    memberId: 'VIP-SILV-3180',
     tier: 'silver',
     totalPoints: 340,
     lifetimePoints: 340,
@@ -227,7 +227,7 @@ export const DEMO_CUSTOMERS: LoyaltyCustomer[] = [
       {
         id: 'act-7',
         date: '10 Sep 2026',
-        branch: 'Vaishali Nagar Salon',
+        branch: 'Westside Luxury Salon',
         serviceTitle: 'Keratin Hair Smoothening + Haircut',
         billAmount: 4200,
         pointsEarned: 240,
@@ -236,7 +236,7 @@ export const DEMO_CUSTOMERS: LoyaltyCustomer[] = [
       {
         id: 'act-8',
         date: '02 Feb 2026',
-        branch: 'Malviya Nagar Studio',
+        branch: 'South Avenue Studio',
         serviceTitle: 'Welcome Salon Visit - HydraFacial',
         billAmount: 1800,
         pointsEarned: 100,
@@ -247,7 +247,7 @@ export const DEMO_CUSTOMERS: LoyaltyCustomer[] = [
   },
 ];
 
-const LOYALTY_STORAGE_KEY = 'beauty_zone_loyalty_customer_v1';
+const LOYALTY_STORAGE_KEY = 'whitelabel_loyalty_customer_v2';
 
 export const getStoredLoyaltyCustomer = (): LoyaltyCustomer => {
   try {

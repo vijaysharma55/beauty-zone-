@@ -6,27 +6,27 @@ export const SALON_STYLISTS: Stylist[] = [
     name: 'Ananya Rathore',
     role: 'Chief Bridal Makeup Artist',
     category: 'bridal',
-    branch: 'C-Scheme Flagship Salon',
+    branch: 'Downtown Flagship Salon',
     experience: '14+ Years',
     rating: 5.0,
     reviewCount: 420,
-    bio: 'One of Jaipur’s most trusted bridal makeup artists. Having styled over 2,400 brides across Rambagh Palace, Fairmont, and City Palace, Ananya is known for lightweight HD Airbrush makeup that stays 100% fresh and sweat-free throughout the wedding rituals.',
+    bio: 'One of the industry’s most trusted bridal makeup artists. Having styled over 2,400 brides across luxury palace resorts and 5-star wedding venues, Ananya is known for lightweight HD Airbrush makeup that stays 100% fresh and sweat-free throughout wedding rituals.',
     avatar: '/src/assets/images/stylist_bridal_ananya_1790677391838.jpg',
     specialties: [
-      'Royal Rajputi & Marwari Bridal Makeup',
+      'Signature Couture & Royal Bridal Makeup',
       'HD Airbrush & Waterproof Makeup',
-      'Kundan, Polki & Matha Patti Setting',
+      'Fine Jewelry, Polki & Veil Setting',
       'Lehenga, Saree & Dupatta Draping'
     ],
     certifications: [
       'Temptu USA Certified Airbrush Specialist',
       'London Academy Makeup Diploma',
-      'Senior Educator, Beauty Zone Academy'
+      'Senior Bridal Academy Educator'
     ],
     portfolio: [
       {
-        title: 'Rambagh Palace Heritage Bride',
-        description: 'Traditional red poshaak styling with jewel-tone eye makeup and waterproof base.',
+        title: 'Royal Palace Destination Bride',
+        description: 'Couture bridal styling with jewel-tone eye makeup and waterproof HD base.',
         image: '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg',
       },
       {
@@ -46,11 +46,11 @@ export const SALON_STYLISTS: Stylist[] = [
     name: 'Vikramaditya Sen',
     role: 'Senior Hair Specialist & Colorist',
     category: 'hair',
-    branch: 'Malviya Nagar Studio',
+    branch: 'South Avenue Studio & Academy',
     experience: '11+ Years',
     rating: 4.9,
     reviewCount: 310,
-    bio: 'Trained at Toni&Guy and L’Oréal Paris, Vikram is Jaipur’s expert in fixing rough or hard-water damaged hair, chemical-free nanoplastia hair smoothening, and natural French balayage highlights.',
+    bio: 'Trained at Toni&Guy and L’Oréal Paris, Vikram is an expert in fixing rough or damaged hair, chemical-free nanoplastia hair smoothening, and natural French balayage highlights.',
     avatar: '/src/assets/images/stylist_hair_vikram_1790677441310.jpg',
     specialties: [
       'Chemical-Free Moroccan Nanoplastia',
@@ -86,7 +86,7 @@ export const SALON_STYLISTS: Stylist[] = [
     name: 'Dr. Meera Pareek',
     role: 'Senior Skin & Facial Specialist',
     category: 'skin',
-    branch: 'Vaishali Nagar Luxury Salon',
+    branch: 'Westside Luxury Salon & Nail Bar',
     experience: '9+ Years',
     rating: 5.0,
     reviewCount: 285,
@@ -126,7 +126,7 @@ export const SALON_STYLISTS: Stylist[] = [
     name: 'Zoya Khan',
     role: 'Senior Nail Artist & Extension Specialist',
     category: 'nails',
-    branch: 'C-Scheme Flagship Salon',
+    branch: 'Downtown Flagship Salon',
     experience: '7+ Years',
     rating: 4.8,
     reviewCount: 195,

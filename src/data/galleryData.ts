@@ -17,7 +17,7 @@ export const GALLERY_CATEGORIES = [
 ];
 
 export const GALLERY_SERVICES = [
-  'Royal Rajasthani HD Bridal Makeover',
+  'Signature Royal HD Bridal Makeover',
   'Moroccan Nanoplastia & Hair Botox Treatment',
   'French Balayage & Ombre Hair Color',
   '24K Gold Leaf Glow Facial',
@@ -46,10 +46,10 @@ export const INITIAL_GALLERY_ITEMS: GalleryItem[] = [
   {
     id: 'gal-2',
     type: 'photo',
-    title: 'Traditional Rajputi Poshaak & Kundan Bridal Look',
-    description: 'Complete royal bridal makeover done at Rambagh Palace with sweatproof HD airbrush base and perfect jewelry setting.',
+    title: 'Signature Royal Couture & Fine Bridal Look',
+    description: 'Complete royal bridal makeover done at a luxury palace resort with sweatproof HD airbrush base and bespoke jewelry setting.',
     category: 'Bridal Makeup',
-    service: 'Royal Rajasthani HD Bridal Makeover',
+    service: 'Signature Royal HD Bridal Makeover',
     image: '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg',
     sort_order: 2,
     featured: true,
@@ -75,10 +75,10 @@ export const INITIAL_GALLERY_ITEMS: GalleryItem[] = [
   {
     id: 'gal-4',
     type: 'portfolio',
-    title: 'Ananya Rathore: Jaipur Palace Bridal Lookbook',
-    description: 'A photo collection of 12 real destination brides styled with heavy jewelry, matha patti setting, and lehenga pleating.',
+    title: 'Ananya Rathore: Luxury Destination Bridal Lookbook',
+    description: 'A photo collection of 12 real destination brides styled with fine jewelry, veil setting, and couture draping.',
     category: 'Destination Weddings',
-    service: 'Royal Rajasthani HD Bridal Makeover',
+    service: 'Signature Royal HD Bridal Makeover',
     image: '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg',
     sort_order: 4,
     featured: true,
@@ -103,7 +103,7 @@ export const INITIAL_GALLERY_ITEMS: GalleryItem[] = [
   {
     id: 'gal-6',
     type: 'work_showcase',
-    title: 'Fairmont Jaipur Sangeet Family Styling',
+    title: 'Luxury Resort Sangeet & Family Styling',
     description: 'Our mobile team of 8 senior stylists doing makeup and hair for the bride, sisters, and family for a grand sangeet night.',
     category: 'Destination Weddings',
     service: 'Sangeet & Party Glam Makeup',
@@ -111,14 +111,14 @@ export const INITIAL_GALLERY_ITEMS: GalleryItem[] = [
     sort_order: 6,
     featured: true,
     active: true,
-    artist: 'Beauty Zone Mobile Salon Team',
+    artist: 'Senior Bridal & Mobile Salon Team',
     created_at: '2026-09-24'
   },
   {
     id: 'gal-7',
     type: 'portfolio',
     title: 'Vikramaditya: Modern Balayage & Haircuts',
-    description: 'Natural honey-caramel balayage hair color and precision cuts designed to look great in natural Indian sunlight.',
+    description: 'Natural honey-caramel balayage hair color and precision cuts designed to look great in natural sunlight.',
     category: 'Hair Care & Color',
     service: 'French Balayage & Ombre Hair Color',
     image: '/src/assets/images/hair_styling_luxe_1790672021591.jpg',
@@ -132,19 +132,19 @@ export const INITIAL_GALLERY_ITEMS: GalleryItem[] = [
     id: 'gal-8',
     type: 'work_showcase',
     title: 'Makeup Academy: Hands-on Bridal Workshop',
-    description: 'Live practical training on airbrush makeup, long-lasting primers, and lehenga draping for academy diploma students.',
+    description: 'Live practical training on airbrush makeup, long-lasting primers, and couture draping for academy diploma students.',
     category: 'Destination Weddings',
-    service: 'Royal Rajasthani HD Bridal Makeover',
+    service: 'Signature Royal HD Bridal Makeover',
     image: '/src/assets/images/academy_makeup_class_1790676134907.jpg',
     sort_order: 8,
     featured: false,
     active: true,
-    artist: 'Beauty Zone Jaipur Academy Staff',
+    artist: 'Master Academy Educators',
     created_at: '2026-09-26'
   }
 ];
 
-const GALLERY_STORAGE_KEY = 'beautyzone_jaipur_gallery_v1';
+const GALLERY_STORAGE_KEY = 'whitelabel_salon_gallery_v2';
 
 export function getStoredGallery(): GalleryItem[] {
   if (typeof window === 'undefined') return INITIAL_GALLERY_ITEMS;

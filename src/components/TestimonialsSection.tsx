@@ -1,128 +1,81 @@
-import React, { useRef } from 'react';
-import { TESTIMONIALS } from '../data/salonData';
-import { Star, Quote, ChevronLeft, ChevronRight } from 'lucide-react';
-import { RevealOnScroll } from './RevealOnScroll';
+import React from 'react';
+import { Star, Quote, MapPin, CheckCircle2 } from 'lucide-react';
+import { useBrand } from '../context/BrandContext';
 
 export const TestimonialsSection: React.FC = () => {
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  const handleScroll = (direction: 'left' | 'right') => {
-    if (scrollRef.current) {
-      const scrollAmount = direction === 'left' ? -320 : 320;
-      scrollRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
-    }
-  };
+  const { brand, t } = useBrand();
 
   return (
-    <section id="reviews" className="py-8 sm:py-16 md:py-24 bg-white/60 border-t border-[#0F172A]/10 w-full max-w-full">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-        <RevealOnScroll duration={0.6}>
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-            <div className="max-w-2xl">
-              <div className="flex items-center gap-2 text-xs font-semibold text-[#D09A40] tracking-wider uppercase mb-2">
-                <span>Real Customer Reviews</span>
-                <span aria-hidden="true">·</span>
-                <span>Jaipur Brides & Regulars</span>
-              </div>
-              <h2
-                className="text-3xl sm:text-4xl font-bold text-[#0F172A] tracking-tight"
-                style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-              >
-                What Our Customers Say About Us
-              </h2>
-              <p className="mt-3 text-sm sm:text-base text-[#4A4A4A] leading-relaxed">
-                Real feedback from brides, wedding guests, and regular salon customers across Jaipur.
-              </p>
-            </div>
+    <section id="testimonials" className="py-20 lg:py-28 bg-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
+        {/* Section Header */}
+        <div className="text-center max-w-3xl mx-auto mb-14 space-y-3">
+          <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-[#D09A40]/15 text-[#0F172A] text-xs font-semibold uppercase tracking-widest border border-[#D09A40]/30">
+            <Star className="w-3.5 h-3.5 text-[#D09A40] fill-[#D09A40]" />
+            <span>{t('testimonialsOverline')}</span>
+          </span>
+          <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold text-[#0F172A] tracking-tight">
+            {t('testimonialsTitle')}
+          </h2>
+          <p className="text-base text-[#4A4A4A]">
+            {t('testimonialsSubtitle')}
+          </p>
+        </div>
 
-            {/* Header Controls for Quick Navigation */}
-            <div className="hidden sm:flex items-center gap-1.5 self-start md:self-auto">
-              <button
-                type="button"
-                onClick={() => handleScroll('left')}
-                className="w-9 h-9 rounded-full bg-white border border-[#0F172A]/15 hover:border-[#D09A40] text-[#0F172A] flex items-center justify-center transition-all shadow-2xs cursor-pointer hover:bg-[#FAF5E5]"
-                title="Scroll Left"
-                aria-label="Scroll Left"
-              >
-                <ChevronLeft className="w-4 h-4 text-[#0F172A]" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleScroll('right')}
-                className="w-9 h-9 rounded-full bg-white border border-[#0F172A]/15 hover:border-[#D09A40] text-[#0F172A] flex items-center justify-center transition-all shadow-2xs cursor-pointer hover:bg-[#FAF5E5]"
-                title="Scroll Right"
-                aria-label="Scroll Right"
-              >
-                <ChevronRight className="w-4 h-4 text-[#0F172A]" />
-              </button>
-            </div>
-          </div>
-        </RevealOnScroll>
+        {/* Testimonials Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-7">
+          {brand.testimonials.map((t) => (
+            <div
+              key={t.id}
+              className="bg-[#FAF5E5] rounded-3xl p-7 border border-[#0F172A]/10 elevation-subtle card-lift flex flex-col justify-between relative"
+            >
+              <Quote className="w-10 h-10 text-[#D09A40]/20 absolute top-6 right-6 pointer-events-none" />
 
-        {/* Testimonial Cards Carousel Container with Overlay Side Chevrons */}
-        <div className="relative group mt-6">
-          <button
-            type="button"
-            onClick={() => handleScroll('left')}
-            className="hidden sm:flex absolute -left-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover:opacity-100"
-            title="Previous Testimonials"
-            aria-label="Previous Testimonials"
-          >
-            <ChevronLeft className="w-5 h-5 text-[#0F172A]" />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleScroll('right')}
-            className="hidden sm:flex absolute -right-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover:opacity-100"
-            title="Next Testimonials"
-            aria-label="Next Testimonials"
-          >
-            <ChevronRight className="w-5 h-5 text-[#0F172A]" />
-          </button>
-
-          <div
-            ref={scrollRef}
-            className="flex overflow-x-auto gap-3.5 pb-3 scrollbar-none snap-x snap-mandatory -mx-3 px-3 md:grid md:grid-cols-3 md:gap-8 md:mx-0 md:px-0 scroll-smooth scroll-pl-3 md:scroll-pl-0"
-          >
-            {TESTIMONIALS.map((t, index) => (
-              <RevealOnScroll key={t.id} delay={index * 0.1} duration={0.6} className="shrink-0 snap-start h-full md:w-auto">
-                <div
-                  className="w-[85vw] max-w-[300px] shrink-0 snap-start md:w-auto bg-white rounded-2xl border border-[#0F172A]/10 p-5 sm:p-8 flex flex-col justify-between shadow-2xs relative group/card hover:border-[#D09A40] luxe-card-hover h-full"
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-1">
-                        {[...Array(t.rating)].map((_, i) => (
-                          <Star key={i} className="w-4 h-4 fill-[#D09A40] text-[#D09A40]" />
-                        ))}
-                      </div>
-                      <Quote className="w-6 h-6 text-[#D09A40]/30" />
-                    </div>
-
-                    <p className="text-xs sm:text-sm text-[#4A4A4A] italic leading-relaxed">
-                      "{t.comment}"
-                    </p>
-                  </div>
-
-                  <div className="mt-6 pt-4 border-t border-[#0F172A]/10">
-                    <p className="text-sm font-bold text-[#0F172A]">{t.clientName}</p>
-                    <div className="flex items-center gap-1.5 text-xs text-[#D09A40] font-medium mt-0.5">
-                      <span>{t.service}</span>
-                    </div>
-                    <div className="text-[11px] text-[#4A4A4A]/80 mt-1 flex items-center gap-1.5">
-                      <span>{t.location}</span>
-                      {t.weddingVenue && (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span className="font-semibold text-[#0F172A]">{t.weddingVenue}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
+              <div className="space-y-4">
+                {/* Stars */}
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: t.rating }).map((_, idx) => (
+                    <Star
+                      key={idx}
+                      className="w-4 h-4 fill-[#D09A40] text-[#D09A40]"
+                    />
+                  ))}
+                  <span className="ml-2 text-xs font-semibold text-[#10B981] flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Verified Client
+                  </span>
                 </div>
-              </RevealOnScroll>
-            ))}
-          </div>
+
+                {/* Service Pill */}
+                <div className="inline-block bg-white px-3 py-1 rounded-lg border border-[#0F172A]/10 text-xs font-semibold text-[#0F172A]">
+                  {t.service}
+                </div>
+
+                {/* Comment */}
+                <p className="text-sm text-[#4A4A4A] leading-relaxed italic">
+                  &ldquo;{t.comment}&rdquo;
+                </p>
+              </div>
+
+              {/* Client Footer */}
+              <div className="pt-5 mt-6 border-t border-[#0F172A]/10 flex items-center justify-between">
+                <div>
+                  <h3 className="font-serif font-bold text-base text-[#0F172A]">
+                    {t.clientName}
+                  </h3>
+                  <p className="text-xs text-[#4A4A4A] flex items-center gap-1 mt-0.5">
+                    <MapPin className="w-3 h-3 text-[#D09A40]" />
+                    <span>{t.location}</span>
+                  </p>
+                  {t.weddingVenue && (
+                    <p className="text-[11px] text-[#D09A40] font-semibold mt-0.5">
+                      Venue: {t.weddingVenue}
+                    </p>
+                  )}
+                </div>
+                <span className="text-[11px] text-[#4A4A4A]/70">{t.date}</span>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </section>

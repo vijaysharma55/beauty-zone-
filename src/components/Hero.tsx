@@ -1,306 +1,203 @@
 import React from 'react';
-import { Sparkles, ArrowRight, ArrowUpRight } from 'lucide-react';
-import { RevealOnScroll } from './RevealOnScroll';
-import { InstagramIcon, WhatsAppIcon, FacebookIcon, SOCIAL_LINKS } from './SocialIcons';
+import {
+  Sparkles,
+  Calendar,
+  MapPin,
+  Award,
+  ShieldCheck,
+  Home,
+  Tag,
+  Palette,
+} from 'lucide-react';
+import { useBrand } from '../context/BrandContext';
 
 interface HeroProps {
   onBookClick: () => void;
-  onExploreBridal: () => void;
+  onExploreServices: () => void;
+  onExplorePackages?: () => void;
 }
 
 export const Hero: React.FC<HeroProps> = ({
   onBookClick,
-  onExploreBridal,
+  onExploreServices,
+  onExplorePackages,
 }) => {
-  const quickServices = [
-    {
-      title: 'HD Bridal Makeup',
-      subtitle: 'Airbrush & Jewelry Setting',
-      price: 'From ₹24,999',
-      image: '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg',
-      category: 'bridal',
-    },
-    {
-      title: 'Hair Botox & Nanoplastia',
-      subtitle: 'Frizz-Free Smooth Hair',
-      price: 'From ₹6,999',
-      image: '/src/assets/images/hair_styling_luxe_1790672021591.jpg',
-      category: 'hair',
-    },
-    {
-      title: '24K Gold Facial',
-      subtitle: 'Real Gold Leaf Glow',
-      price: 'From ₹3,299',
-      image: '/src/assets/images/skin_spa_treatment_1790672037475.jpg',
-      category: 'skin',
-    },
-    {
-      title: 'Bridal Nail Extensions',
-      subtitle: 'Gel Extensions & Stone Art',
-      price: 'From ₹1,899',
-      image: '/src/assets/images/nail_art_luxe_1790676094903.jpg',
-      category: 'nails',
-    },
-    {
-      title: 'Home Salon Service',
-      subtitle: 'Doorstep Visits in Jaipur',
-      price: 'Standard Travel Rates',
-      image: '/src/assets/images/home_salon_service_1790676110547.jpg',
-      category: 'home',
-    },
-  ];
+  const { brand, setIsCustomizerOpen, t } = useBrand();
+
+  const branchLocalityList =
+    brand.branches.length > 0
+      ? brand.branches
+          .slice(0, 3)
+          .map((b) => b.locality.split('/')[0].trim())
+          .join(', ')
+      : brand.cityName;
 
   return (
-    <section id="home" className="relative overflow-hidden pt-4 pb-10 sm:pt-10 sm:pb-16 w-full max-w-full">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-        {/* Main Hero Split Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-12 items-center">
-          {/* Left Column */}
-          <div className="lg:col-span-7 space-y-4 sm:space-y-6">
-            <RevealOnScroll duration={0.65} yOffset={15}>
-              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs font-semibold text-[#4A4A4A] tracking-wider uppercase">
-                <span className="text-[#D09A40]">Jaipur's Trusted Salon</span>
-                <span aria-hidden="true">·</span>
-                <span>3 Branches</span>
-                <span aria-hidden="true">·</span>
-                <span>15+ Years</span>
+    <section className="relative min-h-[92vh] pt-28 pb-16 lg:pt-36 lg:pb-24 flex items-center bg-[#0F172A] overflow-hidden">
+      {/* Ambient Background Glow */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-[#D09A40]/15 blur-3xl" />
+        <div className="absolute bottom-0 right-0 w-[32rem] h-[32rem] rounded-full bg-[#D09A40]/10 blur-3xl" />
+        <div
+          className="absolute inset-0 opacity-[0.04]"
+          style={{
+            backgroundImage: `radial-gradient(var(--wl-accent) 1px, transparent 1px)`,
+            backgroundSize: '28px 28px',
+          }}
+        />
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 relative z-10 w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+          {/* Left Column - Editorial Narrative & Dual CTAs */}
+          <div className="lg:col-span-7 space-y-6 text-left">
+            {/* Top Trust Pill + White-Label Switcher Pill */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#D09A40]/15 border border-[#D09A40]/40 text-[#D09A40] text-xs sm:text-sm font-medium tracking-wide">
+                <Sparkles className="w-4 h-4 shrink-0" />
+                <span>{brand.heroBadgeText}</span>
               </div>
 
-              {/* Main Headline */}
-              <h1 
-                className="text-2xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[#0F172A] leading-snug sm:leading-[1.12] mt-2 sm:mt-3 break-words overflow-wrap-anywhere"
-                style={{ fontFamily: "'Playfair Display', Georgia, serif", textWrap: 'balance' }}
+              <button
+                onClick={() => setIsCustomizerOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 text-[#FAF5E5] text-xs font-semibold transition-all cursor-pointer"
+                title="Switch Brand Preset or Customize White-Label Theme"
               >
-                Luxury Bridal Makeup & Premium Salon Care in Jaipur
-              </h1>
-
-              {/* Value Proposition Body */}
-              <p className="text-xs sm:text-base text-[#4A4A4A] leading-relaxed max-w-2xl font-light mt-2 sm:mt-4">
-                Destination wedding makeovers at Rambagh & Fairmont, smooth hair botox, 24K gold facials, and certified courses. 5-star salon care at our 3 Jaipur branches or right at your doorstep.
-              </p>
-
-              {/* Mobile Compact Action Buttons */}
-              <div className="pt-3 sm:pt-6 grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 sm:gap-3.5">
-                <button
-                  onClick={onBookClick}
-                  className="px-3.5 py-2.5 sm:px-6 sm:py-3.5 text-xs sm:text-sm font-bold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl luxe-btn shadow-xs flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
-                >
-                  <span>Book Now</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-
-                <a
-                  href={SOCIAL_LINKS.whatsapp.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-2.5 sm:px-4 sm:py-3.5 text-xs sm:text-sm font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/80 rounded-xl luxe-btn flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
-                  title="WhatsApp Chat"
-                >
-                  <WhatsAppIcon className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>WhatsApp</span>
-                </a>
-
-                <button
-                  onClick={onExploreBridal}
-                  className="col-span-2 sm:col-span-1 px-4 py-2.5 sm:px-6 sm:py-3.5 text-xs sm:text-sm font-semibold text-[#0F172A] bg-white hover:bg-[#FAF5E5] border border-[#0F172A]/15 rounded-xl luxe-btn flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-2xs"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-[#D09A40]" />
-                  <span>View Bridal Photos</span>
-                </button>
-              </div>
-
-              {/* Social Channels Bar */}
-              <div className="pt-3 flex flex-wrap items-center gap-2">
-                <span className="text-[10px] sm:text-xs font-semibold text-[#4A4A4A]/80 uppercase tracking-wider">
-                  Connect:
-                </span>
-
-                <a
-                  href={SOCIAL_LINKS.instagram.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-pink-50 hover:bg-pink-100 border border-pink-200 text-[11px] font-medium text-pink-900"
-                >
-                  <InstagramIcon className="w-3 h-3 text-pink-600" />
-                  <span className="font-bold">Instagram</span>
-                  <span className="text-[10px] text-pink-700 font-mono">52K</span>
-                </a>
-
-                <a
-                  href={SOCIAL_LINKS.whatsapp.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-[11px] font-medium text-emerald-900"
-                >
-                  <WhatsAppIcon className="w-3 h-3 text-emerald-600" />
-                  <span className="font-bold">WhatsApp</span>
-                </a>
-
-                <a
-                  href={SOCIAL_LINKS.facebook.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-50 hover:bg-blue-100 border border-blue-200 text-[11px] font-medium text-blue-900"
-                >
-                  <FacebookIcon className="w-3 h-3 text-blue-600" />
-                  <span className="font-bold">Facebook</span>
-                  <span className="text-[10px] text-blue-700 font-mono">28K</span>
-                </a>
-              </div>
-
-              {/* Compact Responsive Trust Badges */}
-              <div className="pt-4 mt-3 border-t border-[#0F172A]/10 grid grid-cols-3 gap-2 sm:gap-4 text-center sm:text-left">
-                <div>
-                  <p className="text-lg sm:text-3xl font-bold text-[#0F172A] tabular-nums" style={{ fontFamily: "'Playfair Display', serif" }}>
-                    12,000+
-                  </p>
-                  <p className="text-[10px] sm:text-xs text-[#4A4A4A] mt-0.5">Brides Styled</p>
-                </div>
-                <div>
-                  <p className="text-lg sm:text-3xl font-bold text-[#D09A40] tabular-nums" style={{ fontFamily: "'Playfair Display', serif" }}>
-                    4.9 / 5.0
-                  </p>
-                  <p className="text-[10px] sm:text-xs text-[#4A4A4A] mt-0.5">Google Rating</p>
-                </div>
-                <div>
-                  <p className="text-lg sm:text-3xl font-bold text-[#0F172A] tabular-nums" style={{ fontFamily: "'Playfair Display', serif" }}>
-                    100%
-                  </p>
-                  <p className="text-[10px] sm:text-xs text-[#4A4A4A] mt-0.5">Branded Care</p>
-                </div>
-              </div>
-            </RevealOnScroll>
-          </div>
-
-          {/* Right Column: Mobile-Safe Hero Image Container */}
-          <div className="lg:col-span-5 w-full">
-            <RevealOnScroll direction="left" delay={0.1} duration={0.6}>
-              <div className="relative rounded-2xl overflow-hidden shadow-lg border border-white/60 bg-white/40 aspect-[4/3] sm:aspect-[16/9] lg:aspect-[5/4] group">
-                <img
-                  src="/src/assets/images/hero_jaipur_salon_1790671992521.jpg"
-                  alt="Beauty Zone Jaipur Salon Interior"
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A]/85 via-[#0F172A]/20 to-transparent pointer-events-none" />
-                
-                {/* Floating Social Icons Overlay */}
-                <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5 z-10">
-                  <a
-                    href={SOCIAL_LINKS.instagram.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-1.5 rounded-lg bg-black/70 text-white hover:bg-pink-600 transition-colors border border-white/30"
-                    title="Instagram"
-                  >
-                    <InstagramIcon className="w-3.5 h-3.5" />
-                  </a>
-                  <a
-                    href={SOCIAL_LINKS.whatsapp.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-1.5 rounded-lg bg-black/70 text-white hover:bg-emerald-600 transition-colors border border-white/30"
-                    title="WhatsApp"
-                  >
-                    <WhatsAppIcon className="w-3.5 h-3.5" />
-                  </a>
-                  <a
-                    href={SOCIAL_LINKS.facebook.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-1.5 rounded-lg bg-black/70 text-white hover:bg-blue-600 transition-colors border border-white/30"
-                    title="Facebook"
-                  >
-                    <FacebookIcon className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-
-                {/* Floating Location Card Overlay (Mobile Compact) */}
-                <div className="absolute bottom-2.5 left-2.5 right-2.5 p-3 rounded-xl bg-white border border-[#0F172A]/10 text-[#0F172A] shadow-md">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-1">
-                        <Sparkles className="w-3 h-3 text-[#D09A40]" />
-                        <p className="text-[10px] font-bold text-[#D09A40] uppercase tracking-wider">C-Scheme Salon</p>
-                      </div>
-                      <p className="text-xs font-serif font-bold text-[#0F172A] truncate">Private Bridal & Skin Rooms</p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <span className="inline-flex items-center text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                        Open Today
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </RevealOnScroll>
-          </div>
-        </div>
-
-        {/* Popular Quick Services Carousel/Grid */}
-        <div className="mt-10 sm:mt-16 pt-6 sm:pt-10 border-t border-[#0F172A]/10">
-          <RevealOnScroll duration={0.5}>
-            <div className="flex items-center justify-between gap-2 mb-4">
-              <div>
-                <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-[#D09A40]">
-                  Popular Services
-                </span>
-                <h3 
-                  className="text-base sm:text-2xl font-bold text-[#0F172A] tracking-tight mt-0.5"
-                  style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-                >
-                  Top Requested Treatments
-                </h3>
-              </div>
-              <a
-                href="#services"
-                className="text-xs font-bold text-[#0F172A] hover:text-[#D09A40] transition-colors flex items-center gap-1 group shrink-0"
-              >
-                <span>Full Rate Card</span>
-                <ArrowUpRight className="w-3.5 h-3.5" />
-              </a>
+                <Palette className="w-3.5 h-3.5 text-[#D09A40]" />
+                <span>Customize Brand</span>
+              </button>
             </div>
-          </RevealOnScroll>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-4">
-            {quickServices.map((item, idx) => (
-              <RevealOnScroll key={idx} delay={idx * 0.05} duration={0.4}>
-                <a
-                  href={item.category === 'home' ? '#booking' : '#services'}
-                  className="group relative rounded-xl sm:rounded-2xl overflow-hidden bg-white border border-[#0F172A]/10 hover:border-[#D09A40] shadow-2xs flex flex-col h-full cursor-pointer"
+            {/* Display Headline */}
+            <h1 className="font-serif text-4xl sm:text-5xl xl:text-[56px] font-bold text-[#FAF5E5] leading-[1.12] tracking-tight">
+              {brand.heroHeadlineLine1}{' '}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D09A40] via-[#F3D088] to-[#D09A40] italic font-normal">
+                {brand.heroHeadlineHighlight}
+              </span>{' '}
+              {brand.heroHeadlineLine2}
+            </h1>
+
+            {/* Subtitle */}
+            <p className="text-base sm:text-lg text-[#FAF5E5]/80 max-w-2xl font-light leading-relaxed">
+              {brand.heroDescription}
+            </p>
+
+            {/* Key Value Highlights */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+              <div className="flex items-center gap-2.5 bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5">
+                <Award className="w-5 h-5 text-[#D09A40] shrink-0" />
+                <div className="text-xs">
+                  <p className="text-[#FAF5E5] font-semibold">{t('heroCertifiedArtists')}</p>
+                  <p className="text-[#FAF5E5]/60">Bridal & Salon Experts</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5 bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5">
+                <ShieldCheck className="w-5 h-5 text-[#10B981] shrink-0" />
+                <div className="text-xs">
+                  <p className="text-[#FAF5E5] font-semibold">{t('heroGenuineProducts')}</p>
+                  <p className="text-[#FAF5E5]/60">MAC, Dyson, L&apos;Oréal</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5 bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5">
+                <Home className="w-5 h-5 text-[#D09A40] shrink-0" />
+                <div className="text-xs">
+                  <p className="text-[#FAF5E5] font-semibold">{t('heroHomeService')}</p>
+                  <p className="text-[#FAF5E5]/60">Anywhere in {brand.cityName}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Dual CTAs */}
+            <div className="pt-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5">
+              <button
+                onClick={onBookClick}
+                className="flex items-center justify-center gap-2.5 bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A] font-bold text-base px-7 py-4 rounded-full shadow-xl hover:shadow-[#D09A40]/30 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
+              >
+                <Calendar className="w-5 h-5" />
+                <span>{brand.heroPrimaryCta}</span>
+              </button>
+              <button
+                onClick={onExploreServices}
+                className="flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-[#FAF5E5] border border-[#D09A40]/40 font-semibold text-base px-6 py-4 rounded-full transition-all duration-300 cursor-pointer"
+              >
+                <span>{brand.heroSecondaryCta}</span>
+              </button>
+            </div>
+
+            {/* Package Savings Pill Link */}
+            {onExplorePackages && brand.sections.showPackages && (
+              <div className="pt-1">
+                <button
+                  onClick={onExplorePackages}
+                  className="inline-flex items-center gap-2 text-xs sm:text-sm text-[#D09A40] hover:text-[#FAF5E5] transition-colors font-medium group cursor-pointer"
                 >
-                  <div className="relative aspect-[4/3] w-full overflow-hidden bg-neutral-100">
-                    <img
-                      src={item.image}
-                      alt={item.title}
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover luxe-img-zoom"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-                    <div className="absolute bottom-1.5 left-1.5 right-1.5">
-                      <span className="text-[9px] sm:text-[10px] font-mono text-white bg-black/75 px-1.5 py-0.5 rounded">
-                        {item.price}
-                      </span>
-                    </div>
-                  </div>
+                  <span className="px-2 py-0.5 rounded bg-[#10B981]/20 text-[#10B981] font-bold text-[11px] uppercase tracking-wider flex items-center gap-1">
+                    <Tag className="w-3 h-3" /> Save More
+                  </span>
+                  <span className="underline underline-offset-4 decoration-[#D09A40]/50 group-hover:decoration-[#FAF5E5]">
+                    {brand.heroPromoPillText} →
+                  </span>
+                </button>
+              </div>
+            )}
 
-                  <div className="p-2.5 sm:p-3 flex-1 flex flex-col justify-between">
+            {/* Local Social Proof */}
+            <div className="pt-3 flex items-center gap-4 text-xs sm:text-sm text-[#FAF5E5]/70 border-t border-white/10">
+              <div className="flex -space-x-2">
+                <div className="w-8 h-8 rounded-full bg-[#D09A40] text-[#0F172A] font-bold flex items-center justify-center text-xs ring-2 ring-[#0F172A]">
+                  A
+                </div>
+                <div className="w-8 h-8 rounded-full bg-emerald-500 text-[#0F172A] font-bold flex items-center justify-center text-xs ring-2 ring-[#0F172A]">
+                  S
+                </div>
+                <div className="w-8 h-8 rounded-full bg-amber-300 text-[#0F172A] font-bold flex items-center justify-center text-xs ring-2 ring-[#0F172A]">
+                  P
+                </div>
+              </div>
+              <p>
+                Rated <strong className="text-[#D09A40]">4.9/5 ★</strong> by{' '}
+                <strong className="text-[#FAF5E5]">{t('heroHappyClients')}</strong> in{' '}
+                {brand.cityName}
+              </p>
+            </div>
+          </div>
+
+          {/* Right Column - Framed Editorial Portrait */}
+          <div className="lg:col-span-5 relative">
+            <div className="relative mx-auto max-w-md lg:max-w-none">
+              {/* Decorative Gold Frame Offset */}
+              <div className="absolute -inset-3 rounded-3xl border border-[#D09A40]/40 translate-x-3 translate-y-3 pointer-events-none" />
+
+              <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-white/15 bg-[#1E293B]">
+                <img
+                  src={brand.heroImage}
+                  alt={`${brand.brandName} — ${brand.cityName}`}
+                  className="w-full h-[420px] sm:h-[500px] object-cover object-center transform hover:scale-105 transition-transform duration-700"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A] via-transparent to-transparent opacity-80" />
+
+                {/* Floating Location Card inside Image */}
+                <div className="absolute bottom-5 left-5 right-5 bg-[#0F172A]/90 backdrop-blur-md border border-[#D09A40]/30 rounded-2xl p-4 shadow-xl">
+                  <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h4 className="font-serif font-bold text-xs sm:text-sm text-[#0F172A] group-hover:text-[#D09A40] transition-colors leading-snug line-clamp-1">
-                        {item.title}
-                      </h4>
-                      <p className="text-[10px] sm:text-[11px] text-[#4A4A4A] mt-0.5 line-clamp-1">
-                        {item.subtitle}
+                      <span className="inline-block text-[10px] uppercase tracking-widest text-[#D09A40] font-semibold">
+                        {brand.heroFloatingCardTitle}
+                      </span>
+                      <h2 className="font-serif text-base text-[#FAF5E5] font-semibold mt-0.5">
+                        {brand.branches.length} {brand.cityName} Studios + Home Visits
+                      </h2>
+                      <p className="text-xs text-[#FAF5E5]/70 mt-1 flex items-center gap-1">
+                        <MapPin className="w-3.5 h-3.5 text-[#D09A40]" />
+                        {branchLocalityList}
                       </p>
                     </div>
-                    <div className="mt-2 pt-1.5 border-t border-neutral-100 flex items-center justify-between text-[10px] sm:text-[11px] font-bold text-[#D09A40]">
-                      <span>Select</span>
-                      <ArrowUpRight className="w-3 h-3" />
-                    </div>
+                    <span className="bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/30 text-[11px] font-semibold px-2.5 py-1 rounded-full shrink-0">
+                      {t('heroOpenToday')}
+                    </span>
                   </div>
-                </a>
-              </RevealOnScroll>
-            ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

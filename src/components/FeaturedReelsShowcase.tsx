@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { VideoItem } from '../types';
 import { RevealOnScroll } from './RevealOnScroll';
 import { InstagramIcon, FacebookIcon, YouTubeIcon } from './SocialIcons';
+import { useBrand } from '../context/BrandContext';
 import { 
   Sparkles, 
   Film, 
@@ -31,6 +32,7 @@ export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
   onExploreAllVideos,
   onOpenManagement,
 }) => {
+  const { t } = useBrand();
   const [activePlayVideo, setActivePlayVideo] = useState<VideoItem | null>(null);
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
 
@@ -61,18 +63,16 @@ export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
             <div>
               <div className="flex items-center gap-2 text-xs font-semibold text-[#D09A40] tracking-wider uppercase mb-1.5">
                 <Flame className="w-3.5 h-3.5 text-[#D09A40]" />
-                <span>Trending on Instagram & YouTube</span>
-                <span aria-hidden="true">·</span>
-                <span>Real Jaipur Transformations</span>
+                <span>{t('reelsOverline')}</span>
               </div>
               <h2
                 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#0F172A] tracking-tight"
                 style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
               >
-                Trending Reels & Client Transformations
+                {t('reelsTitle')}
               </h2>
               <p className="mt-1.5 text-xs sm:text-sm text-[#4A4A4A] max-w-2xl font-light leading-relaxed">
-                Watch viral bridal transformations, Morrocan hair spa results, nail art tutorials, and client reviews captured live at our Jaipur salons.
+                {t('reelsSubtitle')}
               </p>
             </div>
 

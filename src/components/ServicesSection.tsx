@@ -6,6 +6,7 @@ import { INITIAL_SERVICE_REVIEWS, BASELINE_SERVICE_RATINGS } from '../data/servi
 import { ServiceReviewModal } from './ServiceReviewModal';
 import { ServiceCompareModal } from './ServiceCompareModal';
 import { RevealOnScroll } from './RevealOnScroll';
+import { useBrand } from '../context/BrandContext';
 import { 
   Check, 
   Sparkles, 
@@ -56,6 +57,7 @@ interface CategoryMetadata {
 }
 
 export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSelectService }) => {
+  const { brand, t } = useBrand();
   // Deduplicate raw services by unique id or normalized title
   const rawServices = services && services.length > 0 ? services : SALON_SERVICES;
   
@@ -186,10 +188,10 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
       shortLabel: 'Bridal',
       icon: Crown, 
       tagline: 'HD Airbrush Bridal Makeup & Draping',
-      description: 'Waterproof HD airbrush makeup, Kundan jewelry setting, and royal lehenga & dupatta draping.', 
+      description: 'Waterproof HD airbrush makeup, fine jewelry setting, and couture outfit & veil draping.', 
       image: '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg',
-      altText: 'Indian bride wearing heavy gold jewelry and red lehenga with HD makeup at Beauty Zone Jaipur',
-      features: ['Temptu HD Airbrush', 'Kundan Setting', 'Lehenga Draping', 'Wedding Visits'],
+      altText: 'Bride wearing fine gold jewelry and couture lehenga with HD makeup',
+      features: ['Temptu HD Airbrush', 'Jewelry Setting', 'Couture Draping', 'Wedding Visits'],
     },
     { 
       id: 'hair', 
@@ -199,7 +201,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
       tagline: 'Chemical-Free Hair Botox & Balayage',
       description: '100% safe formaldehyde-free hair smoothening, Olaplex balayage coloring, and haircuts.', 
       image: '/src/assets/images/hair_styling_luxe_1790672021591.jpg',
-      altText: 'Client with sleek balayage hair styled at Beauty Zone Jaipur salon',
+      altText: 'Client with sleek balayage hair styled at luxury salon',
       features: ['Nanoplastia', 'Olaplex Protection', 'Custom Hair Colors', 'Wash & Blowout'],
     },
     { 
@@ -210,7 +212,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
       tagline: '24K Gold Leaf Glow & Hydra-Facials',
       description: 'Deep-cleansing HydraFacials, signature 24K real gold leaf facials, and herbal de-tan.', 
       image: '/src/assets/images/skin_spa_treatment_1790672037475.jpg',
-      altText: 'Client getting a relaxing 24K gold facial at Beauty Zone Jaipur salon',
+      altText: 'Client getting a relaxing 24K gold facial at luxury salon',
       features: ['Real 24K Gold', 'Extraction Care', 'Cooling Ice Globes', 'Herbal De-Tan'],
     },
     { 
@@ -221,7 +223,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
       tagline: 'Gel Extensions & Swarovski Art',
       description: 'Chip-proof gel nail extensions, chrome finishes, Swarovski crystal art, and Russian manicures.', 
       image: '/src/assets/images/nail_art_luxe_1790676094903.jpg',
-      altText: 'Bridal gel nail extensions with stone art at Beauty Zone Jaipur',
+      altText: 'Bridal gel nail extensions with stone art',
       features: ['4-Week Gel', 'Swarovski Stones', 'Russian Manicure', 'Paraffin Spa'],
     },
     { 
@@ -232,7 +234,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
       tagline: 'HD Airbrush & Sangeet Party Glam Makeovers',
       description: 'Waterproof HD airbrush makeup, party glam, smokey eyes, and professional bridal makeup artistry.', 
       image: '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg',
-      altText: 'Bridal and party makeup artistry at Beauty Zone Jaipur',
+      altText: 'Bridal and party makeup artistry',
       features: ['Temptu HD Airbrush', 'Smokey & Cut-Crease Eyes', 'Full Touchup Kit', 'Lashes & Draping'],
     },
     { 
@@ -243,7 +245,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
       tagline: 'Rose Petal Milk Baths & Body Polishing',
       description: 'Indulgent body spa rituals featuring organic milk baths, fresh rose petals, and almond oil massages.', 
       image: '/src/assets/images/prebridal_spa_ritual_1790676123541.jpg',
-      altText: 'Relaxing rose petal body spa treatment at Beauty Zone Jaipur',
+      altText: 'Relaxing rose petal body spa treatment',
       features: ['Rose Milk Soak', 'Herbal Scrub', 'Steam Therapy', 'Essential Oils'],
     },
     { 
@@ -254,7 +256,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
       tagline: 'Govt Certified Professional Courses',
       description: 'Diploma in bridal makeup and advanced hair chemical treatments with practice on live models.', 
       image: '/src/assets/images/academy_makeup_class_1790676134907.jpg',
-      altText: 'Students practicing makeup in Beauty Zone Jaipur Academy class',
+      altText: 'Students practicing makeup in professional Academy class',
       features: ['Govt & ISO Diploma', 'Full Vanity Kit', 'Live Models', 'Career Support'],
     },
   ];
@@ -401,15 +403,15 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[#0F172A]/10">
             <div>
               <div className="flex items-center gap-2 text-xs font-semibold text-[#D09A40] tracking-wider uppercase mb-1">
-                <span>Salon Rate Card</span>
+                <span>{t('servicesOverline')}</span>
                 <span aria-hidden="true">·</span>
-                <span>Jaipur</span>
+                <span>{brand.cityName}</span>
               </div>
               <h2
                 className="text-2xl sm:text-3xl font-bold text-[#0F172A] tracking-tight"
                 style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
               >
-                Our Services & Treatments
+                {t('servicesTitle')}
               </h2>
             </div>
 
@@ -422,7 +424,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search service e.g. facial, botox..."
+                  placeholder={t('servicesSearchPlaceholder')}
                   className="w-full pl-8 pr-7 py-1.5 text-xs border border-[#0F172A]/15 rounded-lg focus:outline-none focus:border-[#D09A40] bg-white text-[#0F172A]"
                 />
                 {searchQuery && (
@@ -945,6 +947,7 @@ const ServiceCardItem: React.FC<ServiceCardItemProps> = ({
   onImageError,
   layout = 'carousel',
 }) => {
+  const { t } = useBrand();
   return (
     <div
       className={`${
@@ -1035,7 +1038,7 @@ const ServiceCardItem: React.FC<ServiceCardItemProps> = ({
             onClick={() => onSelectService(service)}
             className="px-2 py-1 text-[11px] font-bold bg-[#0F172A] hover:bg-[#D09A40] text-white rounded-lg transition-colors cursor-pointer whitespace-nowrap shadow-2xs"
           >
-            Book
+            {t('servicesBookNow')}
           </button>
         </div>
       </div>

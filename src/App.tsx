@@ -3,297 +3,305 @@ import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { TrustHighlightsBar } from './components/TrustHighlightsBar';
 import { FeaturedReelsShowcase } from './components/FeaturedReelsShowcase';
-import { BundledServicesSection } from './components/BundledServicesSection';
 import { ServicesSection } from './components/ServicesSection';
+import { BundledServicesSection } from './components/BundledServicesSection';
 import { BridalSpotlight } from './components/BridalSpotlight';
-import { BookingSection } from './components/BookingSection';
 import { GallerySection } from './components/GallerySection';
+import { BookingSection } from './components/BookingSection';
+import { BeautyRewardsSection } from './components/BeautyRewardsSection';
+import { DigitalGiftCardSection } from './components/DigitalGiftCardSection';
 import { TestimonialsSection } from './components/TestimonialsSection';
 import { StylistsSection } from './components/StylistsSection';
 import { FoundersNote } from './components/FoundersNote';
-import { BeautyRewardsSection } from './components/BeautyRewardsSection';
-import { DigitalGiftCardSection } from './components/DigitalGiftCardSection';
 import { SalonsLocations } from './components/SalonsLocations';
 import { FAQSection } from './components/FAQSection';
 import { Footer } from './components/Footer';
-import { ManagementModal } from './components/ManagementModal';
-import { DesignSystemInspector } from './components/DesignSystemInspector';
 import { FloatingActions } from './components/FloatingActions';
 import { MobileBottomDock } from './components/MobileBottomDock';
-import { ServiceItem, Stylist, SalonPackage, GalleryItem, VideoItem } from './types';
+import { DesignSystemInspector } from './components/DesignSystemInspector';
+import { ManagementModal } from './components/ManagementModal';
+import { WhiteLabelCustomizer } from './components/WhiteLabelCustomizer';
+import { ServiceCategory, SalonPackage, GalleryItem, VideoItem, ServiceItem } from './types';
 import { getStoredPackages, saveStoredPackages } from './data/packagesData';
 import { getStoredGallery, saveStoredGallery } from './data/galleryData';
-import { getStoredServices, saveStoredServices } from './data/servicesStore';
 import { getStoredVideos, saveStoredVideos } from './data/videosData';
+import { getStoredServices, saveStoredServices } from './data/servicesStore';
+import { useBrand } from './context/BrandContext';
 
-export default function App() {
-  const [isTokensInspectorOpen, setIsTokensInspectorOpen] = useState(false);
-  const [isManagementModalOpen, setIsManagementModalOpen] = useState(false);
-  const [managementInitialTab, setManagementInitialTab] = useState<'services' | 'packages' | 'gallery' | 'videos'>('services');
-
-  // Module: Live Services Store
+export function App() {
+  const { brand, formatPrice } = useBrand();
   const [services, setServices] = useState<ServiceItem[]>(() => getStoredServices());
-
-  // Module: Package Management Store
   const [packages, setPackages] = useState<SalonPackage[]>(() => getStoredPackages());
-
-  // Module: Gallery Management Store
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>(() => getStoredGallery());
-
-  // Module: Video & Reels Store
   const [videos, setVideos] = useState<VideoItem[]>(() => getStoredVideos());
   const [galleryView, setGalleryView] = useState<'photos' | 'videos'>('photos');
 
-  const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
-  const [selectedBundle, setSelectedBundle] = useState<{
-    title: string;
-    price: number;
-    services: string[];
-  } | null>(null);
-  const [selectedStylist, setSelectedStylist] = useState<string | null>(null);
+  const [preselectedServiceId, setPreselectedServiceId] = useState<string | null>(null);
+  const [preselectedServiceTitle, setPreselectedServiceTitle] = useState<string | null>(null);
+  const [preselectedLocationMode, setPreselectedLocationMode] = useState<'salon' | 'home' | null>(null);
+  const [preselectedBranch, setPreselectedBranch] = useState<string | null>(null);
+  const [preselectedStylistName, setPreselectedStylistName] = useState<string | null>(null);
+  const [preselectedCategory, setPreselectedCategory] = useState<ServiceCategory | null>(null);
+  const [preselectedPromoCode, setPreselectedPromoCode] = useState<string | null>(null);
+
+  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [isManagementOpen, setIsManagementOpen] = useState(false);
+  const [managementInitialTab, setManagementInitialTab] = useState<'services' | 'packages' | 'gallery' | 'videos'>('packages');
+
+  const handleUpdateServices = (updated: ServiceItem[]) => {
+    setServices(updated);
+    saveStoredServices(updated);
+  };
+
+  const handleUpdatePackages = (updated: SalonPackage[]) => {
+    setPackages(updated);
+    saveStoredPackages(updated);
+  };
+
+  const handleUpdateGallery = (updated: GalleryItem[]) => {
+    setGalleryItems(updated);
+    saveStoredGallery(updated);
+  };
+
+  const handleUpdateVideos = (updated: VideoItem[]) => {
+    setVideos(updated);
+    saveStoredVideos(updated);
+  };
+
+  const handleOpenManagement = (tab: 'services' | 'packages' | 'gallery' | 'videos' = 'packages') => {
+    setManagementInitialTab(tab);
+    setIsManagementOpen(true);
+  };
 
   const scrollToSection = (id: string) => {
     const el = document.getElementById(id);
     if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
 
   const handleSelectServiceFromList = (service: ServiceItem) => {
-    setSelectedService(service);
-    setSelectedBundle(null);
+    setPreselectedServiceId(service.id);
+    setPreselectedServiceTitle(service.title);
     scrollToSection('booking');
   };
 
-  const handleBookBundle = (bundleTitle: string, price: number, servicesList: string[]) => {
-    setSelectedBundle({ title: bundleTitle, price, services: servicesList });
-    setSelectedService(null);
+  const handleBookBundle = (bundleTitle: string, price: number) => {
+    setPreselectedServiceTitle(`${bundleTitle} (Combo — ${formatPrice(price)})`);
+    setPreselectedServiceId('b1');
     scrollToSection('booking');
   };
 
-  const handleBookWithStylist = (stylist: Stylist) => {
-    setSelectedStylist(stylist.name);
+  const handleSelectGalleryItemForBooking = (serviceName: string) => {
+    setPreselectedServiceTitle(serviceName);
     scrollToSection('booking');
   };
 
-  const handleBookFromHero = () => {
+  const handleHeroBookClick = () => {
+    setPreselectedLocationMode('salon');
     scrollToSection('booking');
   };
 
-  const handleExploreBridal = () => {
-    scrollToSection('bridal');
+  const handleHeroExploreClick = () => {
+    scrollToSection('services');
   };
 
-  const handleBookFromGallery = (serviceName: string) => {
-    const matched = services.find(
-      (s) => s.title.toLowerCase().includes(serviceName.toLowerCase()) || 
-             serviceName.toLowerCase().includes(s.title.toLowerCase())
-    );
-    if (matched) {
-      setSelectedService(matched);
-      setSelectedBundle(null);
-    } else {
-      setSelectedService({
-        id: `custom-${Date.now()}`,
-        title: serviceName,
-        category: 'bridal',
-        price: 9999,
-        duration: '180 mins',
-        description: `Custom makeover look based on our Real Photos Gallery: ${serviceName}`,
-        highlights: ['Custom Look Recreation', 'Senior Bridal Artist', 'Free Shade & Foundation Match'],
-      });
-      setSelectedBundle(null);
-    }
+  const handleBridalBookConsultation = () => {
+    setPreselectedServiceId('b1');
+    setPreselectedLocationMode('salon');
     scrollToSection('booking');
   };
 
-  const handleOpenManagement = (tab: 'services' | 'packages' | 'gallery' | 'videos' = 'services') => {
-    setManagementInitialTab(tab);
-    setIsManagementModalOpen(true);
+  const handleBridalExploreCatalog = () => {
+    setPreselectedCategory('bridal');
+    scrollToSection('services');
   };
 
-  const handleUpdateServices = (updatedServices: ServiceItem[]) => {
-    setServices(updatedServices);
-    saveStoredServices(updatedServices);
+  const handleSelectBranchForBooking = (branchName: string) => {
+    setPreselectedLocationMode('salon');
+    setPreselectedBranch(branchName);
+    scrollToSection('booking');
   };
 
-  const handleUpdatePackages = (updatedPackages: SalonPackage[]) => {
-    setPackages(updatedPackages);
-    saveStoredPackages(updatedPackages);
+  const handleSelectStylistForBooking = (stylistName: string, branchName: string) => {
+    setPreselectedLocationMode('salon');
+    setPreselectedStylistName(stylistName);
+    setPreselectedBranch(branchName);
+    scrollToSection('booking');
   };
 
-  const handleUpdateGallery = (updatedGallery: GalleryItem[]) => {
-    setGalleryItems(updatedGallery);
-    saveStoredGallery(updatedGallery);
-  };
-
-  const handleUpdateVideos = (updatedVideos: VideoItem[]) => {
-    setVideos(updatedVideos);
-    saveStoredVideos(updatedVideos);
+  const handleApplyVoucherToBooking = (voucherCode: string) => {
+    setPreselectedPromoCode(voucherCode);
+    scrollToSection('booking');
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF5E5] text-[#0F172A] selection:bg-[#D09A40] selection:text-white pb-16 md:pb-0">
-      {/* Top Bar Navigation */}
+    <div className="min-h-screen flex flex-col bg-[#FAF5E5] text-[#0F172A] selection:bg-[#D09A40] selection:text-[#0F172A] pb-16 lg:pb-0">
+      {/* Sticky Navigation Header */}
       <Navbar
-        onOpenBooking={() => scrollToSection('booking')}
-        onOpenManagement={() => handleOpenManagement('services')}
-        onToggleTokens={() => setIsTokensInspectorOpen((prev) => !prev)}
-        isTokensOpen={isTokensInspectorOpen}
+        onNavigate={scrollToSection}
+        onOpenInspector={() => setIsInspectorOpen(true)}
+        onOpenManagement={() => handleOpenManagement('packages')}
       />
 
-      <main>
-        {/* ========================================================
-            1. HERO BANNER & BOOKING ACTION (TOP SECTION)
-        ======================================================== */}
+      {/* Main Content */}
+      <main className="flex-grow">
+        {/* 1. Full Viewport Hero Section */}
         <Hero
-          onBookClick={handleBookFromHero}
-          onExploreBridal={handleExploreBridal}
+          onBookClick={handleHeroBookClick}
+          onExploreServices={handleHeroExploreClick}
+          onExplorePackages={() => scrollToSection('packages')}
         />
 
-        {/* ========================================================
-            2. TRUST BAR / HIGHLIGHTS STRIP
-        ======================================================== */}
-        <TrustHighlightsBar />
+        {/* 1.5 Quick Trust & Value Bar */}
+        {brand.sections.showTrustBar && <TrustHighlightsBar />}
 
-        {/* ========================================================
-            3. TRENDING REELS & CLIENT TRANSFORMATIONS (FEATURED VIDEOS)
-        ======================================================== */}
-        <FeaturedReelsShowcase
-          videos={videos}
-          onBookService={handleBookFromGallery}
-          onExploreAllVideos={() => {
-            setGalleryView('videos');
-            scrollToSection('gallery');
-          }}
-          onOpenManagement={() => handleOpenManagement('videos')}
-        />
+        {/* 1.8 Featured Video Reels & Watch Showcase */}
+        {brand.sections.showReels && (
+          <FeaturedReelsShowcase
+            videos={videos}
+            onBookService={handleSelectGalleryItemForBooking}
+            onExploreAllVideos={() => {
+              setGalleryView('videos');
+              scrollToSection('gallery');
+            }}
+            onOpenManagement={() => handleOpenManagement('videos')}
+          />
+        )}
 
-        {/* ========================================================
-            4. FESTIVAL OFFERS & COMBO PACKAGES BANNER
-        ======================================================== */}
-        <BundledServicesSection
-          packages={packages}
-          onBookBundle={handleBookBundle}
-          onOpenManagement={() => handleOpenManagement('packages')}
-        />
+        {/* 2. Curated Value Packages & Bundles */}
+        {brand.sections.showPackages && (
+          <BundledServicesSection
+            packages={packages}
+            onBookBundle={handleBookBundle}
+            onOpenManagement={() => handleOpenManagement('packages')}
+          />
+        )}
 
-        {/* ========================================================
-            5. POPULAR SALON SERVICES & CATEGORIES (RATE CARD)
-        ======================================================== */}
-        <ServicesSection 
-          services={services}
-          onSelectService={handleSelectServiceFromList} 
-        />
+        {/* 3. Services Catalog with Category Tabs */}
+        {brand.sections.showServices && (
+          <ServicesSection
+            services={services}
+            onSelectService={handleSelectServiceFromList}
+          />
+        )}
 
-        {/* Bridal Spotlight Showcase (Anchored to #bridal) */}
-        <BridalSpotlight onBookBridal={() => {
-          setSelectedService({
-            id: 'b1',
-            title: 'Royal Rajasthani HD Bridal Makeover',
-            category: 'bridal',
-            price: 24999,
-            duration: '210 mins',
-            description: 'Flawless HD airbrush bridal makeup with traditional jewelry setting, luxury hair styling, and complimentary touch-up kit.',
-            highlights: ['HD Airbrush Waterproof Base', 'Kundan & Borla Jewelry Setting', 'Senior Makeup Master'],
-          });
-          setSelectedBundle(null);
-          scrollToSection('booking');
-        }} />
+        {/* 4. Bridal Studio Spotlight Banner */}
+        {brand.sections.showBridalSpotlight && (
+          <BridalSpotlight
+            onBookBridalConsultation={handleBridalBookConsultation}
+            onExploreBridalPackages={handleBridalExploreCatalog}
+          />
+        )}
 
-        {/* ========================================================
-            6. INTERACTIVE PRICE ESTIMATOR / BUDGET CALCULATOR & BOOKING
-        ======================================================== */}
-        <BookingSection
-          selectedServicePreload={selectedService}
-          selectedBundlePreload={selectedBundle}
-          selectedStylistPreload={selectedStylist}
-          onClearPreload={() => setSelectedService(null)}
-          onClearBundle={() => setSelectedBundle(null)}
-          onClearStylist={() => setSelectedStylist(null)}
-        />
+        {/* 5. Lookbook Gallery & Before/After Transformations */}
+        {brand.sections.showGallery && (
+          <GallerySection
+            galleryItems={galleryItems}
+            videos={videos}
+            initialView={galleryView}
+            onBookService={handleSelectGalleryItemForBooking}
+            onOpenManagement={() => handleOpenManagement('gallery')}
+          />
+        )}
 
-        {/* ========================================================
-            7. TRANSFORMATION GALLERY (BEFORE & AFTER PHOTOS & REELS)
-        ======================================================== */}
-        <GallerySection
-          galleryItems={galleryItems}
-          videos={videos}
-          initialView={galleryView}
-          onBookService={handleBookFromGallery}
-          onOpenManagement={() => handleOpenManagement('gallery')}
-        />
+        {/* 6. Online Appointment Booking & Price Calculator */}
+        {brand.sections.showBooking && (
+          <BookingSection
+            services={services}
+            preselectedServiceId={preselectedServiceId}
+            preselectedServiceTitle={preselectedServiceTitle}
+            preselectedLocationMode={preselectedLocationMode}
+            preselectedBranch={preselectedBranch}
+            preselectedStylistName={preselectedStylistName}
+            preselectedPromoCode={preselectedPromoCode}
+          />
+        )}
 
-        {/* ========================================================
-            8. CLIENT REVIEWS & GOOGLE RATINGS (SOCIAL PROOF)
-        ======================================================== */}
-        <TestimonialsSection />
+        {/* 6.5 Loyalty & Rewards Club */}
+        {brand.sections.showRewards && (
+          <BeautyRewardsSection
+            onBookWithReward={handleApplyVoucherToBooking}
+            onBookAppointment={() => scrollToSection('booking')}
+          />
+        )}
 
-        {/* Stylists & Founder Spotlight */}
-        <StylistsSection onBookWithStylist={handleBookWithStylist} />
-        <FoundersNote onOpenBooking={() => scrollToSection('booking')} />
+        {/* 6.8 Instant Digital Gift Card Studio */}
+        {brand.sections.showGiftCards && <DigitalGiftCardSection />}
 
-        {/* ========================================================
-            8B. BEAUTY REWARDS CLUB & LOYALTY TRACKER
-        ======================================================== */}
-        <BeautyRewardsSection onBookAppointment={() => scrollToSection('booking')} />
+        {/* 7. Meet Our Master Stylists & Artists */}
+        {brand.sections.showStylists && (
+          <StylistsSection
+            onBookWithStylist={handleSelectStylistForBooking}
+          />
+        )}
 
-        {/* ========================================================
-            8C. DIGITAL GIFT CARDS PURCHASE & GENERATOR
-        ======================================================== */}
-        <DigitalGiftCardSection />
+        {/* 7.5 Founder's Note & Story */}
+        {brand.sections.showFoundersNote && (
+          <FoundersNote
+            onBookBridalConsult={handleBridalBookConsultation}
+          />
+        )}
 
-        {/* ========================================================
-            9. SALON BRANCH LOCATIONS & DOORSTEP HOME VISIT MAP INFO
-        ======================================================== */}
-        <SalonsLocations />
+        {/* 8. Client Reviews & Testimonials */}
+        {brand.sections.showTestimonials && <TestimonialsSection />}
 
-        {/* ========================================================
-            10. FAQ & FOOTER SECTION
-        ======================================================== */}
-        <FAQSection onOpenBooking={() => scrollToSection('booking')} />
+        {/* 9. Salon Branches & Locations */}
+        {brand.sections.showLocations && (
+          <SalonsLocations
+            onSelectBranchForBooking={handleSelectBranchForBooking}
+          />
+        )}
+
+        {/* 10. Frequently Asked Questions */}
+        {brand.sections.showFAQ && (
+          <FAQSection onBookConsult={() => scrollToSection('booking')} />
+        )}
       </main>
 
-      {/* Main Footer with Social Channels & Operating Hours */}
+      {/* 11. Footer */}
       <Footer
-        onOpenBooking={() => scrollToSection('booking')}
-        onOpenTokens={() => setIsTokensInspectorOpen(true)}
-        onOpenManagement={() => handleOpenManagement('services')}
+        onNavigate={scrollToSection}
+        onOpenInspector={() => setIsInspectorOpen(true)}
+        onOpenManagement={() => handleOpenManagement('packages')}
       />
 
-      {/* Universal Floating Actions: WhatsApp, Scroll-to-Top & Admin Dashboard (Desktop) */}
-      <FloatingActions
-        onOpenBooking={() => scrollToSection('booking')}
-        onOpenManagement={() => handleOpenManagement('services')}
-      />
+      {/* Floating WhatsApp & White-Label Studio Quick Actions */}
+      {brand.sections.showFloatingActions && (
+        <FloatingActions onBookClick={() => scrollToSection('booking')} />
+      )}
 
-      {/* Fixed Mobile Bottom Application Dock (Mobile Only) */}
+      {/* Sticky Mobile Bottom Navigation Bar */}
       <MobileBottomDock
+        onNavigate={scrollToSection}
         onOpenBooking={() => scrollToSection('booking')}
-        onOpenManagement={() => handleOpenManagement('services')}
-        onSelectSection={(sectionId) => scrollToSection(sectionId)}
       />
 
-      {/* Salon Management Console Modal */}
+      {/* Interactive Design System Inspector Drawer */}
+      <DesignSystemInspector
+        isOpen={isInspectorOpen}
+        onClose={() => setIsInspectorOpen(false)}
+      />
+
+      {/* Salon Management Console (Services, Packages, Gallery & Videos CRUD) */}
       <ManagementModal
-        isOpen={isManagementModalOpen}
-        onClose={() => setIsManagementModalOpen(false)}
+        isOpen={isManagementOpen}
+        onClose={() => setIsManagementOpen(false)}
         services={services}
-        packages={packages}
-        galleryItems={galleryItems}
-        videos={videos}
         onUpdateServices={handleUpdateServices}
+        packages={packages}
         onUpdatePackages={handleUpdatePackages}
+        galleryItems={galleryItems}
         onUpdateGallery={handleUpdateGallery}
+        videos={videos}
         onUpdateVideos={handleUpdateVideos}
         initialTab={managementInitialTab}
       />
 
-      {/* Design System Inspector Modal / Drawer */}
-      <DesignSystemInspector
-        isOpen={isTokensInspectorOpen}
-        onClose={() => setIsTokensInspectorOpen(false)}
-      />
+      {/* White-Label Brand Studio Drawer */}
+      <WhiteLabelCustomizer />
     </div>
   );
 }
+
+export default App;

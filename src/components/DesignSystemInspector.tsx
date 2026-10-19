@@ -124,7 +124,7 @@ export const DesignSystemInspector: React.FC<DesignSystemInspectorProps> = ({ is
 
             {sectionsOpen.colors && (
               <div className="mt-3 space-y-2">
-                <p className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">Beauty Zone Jaipur & Studio Tokens</p>
+                <p className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">White-Label Brand & Studio Tokens</p>
                 {DESIGN_TOKENS.colors.map((c, i) => (
                   <div
                     key={i}

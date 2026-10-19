@@ -14,7 +14,7 @@ export const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
   beforeImage,
   afterImage,
   beforeLabel = 'Before',
-  afterLabel = 'After (Beauty Zone)',
+  afterLabel = 'After Transformation',
   aspectRatio = 'aspect-[4/3]',
   className = '',
 }) => {
