@@ -16,10 +16,13 @@ import {
   notFound,
   errorHandler,
 } from './middleware.js';
+import { subdomainMiddleware } from './subdomain.js';
 import { authRouter } from './routes/auth.js';
 import { salonRouter } from './routes/salon.js';
 import { publicRouter } from './routes/public.js';
 import { adminRouter } from './routes/admin.js';
+import { aiRouter } from './routes/ai.js';
+import { bookingsRouter } from './routes/bookings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -47,6 +50,10 @@ app.disable('x-powered-by');
 
 app.use(securityHeaders);
 
+// Resolve tenant subdomains (slug.beautyzone.app / *.vercel.app) before anything
+// else so both API and SPA handlers can use req.tenant*.
+app.use(subdomainMiddleware);
+
 // Raw body for image uploads must be registered before the JSON parser.
 app.use('/api/salon/uploads', express.raw({ type: 'image/*', limit: '5mb' }));
 
@@ -68,6 +75,9 @@ app.use('/api/auth', authRouter);
 app.use('/api/salon', salonRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/public', publicRouter);
+app.use('/api/ai', aiRouter);
+// /api/public/bookings — visitor appointment requests
+app.use('/api/public', bookingsRouter);
 
 // Uploaded images are public assets (they are embedded in public salon websites).
 app.use(

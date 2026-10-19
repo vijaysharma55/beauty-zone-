@@ -21,6 +21,8 @@ import {
   parseVideoUrl 
 } from '../data/videosData';
 import { InstagramIcon, FacebookIcon, YouTubeIcon } from './SocialIcons';
+import { suggestTaglines } from '../lib/ai';
+import { Loader2 } from 'lucide-react';
 import { 
   X, 
   Plus, 
@@ -465,13 +467,29 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
   };
 
   // 2. Tagline Generator Handler
-  const handleGenerateTaglines = () => {
-    const ideas = generateTaglineIdeas(pkgName || 'Festive Beauty Package');
-    setTaglineIdeas(ideas);
-    if (!pkgTagline) {
-      setPkgTagline(ideas[0]);
+  // Uses the server /api/ai/taglines endpoint when reachable (which itself
+  // degrades to deterministic templates when no model is configured) and falls
+  // back to the local generator if the request fails outright.
+  const [taglineLoading, setTaglineLoading] = useState(false);
+
+  const handleGenerateTaglines = async () => {
+    const seed = pkgName || 'Festive Beauty Package';
+    setTaglineLoading(true);
+    try {
+      const result = await suggestTaglines(seed, 3);
+      const ideas = result.value.length > 0 ? result.value : generateTaglineIdeas(seed);
+      setTaglineIdeas(ideas);
+      if (!pkgTagline && ideas.length > 0) {
+        setPkgTagline(ideas[0]);
+      }
+      showToast(
+        result.source === 'fallback'
+          ? 'Generated 3 taglines from local templates (AI offline).'
+          : 'Generated 3 fresh tagline ideas!'
+      );
+    } finally {
+      setTaglineLoading(false);
     }
-    showToast('Generated 3 fresh tagline ideas!');
   };
 
   // 3. Image Upload via Device File
@@ -2648,10 +2666,15 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
                   <button
                     type="button"
                     onClick={handleGenerateTaglines}
-                    className="px-2.5 py-1 bg-white hover:bg-[#FAF5E5] border border-[#D09A40]/40 rounded-lg text-xs font-semibold text-[#D09A40] flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
+                    disabled={taglineLoading}
+                    className="px-2.5 py-1 bg-white hover:bg-[#FAF5E5] border border-[#D09A40]/40 rounded-lg text-xs font-semibold text-[#D09A40] flex items-center gap-1 shadow-2xs transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait"
                   >
-                    <Sparkles className="w-3 h-3 text-[#D09A40]" />
-                    <span>Generate Tagline Ideas</span>
+                    {taglineLoading ? (
+                      <Loader2 className="w-3 h-3 text-[#D09A40] animate-spin" />
+                    ) : (
+                      <Sparkles className="w-3 h-3 text-[#D09A40]" />
+                    )}
+                    <span>{taglineLoading ? 'Generating…' : 'Generate Tagline Ideas'}</span>
                   </button>
                 </div>
 

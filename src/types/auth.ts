@@ -150,6 +150,8 @@ export interface SalonStaff {
   photoUrl: string;
   specialties: string[];
   active: boolean;
+  /** When false the specialist is listed but cannot be booked online. */
+  bookingEnabled?: boolean;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;

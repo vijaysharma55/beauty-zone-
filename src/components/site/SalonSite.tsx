@@ -13,6 +13,7 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import { formatCurrency } from '../ui';
+import { SalonBookingPanel } from './SalonBookingPanel';
 import type { Salon, SalonService, SalonStaff } from '../../types/auth';
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -110,6 +111,11 @@ export const SalonSite: React.FC<{
           </Link>
 
           <nav className="hidden items-center gap-5 text-sm font-medium md:flex" style={{ color: `${headerText}B3` }}>
+            {services.length > 0 && (
+              <a href="#book" className="hover:opacity-100" style={{ color: 'inherit' }}>
+                Book
+              </a>
+            )}
             {services.length > 0 && (
               <a href="#services" className="hover:opacity-100" style={{ color: 'inherit' }}>
                 Services
@@ -349,6 +355,21 @@ export const SalonSite: React.FC<{
                       )}
                     </div>
                   </div>
+                  <p
+                    className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-semibold"
+                    style={{ color: member.bookingEnabled === false ? `${primary}66` : accent }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{
+                        backgroundColor: member.bookingEnabled === false ? `${primary}33` : accent,
+                      }}
+                    />
+                    {member.bookingEnabled === false
+                      ? 'Call the salon to book this artist'
+                      : 'Available for online booking'}
+                  </p>
                   {member.bio && (
                     <p className="mt-3 text-sm leading-relaxed" style={{ color: `${primary}99` }}>
                       {member.bio}
@@ -406,6 +427,17 @@ export const SalonSite: React.FC<{
           </div>
         </section>
       )}
+
+      {/* Online booking */}
+      <SalonBookingPanel
+        salon={salon}
+        services={services}
+        staff={staff}
+        accent={accent}
+        primary={primary}
+        background={background}
+        surface={surface}
+      />
 
       {/* Contact */}
       <section id="contact" className="scroll-mt-24 py-16" style={{ backgroundColor: primary }}>

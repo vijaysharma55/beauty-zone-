@@ -123,6 +123,7 @@ db.exec(`
     photo_url TEXT NOT NULL DEFAULT '',
     specialties_json TEXT NOT NULL DEFAULT '[]',
     active INTEGER NOT NULL DEFAULT 1,
+    booking_enabled INTEGER NOT NULL DEFAULT 1,
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -138,6 +139,36 @@ db.exec(`
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS bookings (
+    id TEXT PRIMARY KEY,
+    salon_id TEXT REFERENCES salons(id) ON DELETE CASCADE,
+    reference TEXT NOT NULL UNIQUE,
+    full_name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    service TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT '',
+    stylist TEXT NOT NULL DEFAULT '',
+    date TEXT NOT NULL,
+    time TEXT NOT NULL,
+    location_type TEXT NOT NULL DEFAULT 'salon' CHECK (location_type IN ('salon','home')),
+    branch TEXT NOT NULL DEFAULT '',
+    address TEXT NOT NULL DEFAULT '',
+    locality TEXT NOT NULL DEFAULT '',
+    distance_km REAL,
+    bridal_trial INTEGER NOT NULL DEFAULT 0,
+    notes TEXT NOT NULL DEFAULT '',
+    promo_code TEXT,
+    estimated_total INTEGER NOT NULL DEFAULT 0,
+    advance_paid INTEGER NOT NULL DEFAULT 0,
+    advance_ref TEXT,
+    status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested','confirmed','declined','completed','cancelled')),
+    source TEXT NOT NULL DEFAULT 'public',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_bookings_salon ON bookings(salon_id, date);
+  CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date);
 
   CREATE TABLE IF NOT EXISTS platform_settings (
     key TEXT PRIMARY KEY,
@@ -273,6 +304,7 @@ export function serializeStaff(row) {
     photoUrl: row.photo_url,
     specialties: Array.isArray(specialties) ? specialties : [],
     active: !!row.active,
+    bookingEnabled: row.booking_enabled === undefined || row.booking_enabled === null ? true : !!row.booking_enabled,
     sortOrder: row.sort_order,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

@@ -715,3 +715,192 @@ test('Google sign-in reports configuration state safely', async () => {
   const attempt = await makeClient().post('/api/auth/google', { credential: 'fake' });
   assert.equal(attempt.status, 503);
 });
+
+/* ------------------------------------------------------------------ */
+/* Subdomain tenant resolution, availability, bookings & AI fallbacks  */
+/* ------------------------------------------------------------------ */
+
+test('tenant resolution answers safely for every host shape', async () => {
+  const plain = await fetch(`${BASE}/api/public/tenant`);
+  assert.equal(plain.status, 200);
+  const body = await plain.json();
+  assert.equal(body.tenant.found, false);
+
+  // Known live salon via explicit override (simulates a subdomain host).
+  const live = await (await fetch(`${BASE}/api/public/tenant?slug=lumina-luxe`)).json();
+  assert.equal(live.tenant.found, true);
+  assert.equal(live.tenant.slug, 'lumina-luxe');
+  assert.ok(live.tenant.salonId);
+
+  // Unknown slug must not leak anything and must not throw.
+  const missing = await (await fetch(`${BASE}/api/public/tenant?slug=definitely-not-a-salon`)).json();
+  assert.equal(missing.tenant.found, false);
+  assert.equal(missing.tenant.reason, 'not_found');
+
+  // Malformed slug is ignored rather than crashing the route.
+  const malformed = await (await fetch(`${BASE}/api/public/tenant?slug=${encodeURIComponent('..')}`)).json();
+  assert.equal(malformed.tenant.found, false);
+});
+
+test('availability returns slots and degrades gracefully', async () => {
+  const ok = await fetch(`${BASE}/api/public/availability?date=2026-10-20&slug=lumina-luxe`);
+  assert.equal(ok.status, 200);
+  const body = await ok.json();
+  assert.equal(body.closed, false);
+  assert.ok(Array.isArray(body.slots));
+  assert.ok(body.slots.length > 0, 'slots generated from opening hours');
+  assert.equal(body.slots[0].value, '10:00');
+  assert.ok(body.slots.every((s) => s.value < '20:00'));
+
+  // No slug → platform default hours, still succeeds.
+  const dflt = await (await fetch(`${BASE}/api/public/availability?date=2026-10-20`)).json();
+  assert.ok(dflt.slots.length > 0);
+  assert.equal(dflt.source, 'default');
+
+  // Garbage date → well-formed empty result, never a 500.
+  const bad = await fetch(`${BASE}/api/public/availability?date=nonsense`);
+  assert.equal(bad.status, 200);
+  const badBody = await bad.json();
+  assert.deepEqual(badBody.slots, []);
+  assert.equal(badBody.reason, 'invalid_date');
+});
+
+test('visitor can book a live salon and the owner sees it', async () => {
+  const anon = makeClient();
+  const created = await anon.post('/api/public/bookings', {
+    slug: 'lumina-luxe',
+    fullName: 'Test Client',
+    phone: '+91 90000 11111',
+    service: 'HD Airbrush Bridal Makeover',
+    date: '2026-11-02',
+    time: '02:30 PM',
+    locationType: 'salon',
+    estimatedTotal: 24999,
+  });
+  assert.equal(created.status, 201);
+  assert.ok(created.data.booking.reference, 'booking reference issued');
+  // 12-hour input is normalised to 24-hour storage.
+  assert.equal(created.data.booking.time, '14:30');
+
+  const owner = await loginAs('owner@test.local', 'Owner@12345');
+  const list = await owner.get('/api/salon/bookings');
+  assert.equal(list.status, 200);
+  assert.ok(list.data.bookings.some((b) => b.reference === created.data.booking.reference));
+
+  const confirm = await owner.patch(`/api/salon/bookings/${created.data.booking.id}`, { status: 'confirmed' });
+  assert.equal(confirm.status, 200);
+  assert.equal(confirm.data.booking.status, 'confirmed');
+
+  const badStatus = await owner.patch(`/api/salon/bookings/${created.data.booking.id}`, { status: 'explode' });
+  assert.equal(badStatus.status, 400);
+});
+
+test('booking rejects closed days, past dates and unknown salons', async () => {
+  const anon = makeClient();
+  const base = {
+    slug: 'lumina-luxe',
+    fullName: 'Test Client',
+    phone: '9000011111',
+    service: 'HD Makeup',
+  };
+
+  const past = await anon.post('/api/public/bookings', { ...base, date: '2020-01-01', time: '10:00' });
+  assert.equal(past.status, 400);
+
+  const outOfHours = await anon.post('/api/public/bookings', { ...base, date: '2026-11-02', time: '03:00 AM' });
+  assert.equal(outOfHours.status, 409);
+
+  const unknown = await anon.post('/api/public/bookings', {
+    ...base,
+    slug: 'no-such-salon-xyz',
+    date: '2026-11-02',
+    time: '10:00',
+  });
+  assert.equal(unknown.status, 404);
+
+  const noName = await anon.post('/api/public/bookings', {
+    slug: 'lumina-luxe',
+    fullName: '',
+    phone: '9000011111',
+    service: 'HD Makeup',
+    date: '2026-11-02',
+    time: '10:00',
+  });
+  assert.equal(noName.status, 400);
+});
+
+test('owner cannot touch another salon’s bookings', async () => {
+  const owner = await loginAs('owner@test.local', 'Owner@12345');
+  const mine = await owner.get('/api/salon/bookings');
+  assert.equal(mine.status, 200);
+
+  const second = await loginAs('second@test.local', 'Second@54321');
+  const theirs = await second.get('/api/salon/bookings');
+  assert.equal(theirs.status, 200);
+  // The two owners own different salons — no booking ids may overlap.
+  const mineIds = new Set(mine.data.bookings.map((b) => b.id));
+  assert.ok(theirs.data.bookings.every((b) => !mineIds.has(b.id)));
+
+  // Forging an id from the other salon returns 404 and changes nothing.
+  if (mine.data.bookings.length > 0) {
+    const forged = await second.patch(`/api/salon/bookings/${mine.data.bookings[0].id}`, { status: 'cancelled' });
+    assert.equal(forged.status, 404);
+  }
+});
+
+test('AI endpoints answer with graceful fallbacks when no provider is configured', async () => {
+  // GOOGLE_CLIENT_ID is blank in tests; GEMINI_API_KEY is unset, so the
+  // deterministic fallback must keep every endpoint usable.
+  const status = await (await fetch(`${BASE}/api/ai/status`)).json();
+  assert.equal(typeof status.configured, 'boolean');
+  assert.equal(status.fallbackEnabled, true);
+
+  const taglines = await makeClient().post('/api/ai/taglines', { name: 'Festive Bridal Glow', count: 3 });
+  assert.equal(taglines.status, 200);
+  assert.equal(taglines.data.taglines.length, 3);
+  assert.ok(['ai', 'fallback', 'ai+fallback'].includes(taglines.data.source));
+
+  const description = await makeClient().post('/api/ai/description', {
+    name: 'HydraFacial Glow',
+    category: 'skin',
+    durationMinutes: 75,
+  });
+  assert.equal(description.status, 200);
+  assert.ok(description.data.description.length > 20);
+
+  // Validation still applies before any model call.
+  const missing = await makeClient().post('/api/ai/taglines', { name: '' });
+  assert.equal(missing.status, 400);
+
+  // Unknown AI routes answer 404 instead of hanging.
+  const unknown = await fetch(`${BASE}/api/ai/does-not-exist`);
+  assert.equal(unknown.status, 404);
+});
+
+test('specialist online-booking switch round-trips and stays tenant-scoped', async () => {
+  const owner = await loginAs('owner@test.local', 'Owner@12345');
+  const list = await owner.get('/api/salon/staff');
+  assert.equal(list.status, 200);
+  assert.ok(list.data.staff.length > 0);
+  const member = list.data.staff[0];
+
+  // Defaults to enabled.
+  assert.equal(member.bookingEnabled, true);
+
+  const off = await owner.patch(`/api/salon/staff/${member.id}`, { bookingEnabled: false });
+  assert.equal(off.status, 200);
+  assert.equal(off.data.staff.bookingEnabled, false);
+
+  // The other owner must not be able to flip it back.
+  const other = await loginAs('second@test.local', 'Second@54321');
+  const forged = await other.patch(`/api/salon/staff/${member.id}`, { bookingEnabled: true });
+  assert.equal(forged.status, 404);
+
+  // Still off after the failed cross-tenant attempt.
+  const after = await owner.get('/api/salon/staff');
+  assert.equal(after.data.staff.find((s) => s.id === member.id).bookingEnabled, false);
+
+  const on = await owner.patch(`/api/salon/staff/${member.id}`, { bookingEnabled: true });
+  assert.equal(on.status, 200);
+  assert.equal(on.data.staff.bookingEnabled, true);
+});

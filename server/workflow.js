@@ -105,6 +105,7 @@ export function buildSalonSnapshot(salonRow) {
       photoUrl: member.photoUrl,
       specialties: member.specialties,
       active: member.active,
+      bookingEnabled: member.bookingEnabled !== false,
       sortOrder: member.sortOrder,
     })),
   };

@@ -6,18 +6,34 @@ import { api, errorMessage } from '../../lib/api';
 import type { PublicSalonResponse } from '../../types/auth';
 import { Button, Spinner } from '../ui';
 
-export const PublicSalonPage: React.FC = () => {
-  const { slug } = useParams<{ slug: string }>();
+export const PublicSalonPage: React.FC<{ forcedSlug?: string }> = ({ forcedSlug }) => {
+  const params = useParams<{ slug: string }>();
+  const slug = forcedSlug || params.slug || '';
   const [data, setData] = useState<PublicSalonResponse | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     let cancelled = false;
+    // Missing or malformed slug — render fallback without crashing
+    if (!slug || slug.trim().length === 0) {
+      setMessage('No salon address was provided.');
+      setState('missing');
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (slug.length > 60 || !/^[a-z0-9-]{2,60}$/i.test(slug)) {
+      setMessage('The salon address format is invalid.');
+      setState('missing');
+      return () => {
+        cancelled = true;
+      };
+    }
     setState('loading');
     (async () => {
       try {
-        const response = await api.get<PublicSalonResponse>(`/public/salons/${encodeURIComponent(slug || '')}`);
+        const response = await api.get<PublicSalonResponse>(`/public/salons/${encodeURIComponent(slug)}`);
         if (cancelled) return;
         setData(response);
         setState('ready');

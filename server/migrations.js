@@ -46,6 +46,10 @@ addColumn('salons', 'template_id', "TEXT NOT NULL DEFAULT 'luxe'");
 addColumn('salons', 'owner_name', "TEXT NOT NULL DEFAULT ''");
 addColumn('salons', 'owner_phone', "TEXT NOT NULL DEFAULT ''");
 
+/* Staff: online-booking availability toggle (defaults to enabled). */
+addColumn('staff', 'booking_enabled', 'INTEGER NOT NULL DEFAULT 1');
+db.prepare('UPDATE staff SET booking_enabled = 1 WHERE booking_enabled IS NULL').run();
+
 /* Submitted / reviewed website versions (snapshot of the working content) */
 db.exec(`
   CREATE TABLE IF NOT EXISTS salon_versions (
@@ -66,6 +70,41 @@ db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_salon_versions_one_pending
     ON salon_versions(salon_id) WHERE status = 'pending';
   CREATE INDEX IF NOT EXISTS idx_salon_versions_status ON salon_versions(status, submitted_at DESC);
+`);
+
+/* Appointment bookings captured from public salon websites.
+   CREATE TABLE IF NOT EXISTS in db.js covers fresh installs; existing
+   databases get the same schema here so the booking API always has a home. */
+db.exec(`
+  CREATE TABLE IF NOT EXISTS bookings (
+    id TEXT PRIMARY KEY,
+    salon_id TEXT REFERENCES salons(id) ON DELETE CASCADE,
+    reference TEXT NOT NULL UNIQUE,
+    full_name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    service TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT '',
+    stylist TEXT NOT NULL DEFAULT '',
+    date TEXT NOT NULL,
+    time TEXT NOT NULL,
+    location_type TEXT NOT NULL DEFAULT 'salon' CHECK (location_type IN ('salon','home')),
+    branch TEXT NOT NULL DEFAULT '',
+    address TEXT NOT NULL DEFAULT '',
+    locality TEXT NOT NULL DEFAULT '',
+    distance_km REAL,
+    bridal_trial INTEGER NOT NULL DEFAULT 0,
+    notes TEXT NOT NULL DEFAULT '',
+    promo_code TEXT,
+    estimated_total INTEGER NOT NULL DEFAULT 0,
+    advance_paid INTEGER NOT NULL DEFAULT 0,
+    advance_ref TEXT,
+    status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested','confirmed','declined','completed','cancelled')),
+    source TEXT NOT NULL DEFAULT 'public',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_bookings_salon ON bookings(salon_id, date);
+  CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date);
 `);
 
 /* Existing rows created before the workflow existed: treat already-published

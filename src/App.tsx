@@ -38,6 +38,7 @@ import { WebsiteEditor } from './components/dashboard/WebsiteEditor';
 import { ServicesPage } from './components/dashboard/ServicesPage';
 import { StaffPage } from './components/dashboard/StaffPage';
 import { BillingPage } from './components/dashboard/BillingPage';
+import { BookingsPage } from './components/dashboard/BookingsPage';
 import { AccountPage } from './components/dashboard/AccountPage';
 import { PreviewPage } from './components/dashboard/PreviewPage';
 import { AdminLayout } from './components/admin/AdminLayout';
@@ -51,6 +52,7 @@ import { VerifyEmailPage } from './components/dashboard/VerifyEmailPage';
 import { ApprovalPage } from './components/dashboard/ApprovalPage';
 import { AdminApprovals } from './components/admin/AdminApprovals';
 import { Button } from './components/ui';
+import { SubdomainAwareHome } from './components/site/SubdomainResolver';
 
 function MarketingSite() {
   const { brand, formatPrice } = useBrand();
@@ -326,8 +328,8 @@ const NotFoundPage: React.FC = () => (
 export function App() {
   return (
     <Routes>
-      {/* Public marketing site (existing showcase, unchanged) */}
-      <Route path="/" element={<MarketingSite />} />
+      {/* Public marketing site — subdomain-aware: tenant subdomains render the salon site */}
+      <Route path="/" element={<SubdomainAwareHome><MarketingSite /></SubdomainAwareHome>} />
 
       {/* Authentication */}
       <Route path="/login" element={<LoginPage />} />
@@ -350,6 +352,7 @@ export function App() {
         <Route path="staff" element={<StaffPage />} />
         <Route path="approval" element={<ApprovalPage />} />
         <Route path="preview" element={<PreviewPage />} />
+        <Route path="bookings" element={<BookingsPage />} />
         <Route path="billing" element={<BillingPage />} />
         <Route path="account" element={<AccountPage />} />
       </Route>

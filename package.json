@@ -10,7 +10,10 @@
     "preview": "NODE_ENV=production node server/index.js",
     "clean": "rm -rf dist data",
     "lint": "tsc --noEmit",
-    "test:api": "node --test server/tests/api.test.js"
+    "test:api": "node --test server/tests/api.test.js",
+    "test": "node --test server/tests/unit.test.js server/tests/api.test.js",
+    "test:unit": "node --test server/tests/unit.test.js",
+    "verify": "npm run lint && npm test && npm run build"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
