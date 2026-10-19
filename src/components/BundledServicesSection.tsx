@@ -5,6 +5,18 @@ import { SALON_SERVICES } from '../data/salonData';
 import { SalonPackage, ServiceItem } from '../types';
 import { RevealOnScroll } from './RevealOnScroll';
 import { useBrand } from '../context/BrandContext';
+import { SmartImage } from './crud/SmartImage';
+import { ItemActions } from './crud/ItemActions';
+import { CardEditorModal, type EditorField } from './crud/CardEditorModal';
+import { CrudToast, ManageControls, ManageHint } from './crud/ManageControls';
+import { useCardCollection } from './crud/useCardCollection';
+import {
+  DEFAULT_USAGE_RULES,
+  OUTLET_OPTIONS,
+  PACKAGE_PRESET_IMAGES,
+  VALIDITY_OPTIONS,
+  calculateSavings,
+} from '../data/packagesData';
 import { 
   Sparkles, 
   Check, 
@@ -20,34 +32,162 @@ import {
   MapPin,
   CalendarCheck,
   ChevronDown,
-  ChevronUp,
-  ChevronLeft,
-  ChevronRight
+  ChevronUp
 } from 'lucide-react';
 
 interface BundledServicesSectionProps {
   packages?: SalonPackage[];
   onBookBundle: (bundleTitle: string, price: number, services: string[]) => void;
   onOpenManagement?: () => void;
+  /** Persists the full package catalog after an inline create / edit / delete. */
+  onUpdatePackages?: (packages: SalonPackage[]) => void;
 }
+
+const buildPackageEditorFields = (currentValidity?: string): EditorField[] => {
+  const validityOptions = Array.from(
+    new Set([...(currentValidity ? [currentValidity] : []), ...VALIDITY_OPTIONS])
+  ).map((value) => ({ value, label: value }));
+
+  return [
+    {
+      key: 'image',
+      type: 'image',
+      label: 'Package cover image',
+      span: 2,
+      aspect: 'aspect-[16/9]',
+      help: 'The cover is rendered in a fixed-height card frame (h-48) with object-fit: cover, so portrait and landscape uploads both look clean.',
+    },
+    { key: 'name', type: 'text', label: 'Package name', span: 2, required: true },
+    { key: 'tagline', type: 'text', label: 'Tagline', span: 2 },
+    { key: 'offer_name', type: 'text', label: 'Badge / offer label' },
+    { key: 'duration', type: 'text', label: 'Duration', placeholder: 'e.g. 180 mins' },
+    { key: 'description', type: 'textarea', label: 'Description', span: 2, rows: 3, required: true },
+    { key: 'regular_price', type: 'number', label: 'Regular price (₹)', min: 0, required: true },
+    { key: 'package_price', type: 'number', label: 'Package price (₹)', min: 0, required: true },
+    { key: 'validity', type: 'select', label: 'Redemption validity', options: validityOptions },
+    {
+      key: 'services',
+      type: 'tags',
+      label: 'Services included',
+      span: 2,
+      rows: 4,
+      separator: 'newline',
+      help: 'One included service per line.',
+    },
+    {
+      key: 'outlets',
+      type: 'tags',
+      label: 'Valid at outlets',
+      span: 2,
+      separator: 'comma',
+      help: 'Separate outlets with commas.',
+    },
+    {
+      key: 'usage_rules',
+      type: 'tags',
+      label: 'Terms & usage rules',
+      span: 2,
+      rows: 3,
+      separator: 'newline',
+      help: 'One rule per line.',
+    },
+    { key: 'active', type: 'checkbox', label: 'Visible on the website' },
+    { key: 'featured', type: 'checkbox', label: 'Feature this package' },
+  ];
+};
+
+const EMPTY_PACKAGE_IMAGE = PACKAGE_PRESET_IMAGES[0]?.url || '/images/bridal_makeup_jaipur_1790672008691.jpg';
+
+const emptyPackageValues = (): Record<string, any> => ({
+  image: EMPTY_PACKAGE_IMAGE,
+  name: '',
+  tagline: '',
+  offer_name: 'Special Offer',
+  duration: '120 mins',
+  description: '',
+  regular_price: 0,
+  package_price: 0,
+  validity: VALIDITY_OPTIONS[0],
+  services: [],
+  outlets: [OUTLET_OPTIONS[0]],
+  usage_rules: DEFAULT_USAGE_RULES.slice(0, 3),
+  active: true,
+  featured: false,
+});
+
+const packageToEditorValues = (pkg?: SalonPackage): Record<string, any> => {
+  if (!pkg) return emptyPackageValues();
+  return {
+    image: pkg.image,
+    name: pkg.name,
+    tagline: pkg.tagline || '',
+    offer_name: pkg.offer_name || '',
+    duration: pkg.duration,
+    description: pkg.description,
+    regular_price: pkg.regular_price,
+    package_price: pkg.package_price,
+    validity: pkg.validity,
+    services: pkg.services,
+    outlets: pkg.outlets,
+    usage_rules: pkg.usage_rules,
+    active: pkg.active,
+    featured: !!pkg.featured,
+  };
+};
+
+const normalizePackageValues = (
+  values: Record<string, any>,
+  base?: SalonPackage
+): SalonPackage => {
+  const regularPrice = Math.max(0, Math.round(Number(values.regular_price) || 0));
+  const packagePrice = Math.max(0, Math.round(Number(values.package_price) || 0));
+  const { savings, discountPercent } = calculateSavings(regularPrice, packagePrice);
+
+  return {
+    ...(base || {
+      id: `pkg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name: '',
+      description: '',
+      services: [],
+      duration: '',
+      regular_price: 0,
+      package_price: 0,
+      discount: 0,
+      savings: 0,
+      validity: VALIDITY_OPTIONS[0],
+      usage_rules: [],
+      outlets: [],
+      image: EMPTY_PACKAGE_IMAGE,
+      active: true,
+    }),
+    image: String(values.image || '').trim() || EMPTY_PACKAGE_IMAGE,
+    name: String(values.name || '').trim(),
+    tagline: String(values.tagline || '').trim(),
+    offer_name: String(values.offer_name || '').trim(),
+    duration: String(values.duration || '').trim(),
+    description: String(values.description || '').trim(),
+    regular_price: regularPrice,
+    package_price: packagePrice,
+    discount: discountPercent,
+    savings,
+    validity: String(values.validity || VALIDITY_OPTIONS[0]),
+    services: Array.isArray(values.services) ? values.services : [],
+    outlets: Array.isArray(values.outlets) ? values.outlets : [],
+    usage_rules: Array.isArray(values.usage_rules) ? values.usage_rules : [],
+    active: values.active !== false,
+    featured: !!values.featured,
+  };
+};
 
 export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({ 
   packages,
   onBookBundle,
-  onOpenManagement 
+  onOpenManagement,
+  onUpdatePackages,
 }) => {
   const { t } = useBrand();
   const [activeTab, setActiveTab] = useState<'curated' | 'custom'>('curated');
   const [expandedRulesId, setExpandedRulesId] = useState<string | null>(null);
-  const packagesScrollRef = useRef<HTMLDivElement>(null);
-
-  const scrollPackages = (dir: 'left' | 'right') => {
-    if (packagesScrollRef.current) {
-      const card = packagesScrollRef.current.querySelector<HTMLElement>(':scope > div');
-      const step = card ? card.offsetWidth + 16 : 360;
-      packagesScrollRef.current.scrollBy({ left: dir === 'left' ? -step : step, behavior: 'smooth' });
-    }
-  };
   
   // Custom Bundle Builder state
   const [selectedCustomServiceIds, setSelectedCustomServiceIds] = useState<string[]>([
@@ -55,10 +195,11 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
     's1', // 24K Gold Leaf Facial
   ]);
 
-  // Active packages from props or fallback to CURATED_BUNDLES
-  const displayPackages: SalonPackage[] = useMemo(() => {
-    if (packages && packages.length > 0) {
-      return packages.filter((p) => p.active);
+  // Full source list (fallback only when the prop is genuinely absent) and the
+  // active subset shown on the public site.
+  const sourcePackages: SalonPackage[] = useMemo(() => {
+    if (packages) {
+      return packages;
     }
     return CURATED_BUNDLES.map((cb) => ({
       id: cb.id,
@@ -84,6 +225,18 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
       featured: cb.popular,
     }));
   }, [packages]);
+
+  const manager = useCardCollection<SalonPackage>(sourcePackages, onUpdatePackages, 'Package');
+
+  const displayPackages = useMemo(
+    () => sourcePackages.filter((pkg) => pkg.active || manager.isManaging),
+    [sourcePackages, manager.isManaging]
+  );
+
+  const removePackage = (id: string) => {
+    setExpandedRulesId((current) => (current === id ? null : current));
+    manager.removeItem(id);
+  };
 
   // Selected services in Custom Builder
   const selectedCustomServices = useMemo(() => {
@@ -151,15 +304,24 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
               </p>
             </div>
 
-            {/* Actions: Tab Selector & Management Trigger */}
+            {/* Actions: inline card management, dashboard shortcut & tab selector */}
             <div className="flex flex-wrap items-center gap-3">
+              {onUpdatePackages && (
+                <ManageControls
+                  isManaging={manager.isManaging}
+                  onToggle={manager.toggleManaging}
+                  onAdd={manager.openCreate}
+                  addLabel="Add Package"
+                />
+              )}
+
               {onOpenManagement && (
                 <button
                   onClick={onOpenManagement}
                   className="px-4 py-2 text-xs font-bold text-[#0F172A] bg-white border border-[#D09A40]/40 hover:border-[#D09A40] hover:bg-[#FAF5E5] rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer"
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5 text-[#D09A40]" />
-                  <span>Manage Packages</span>
+                  <span>Admin Dashboard</span>
                 </button>
               )}
 
@@ -195,48 +357,62 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
           </div>
         </RevealOnScroll>
 
-        {/* Tab 1: Signature Curated Packages Grid / Mobile Horizontal Swipe Carousel Container with Overlay Chevrons */}
-        {activeTab === 'curated' && (
-          <div className="relative group/packages mt-6">
-            <button
-              type="button"
-              onClick={() => scrollPackages('left')}
-              className="hidden sm:flex absolute -left-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover/packages:opacity-100"
-              title="Previous Packages"
-              aria-label="Previous Packages"
-            >
-              <ChevronLeft className="w-5 h-5 text-[#0F172A]" />
-            </button>
-            <button
-              type="button"
-              onClick={() => scrollPackages('right')}
-              className="hidden sm:flex absolute -right-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover/packages:opacity-100"
-              title="Next Packages"
-              aria-label="Next Packages"
-            >
-              <ChevronRight className="w-5 h-5 text-[#0F172A]" />
-            </button>
+        <ManageHint isManaging={manager.isManaging} noun="package" />
 
-            <div ref={packagesScrollRef} className="flex overflow-x-auto items-stretch gap-4 sm:gap-6 pb-4 pt-1 scrollbar-none snap-x snap-mandatory -mx-3 px-3 lg:grid lg:grid-cols-2 lg:gap-8 lg:mx-0 lg:px-0 scroll-smooth scroll-pl-3 lg:scroll-pl-0">
+        {/* Tab 1: Signature Curated Packages — uniform 3-column card grid */}
+        {activeTab === 'curated' && (
+          <div className="mt-6">
+            {displayPackages.length === 0 && (
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-[#0F172A]/20 bg-white/70 px-6 py-14 text-center">
+                <Gift className="h-10 w-10 text-neutral-300" />
+                <h3 className="mt-3 font-serif text-lg font-bold text-[#0F172A]">
+                  No active packages right now
+                </h3>
+                <p className="mt-1 max-w-md text-xs text-[#4A4A4A]">
+                  Add a curated combo to fill this space. Every card uses the same fixed cover
+                  height, so the grid always stays perfectly aligned.
+                </p>
+                {manager.canManage && (
+                  <button
+                    type="button"
+                    onClick={manager.openCreate}
+                    className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-[#0F172A] px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-[#D09A40] hover:text-[#0F172A] cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add your first package
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
             {displayPackages.map((pkg, index) => {
               const isRulesOpen = expandedRulesId === pkg.id;
               return (
-                <RevealOnScroll key={pkg.id} delay={index * 0.1} duration={0.6} className="shrink-0 snap-start h-full flex flex-col lg:w-auto">
-                  <div className="w-[88vw] sm:w-[380px] md:w-[420px] max-w-[440px] shrink-0 snap-start lg:w-full lg:max-w-none bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] luxe-card-hover flex flex-col justify-between group h-full shadow-2xs">
+                <RevealOnScroll key={pkg.id} delay={index * 0.1} duration={0.6} className="h-full min-w-0">
+                  <div className="relative w-full h-full bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] transition-shadow hover:shadow-lg flex flex-col justify-between group shadow-2xs">
+                    {manager.canManage && (
+                      <ItemActions
+                        itemLabel="package"
+                        alwaysVisible={manager.isManaging}
+                        onEdit={() => manager.openEdit(pkg)}
+                        onReplace={() => manager.openReplace(pkg)}
+                        onDelete={() => removePackage(pkg.id)}
+                      />
+                    )}
                     {/* Upper Half: Media & Dynamic Included Services */}
                     <div className="flex-1 flex flex-col">
                       {/* Photo & Badge Carrier */}
-                      <div className="relative aspect-[16/9] w-full overflow-hidden bg-neutral-100 shrink-0">
-                        <img
+                      <div className="relative h-48 w-full overflow-hidden bg-neutral-100 shrink-0">
+                        <SmartImage
                           src={pkg.image}
                           alt={`${pkg.name} - Curated Salon Package`}
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover luxe-img-zoom"
+                          className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500"
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent pointer-events-none" />
 
                         {/* Top Savings Badge & Duration */}
-                        <div className="absolute top-2.5 sm:top-3 left-2.5 sm:left-3 right-2.5 sm:right-3 flex items-center justify-between gap-2">
+                        <div className="absolute top-2.5 sm:top-3 left-2.5 sm:left-3 right-12 flex items-center justify-between gap-2">
                           <span className="px-2.5 sm:px-3 py-1 bg-[#D09A40] text-white text-[11px] sm:text-xs font-bold rounded-lg shadow-sm whitespace-nowrap">
                             Save ₹{pkg.savings.toLocaleString('en-IN')} ({pkg.discount}% OFF)
                           </span>
@@ -279,7 +455,7 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
                       {/* Body Content - flex-1 flex flex-col justify-between so footer remains aligned */}
                       <div className="p-4 sm:p-5 lg:p-6 flex-1 flex flex-col justify-between">
                         <div>
-                          <p className="text-xs sm:text-sm text-[#4A4A4A] leading-relaxed font-light min-h-[36px]">
+                          <p className="text-xs sm:text-sm text-[#4A4A4A] leading-relaxed font-light min-h-[36px] line-clamp-3">
                             {pkg.description}
                           </p>
 
@@ -291,7 +467,7 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
                                 <span>Services Included ({pkg.services.length})</span>
                               </span>
                             </p>
-                            <ul className="space-y-1.5 sm:space-y-2">
+                            <ul className="max-h-32 space-y-1.5 overflow-y-auto pr-1 sm:space-y-2">
                               {pkg.services.map((item, idx) => (
                                 <li key={idx} className="flex items-start gap-2 text-xs text-[#0F172A]/90">
                                   <Check className="w-4 h-4 text-[#D09A40] shrink-0 mt-0.5" />
@@ -357,7 +533,7 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
                       <button
                         type="button"
                         onClick={() => handleBookCurated(pkg)}
-                        className="w-full sm:w-auto shrink-0 px-5 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl luxe-btn shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98] whitespace-nowrap"
+                        className="w-full sm:w-auto shrink-0 px-5 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98] whitespace-nowrap"
                       >
                         <CalendarCheck className="w-4 h-4 text-[#D09A40] shrink-0" />
                         <span>{t('packagesBookCombo')}</span>
@@ -496,6 +672,39 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
             </div>
           </div>
         )}
+
+        {manager.editorState && (
+          <CardEditorModal
+            key={manager.editorState.mode === 'edit' ? manager.editorState.item?.id : 'new-package'}
+            title={manager.editorState.mode === 'edit' ? 'Edit package' : 'Add a new package'}
+            description={
+              manager.editorState.mode === 'edit'
+                ? `Update “${manager.editorState.item?.name || 'this package'}”. Discount and savings are recalculated automatically.`
+                : 'Build a curated combo with pricing, badges, included services and a cover image.'
+            }
+            fields={buildPackageEditorFields(manager.editorState.item?.validity)}
+            initialValues={
+              manager.editorState.mode === 'edit'
+                ? packageToEditorValues(manager.editorState.item)
+                : emptyPackageValues()
+            }
+            submitLabel={manager.editorState.mode === 'edit' ? 'Save package' : 'Add package'}
+            focusImage={manager.editorState.focusImage}
+            onClose={manager.closeEditor}
+            onSubmit={(values) => {
+              const saved = normalizePackageValues(values, manager.editorState?.item);
+              manager.saveItem(saved);
+              if (saved.active) setActiveTab('curated');
+            }}
+            validate={(values) => {
+              if (Number(values.package_price) > Number(values.regular_price)) {
+                return 'The package price cannot be higher than the regular price.';
+              }
+              return null;
+            }}
+          />
+        )}
+        <CrudToast message={manager.notice} />
       </div>
     </section>
   );

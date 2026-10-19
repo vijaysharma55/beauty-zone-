@@ -1,9 +1,22 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { GalleryItem, GalleryUploadType, VideoItem } from '../types';
 import { BeforeAfterSlider } from './BeforeAfterSlider';
 import { RevealOnScroll } from './RevealOnScroll';
 import { InstagramIcon, FacebookIcon, YouTubeIcon } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
+import { GALLERY_CATEGORIES, GALLERY_SERVICES, GALLERY_TYPES } from '../data/galleryData';
+import { SmartImage } from './crud/SmartImage';
+import { ItemActions } from './crud/ItemActions';
+import { CardEditorModal, type EditorField } from './crud/CardEditorModal';
+import { CrudToast, ManageControls, ManageHint } from './crud/ManageControls';
+import { useCardCollection } from './crud/useCardCollection';
+import {
+  emptyVideoValues,
+  normalizeVideo,
+  validateVideoValues,
+  videoEditorFields,
+  videoToEditorValues,
+} from './crud/videoEditorConfig';
 import { 
   Sparkles, 
   Layers, 
@@ -20,9 +33,7 @@ import {
   Play,
   ExternalLink,
   Eye,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight
+  CheckCircle2
 } from 'lucide-react';
 
 interface GallerySectionProps {
@@ -31,7 +42,121 @@ interface GallerySectionProps {
   onBookService: (serviceName: string) => void;
   onOpenManagement?: () => void;
   initialView?: 'photos' | 'videos';
+  /** Persists the full gallery catalog after an inline create / edit / delete. */
+  onUpdateGallery?: (items: GalleryItem[]) => void;
+  /** Persists the full video catalog from the Videos tab. */
+  onUpdateVideos?: (videos: VideoItem[]) => void;
 }
+
+const GALLERY_EDITOR_FIELDS: EditorField[] = [
+  {
+    key: 'image',
+    type: 'image',
+    label: 'Look photo (after image)',
+    span: 2,
+    aspect: 'aspect-[4/3]',
+    help: 'Rendered in a fixed-height card frame with object-fit: cover on every card.',
+  },
+  {
+    key: 'before_image',
+    type: 'image',
+    label: 'Before image (for before / after sliders)',
+    span: 2,
+    aspect: 'aspect-[4/3]',
+    help: 'Required only when the display type is Before / After.',
+  },
+  { key: 'title', type: 'text', label: 'Look title', span: 2, required: true },
+  { key: 'description', type: 'textarea', label: 'Description', span: 2, rows: 3 },
+  {
+    key: 'type',
+    type: 'select',
+    label: 'Display type',
+    options: GALLERY_TYPES.map((type) => ({ value: type.id, label: type.label })),
+  },
+  {
+    key: 'category',
+    type: 'select',
+    label: 'Category',
+    options: GALLERY_CATEGORIES,
+  },
+  {
+    key: 'service',
+    type: 'select',
+    label: 'Bookable service',
+    span: 2,
+    options: GALLERY_SERVICES,
+  },
+  { key: 'artist', type: 'text', label: 'Artist / styling credit' },
+  { key: 'sort_order', type: 'number', label: 'Sort order', min: 0 },
+  { key: 'featured', type: 'checkbox', label: 'Feature this look' },
+  { key: 'active', type: 'checkbox', label: 'Visible on the website' },
+];
+
+const emptyGalleryValues = (
+  nextSortOrder = 1,
+  type: GalleryUploadType = 'photo',
+  category: string = GALLERY_CATEGORIES[0]
+): Record<string, any> => ({
+  image: '/images/bridal_makeup_jaipur_1790672008691.jpg',
+  before_image: '',
+  title: '',
+  description: '',
+  type,
+  category,
+  service: GALLERY_SERVICES[0],
+  artist: '',
+  sort_order: nextSortOrder,
+  featured: false,
+  active: true,
+});
+
+const galleryToEditorValues = (item?: GalleryItem): Record<string, any> => {
+  if (!item) return emptyGalleryValues();
+  return {
+    image: item.image,
+    before_image: item.before_image || '',
+    title: item.title,
+    description: item.description,
+    type: item.type,
+    category: item.category,
+    service: item.service,
+    artist: item.artist || '',
+    sort_order: item.sort_order,
+    featured: !!item.featured,
+    active: !!item.active,
+  };
+};
+
+const normalizeGalleryValues = (
+  values: Record<string, any>,
+  base?: GalleryItem
+): GalleryItem => ({
+  ...(base || {
+    id: `gal-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type: 'photo' as GalleryUploadType,
+    title: '',
+    description: '',
+    category: GALLERY_CATEGORIES[0],
+    service: GALLERY_SERVICES[0],
+    image: '',
+    sort_order: 1,
+    featured: false,
+    active: true,
+    created_at: new Date().toISOString().slice(0, 10),
+  }),
+  image: String(values.image || '').trim(),
+  before_image: String(values.before_image || '').trim() || undefined,
+  title: String(values.title || '').trim(),
+  description: String(values.description || '').trim(),
+  type: String(values.type || 'photo') as GalleryUploadType,
+  category: String(values.category || GALLERY_CATEGORIES[0]),
+  service: String(values.service || GALLERY_SERVICES[0]),
+  artist: String(values.artist || '').trim() || undefined,
+  sort_order: Math.max(0, Math.round(Number(values.sort_order) || 0)),
+  featured: !!values.featured,
+  active: !!values.active,
+  created_at: base?.created_at || new Date().toISOString().slice(0, 10),
+});
 
 export const GallerySection: React.FC<GallerySectionProps> = ({
   galleryItems,
@@ -39,6 +164,8 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
   onBookService,
   onOpenManagement,
   initialView = 'photos',
+  onUpdateGallery,
+  onUpdateVideos,
 }) => {
   const { t } = useBrand();
   const [mainView, setMainView] = useState<'photos' | 'videos'>(initialView);
@@ -52,20 +179,26 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
   const [activePlayVideo, setActivePlayVideo] = useState<VideoItem | null>(null);
   const [embedLoadError, setEmbedLoadError] = useState(false);
 
-  const photosScrollRef = useRef<HTMLDivElement>(null);
-  const videosScrollRef = useRef<HTMLDivElement>(null);
-
-  const scrollPhotos = (dir: 'left' | 'right') => {
-    if (photosScrollRef.current) {
-      photosScrollRef.current.scrollBy({ left: dir === 'left' ? -300 : 300, behavior: 'smooth' });
-    }
+  const galleryManager = useCardCollection<GalleryItem>(galleryItems, onUpdateGallery, 'Gallery item');
+  const videoManager = useCardCollection<VideoItem>(videos, onUpdateVideos, 'Reel');
+  const isManaging = galleryManager.isManaging || videoManager.isManaging;
+  const toggleManaging = () => {
+    const next = !isManaging;
+    galleryManager.setIsManaging(next);
+    videoManager.setIsManaging(next);
+  };
+  const removeGalleryItem = (id: string) => {
+    setActiveModalItem((current) => (current?.id === id ? null : current));
+    galleryManager.removeItem(id);
+  };
+  const removeGalleryVideo = (id: string) => {
+    setActivePlayVideo((current) => (current?.id === id ? null : current));
+    videoManager.removeItem(id);
   };
 
-  const scrollVideos = (dir: 'left' | 'right') => {
-    if (videosScrollRef.current) {
-      videosScrollRef.current.scrollBy({ left: dir === 'left' ? -300 : 300, behavior: 'smooth' });
-    }
-  };
+  // New looks lead the sorted gallery so the card is visible the moment it is
+  // added. The editor still exposes sort_order for manual ordering.
+  const nextGallerySortOrder = 0;
 
   // Keep synced if initialView changes externally
   useEffect(() => {
@@ -82,13 +215,14 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
   // Filter only active items for the public gallery, sorted by sort_order
   const activeItems = useMemo(() => {
     return galleryItems
-      .filter((item) => item.active)
+      // Hidden looks remain editable while manage mode is on.
+      .filter((item) => item.active || isManaging)
       .sort((a, b) => a.sort_order - b.sort_order);
-  }, [galleryItems]);
+  }, [galleryItems, isManaging]);
 
   const activeVideos = useMemo(() => {
-    return (videos || []).filter((v) => v.active);
-  }, [videos]);
+    return (videos || []).filter((v) => v.active || isManaging);
+  }, [videos, isManaging]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -151,6 +285,19 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
 
             {/* View Switcher: Photo Gallery vs Videos & Instagram Reels */}
             <div className="flex flex-wrap items-center gap-2">
+              {(onUpdateGallery || onUpdateVideos) && (
+                <ManageControls
+                  isManaging={isManaging}
+                  onToggle={toggleManaging}
+                  onAdd={
+                    mainView === 'photos'
+                      ? () => galleryManager.openCreate()
+                      : () => videoManager.openCreate()
+                  }
+                  addLabel={mainView === 'photos' ? 'Add Photo' : 'Add Reel'}
+                />
+              )}
+
               <div className="bg-white p-1.5 rounded-2xl border border-[#0F172A]/15 shadow-xs flex items-center gap-1">
                 <button
                   type="button"
@@ -186,12 +333,17 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
                   title="Admin Dashboard: Manage Media"
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5 text-[#D09A40]" />
-                  <span>Manage</span>
+                  <span>Admin Dashboard</span>
                 </button>
               )}
             </div>
           </div>
         </RevealOnScroll>
+
+        <ManageHint
+          isManaging={isManaging}
+          noun={mainView === 'photos' ? 'gallery look' : 'video'}
+        />
 
         {/* ========================================================
             VIEW 1: PHOTO GALLERY
@@ -253,56 +405,46 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
               </div>
             </RevealOnScroll>
 
-            {/* Photos Grid / Mobile Horizontal Swipe Carousel Container with Overlay Chevrons */}
-            <div className="relative group/photos mt-6">
-              <button
-                type="button"
-                onClick={() => scrollPhotos('left')}
-                className="hidden sm:flex absolute -left-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover/photos:opacity-100"
-                title="Previous Photos"
-                aria-label="Previous Photos"
-              >
-                <ChevronLeft className="w-5 h-5 text-[#0F172A]" />
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollPhotos('right')}
-                className="hidden sm:flex absolute -right-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover/photos:opacity-100"
-                title="Next Photos"
-                aria-label="Next Photos"
-              >
-                <ChevronRight className="w-5 h-5 text-[#0F172A]" />
-              </button>
-
-              <div ref={photosScrollRef} className="flex overflow-x-auto gap-3.5 pb-3 scrollbar-none snap-x snap-mandatory -mx-3 px-3 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6 md:mx-0 md:px-0 scroll-smooth scroll-pl-3 md:scroll-pl-0">
+            {/* Photos — uniform card grid, no horizontal overflow */}
+            <div className="mt-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
               {filteredItems.map((item, index) => (
-                <RevealOnScroll key={item.id} delay={index * 0.05} duration={0.5} className="shrink-0 snap-start h-full md:w-auto">
-                  <div className="w-[82vw] max-w-[290px] shrink-0 snap-start md:w-auto bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] luxe-card-hover flex flex-col justify-between group h-full shadow-2xs">
+                <RevealOnScroll key={item.id} delay={index * 0.05} duration={0.5} className="h-full min-w-0">
+                  <div className="relative w-full h-full bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] transition-shadow hover:shadow-lg flex flex-col justify-between group shadow-2xs">
+                    {galleryManager.canManage && (
+                      <ItemActions
+                        itemLabel="gallery look"
+                        alwaysVisible={galleryManager.isManaging}
+                        onEdit={() => galleryManager.openEdit(item)}
+                        onReplace={() => galleryManager.openReplace(item)}
+                        onDelete={() => removeGalleryItem(item.id)}
+                      />
+                    )}
                     <div>
                       {item.type === 'before_after' && item.before_image ? (
-                        <div className="p-3 bg-neutral-100/50">
+                        <div className="h-56 w-full bg-neutral-100/50 p-2">
                           <BeforeAfterSlider
                             beforeImage={item.before_image}
                             afterImage={item.image}
                             beforeLabel="Before Treatment"
                             afterLabel="After Result"
-                            className="aspect-[4/3] rounded-xl shadow-xs"
+                            aspectRatio=""
+                            className="h-full w-full rounded-xl shadow-xs"
                           />
                         </div>
                       ) : (
                         <div 
-                          className="relative aspect-[4/3] w-full overflow-hidden bg-neutral-100 cursor-pointer"
+                          className="relative h-56 w-full overflow-hidden bg-neutral-100 cursor-pointer"
                           onClick={() => setActiveModalItem(item)}
                         >
-                          <img
+                          <SmartImage
                             src={item.image}
                             alt={item.title}
-                            referrerPolicy="no-referrer"
-                            className="w-full h-full object-cover luxe-img-zoom"
+                            className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500"
                           />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-60 group-hover:opacity-80 transition-opacity" />
 
-                          <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
+                          <div className="absolute top-3 left-3 right-12 flex items-center justify-between">
                             <span className="px-2.5 py-1 bg-black/75 text-white text-[10px] font-mono uppercase tracking-wider rounded-md font-bold">
                               {item.type.replace('_', ' ')}
                             </span>
@@ -355,7 +497,7 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
 
                       <button
                         onClick={() => onBookService(item.service)}
-                        className="px-3.5 py-2 text-[11px] font-bold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl luxe-btn shadow-2xs whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0"
+                        className="px-3.5 py-2 text-[11px] font-bold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl shadow-2xs whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0"
                       >
                         <span>Book Look</span>
                         <ArrowRight className="w-3 h-3" />
@@ -372,6 +514,15 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
                 <ImageIcon className="w-10 h-10 text-neutral-300 mx-auto mb-3" />
                 <h4 className="font-serif text-lg font-bold text-[#0F172A]">No Photos Found</h4>
                 <p className="text-xs text-neutral-500 mt-1">Try selecting a different filter category above.</p>
+                {galleryManager.canManage && (
+                  <button
+                    type="button"
+                    onClick={() => galleryManager.openCreate()}
+                    className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-[#0F172A] px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-[#D09A40] hover:text-[#0F172A] cursor-pointer"
+                  >
+                    Add a gallery look
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -461,28 +612,9 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
               </div>
             </RevealOnScroll>
 
-            {/* Video Cards Responsive Grid / Mobile Horizontal Swipe Carousel Container with Overlay Chevrons */}
-            <div className="relative group/videos mt-6">
-              <button
-                type="button"
-                onClick={() => scrollVideos('left')}
-                className="hidden sm:flex absolute -left-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover/videos:opacity-100"
-                title="Previous Videos"
-                aria-label="Previous Videos"
-              >
-                <ChevronLeft className="w-5 h-5 text-[#0F172A]" />
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollVideos('right')}
-                className="hidden sm:flex absolute -right-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover/videos:opacity-100"
-                title="Next Videos"
-                aria-label="Next Videos"
-              >
-                <ChevronRight className="w-5 h-5 text-[#0F172A]" />
-              </button>
-
-              <div ref={videosScrollRef} className="flex overflow-x-auto gap-3.5 pb-3 scrollbar-none snap-x snap-mandatory -mx-3 px-3 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6 md:mx-0 md:px-0 scroll-smooth scroll-pl-3 md:scroll-pl-0">
+            {/* Video cards — same uniform grid as the photo gallery */}
+            <div className="mt-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
               {filteredVideos.map((video, index) => {
                 const platformBadge = 
                   video.platform === 'youtube'
@@ -492,24 +624,32 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
                     : { label: 'Facebook Video', color: 'bg-[#1877F2] text-white', icon: FacebookIcon };
 
                 return (
-                  <RevealOnScroll key={video.id} delay={index * 0.05} duration={0.5} className="shrink-0 snap-start h-full md:w-auto">
-                    <div className="w-[82vw] max-w-[290px] shrink-0 snap-start md:w-auto bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] luxe-card-hover flex flex-col justify-between group h-full shadow-2xs">
+                  <RevealOnScroll key={video.id} delay={index * 0.05} duration={0.5} className="h-full min-w-0">
+                    <div className="relative w-full h-full bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] transition-shadow hover:shadow-lg flex flex-col justify-between group shadow-2xs">
+                      {videoManager.canManage && (
+                        <ItemActions
+                          itemLabel="video"
+                          alwaysVisible={videoManager.isManaging}
+                          onEdit={() => videoManager.openEdit(video)}
+                          onReplace={() => videoManager.openReplace(video)}
+                          onDelete={() => removeGalleryVideo(video.id)}
+                        />
+                      )}
                       <div>
-                        {/* Video Thumbnail with Play Button */}
+                        {/* Video Thumbnail with Play Button — fixed height */}
                         <div 
-                          className="relative aspect-video w-full bg-neutral-900 overflow-hidden cursor-pointer"
+                          className="relative h-56 w-full bg-neutral-900 overflow-hidden cursor-pointer"
                           onClick={() => setActivePlayVideo(video)}
                         >
-                          <img
-                            src={video.thumbnail || '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg'}
+                          <SmartImage
+                            src={video.thumbnail || '/images/bridal_makeup_jaipur_1790672008691.jpg'}
                             alt={video.title}
-                            referrerPolicy="no-referrer"
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-90"
+                            className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-90"
                           />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none" />
 
                           {/* Top Badges */}
-                          <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
+                          <div className="absolute top-3 left-3 right-12 flex items-center justify-between">
                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold shadow-sm ${platformBadge.color}`}>
                               <platformBadge.icon className="w-3 h-3 text-white" />
                               <span>{platformBadge.label}</span>
@@ -578,7 +718,7 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
 
                         <button
                           onClick={() => onBookService(video.title)}
-                          className="px-3.5 py-2 text-[11px] font-bold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl luxe-btn shadow-2xs whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0"
+                          className="px-3.5 py-2 text-[11px] font-bold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl shadow-2xs whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0"
                         >
                           <span>Book Look</span>
                           <ArrowRight className="w-3 h-3" />
@@ -596,6 +736,15 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
                 <Film className="w-10 h-10 text-neutral-300 mx-auto mb-3" />
                 <h4 className="font-serif text-lg font-bold text-[#0F172A]">No Video Reels Found</h4>
                 <p className="text-xs text-neutral-500 mt-1">Try selecting another platform or topic filter.</p>
+                {videoManager.canManage && (
+                  <button
+                    type="button"
+                    onClick={() => videoManager.openCreate()}
+                    className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-[#0F172A] px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-[#D09A40] hover:text-[#0F172A] cursor-pointer"
+                  >
+                    Add a reel
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -656,7 +805,7 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
                       setActiveModalItem(null);
                       onBookService(serviceToBook);
                     }}
-                    className="w-full py-3 text-xs sm:text-sm font-bold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl luxe-btn shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full py-3 text-xs sm:text-sm font-bold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <CalendarCheck className="w-4 h-4" />
                     <span>Book {activeModalItem.service}</span>
@@ -794,6 +943,84 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
         )}
 
       </div>
+
+      {galleryManager.editorState && (
+        <CardEditorModal
+          key={
+            galleryManager.editorState.mode === 'edit'
+              ? galleryManager.editorState.item?.id
+              : 'new-gallery-item'
+          }
+          title={galleryManager.editorState.mode === 'edit' ? 'Edit gallery look' : 'Add a gallery look'}
+          description={
+            galleryManager.editorState.mode === 'edit'
+              ? `Update “${galleryManager.editorState.item?.title || 'this look'}”. Media stays cropped inside the fixed 4:3 card frame.`
+              : 'Add a photo, portfolio piece or before/after slider to the lookbook.'
+          }
+          fields={GALLERY_EDITOR_FIELDS}
+          initialValues={
+            galleryManager.editorState.mode === 'edit'
+              ? galleryToEditorValues(galleryManager.editorState.item)
+              : emptyGalleryValues(
+                  nextGallerySortOrder,
+                  (GALLERY_TYPES.some((type) => type.id === selectedType)
+                    ? selectedType
+                    : 'photo') as GalleryUploadType,
+                  selectedCategory === 'all' ? GALLERY_CATEGORIES[0] : selectedCategory
+                )
+          }
+          submitLabel={galleryManager.editorState.mode === 'edit' ? 'Save look' : 'Add look'}
+          focusImage={galleryManager.editorState.focusImage}
+          onClose={galleryManager.closeEditor}
+          onSubmit={(values) =>
+            galleryManager.saveItem(
+              normalizeGalleryValues(values, galleryManager.editorState?.item)
+            )
+          }
+          validate={(values) => {
+            if (!String(values.image || '').trim()) {
+              return 'Add a look photo (upload a file or paste an image URL).';
+            }
+            if (values.type === 'before_after' && !String(values.before_image || '').trim()) {
+              return 'Add a “before” image for the before/after slider, or choose a different display type.';
+            }
+            return null;
+          }}
+        />
+      )}
+
+      {videoManager.editorState && (
+        <CardEditorModal
+          key={videoManager.editorState.mode === 'edit' ? videoManager.editorState.item?.id : 'new-gallery-video'}
+          title={videoManager.editorState.mode === 'edit' ? 'Edit video' : 'Add a video'}
+          description={
+            videoManager.editorState.mode === 'edit'
+              ? `Update “${videoManager.editorState.item?.title || 'this video'}”.`
+              : 'Paste a YouTube, Instagram or Facebook link to add it to the gallery.'
+          }
+          fields={videoEditorFields}
+          initialValues={
+            videoManager.editorState.mode === 'edit'
+              ? videoToEditorValues(videoManager.editorState.item)
+              : {
+                  ...emptyVideoValues(),
+                  platform:
+                    selectedVideoPlatform === 'all' ? 'instagram' : selectedVideoPlatform,
+                  category:
+                    selectedVideoCategory === 'all' ? 'Bridal Reels' : selectedVideoCategory,
+                }
+          }
+          submitLabel={videoManager.editorState.mode === 'edit' ? 'Save video' : 'Add video'}
+          focusImage={videoManager.editorState.focusImage}
+          onClose={videoManager.closeEditor}
+          onSubmit={(values) =>
+            videoManager.saveItem(normalizeVideo(values, videoManager.editorState?.item))
+          }
+          validate={validateVideoValues}
+        />
+      )}
+
+      <CrudToast message={galleryManager.notice || videoManager.notice} />
     </section>
   );
 };

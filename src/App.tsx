@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Link, Route, Routes, useNavigate } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
@@ -22,10 +22,10 @@ import { MobileBottomDock } from './components/MobileBottomDock';
 import { DesignSystemInspector } from './components/DesignSystemInspector';
 import { WhiteLabelCustomizer } from './components/WhiteLabelCustomizer';
 import { ServiceCategory, SalonPackage, GalleryItem, VideoItem, ServiceItem } from './types';
-import { getStoredPackages } from './data/packagesData';
-import { getStoredGallery } from './data/galleryData';
-import { getStoredVideos } from './data/videosData';
-import { getStoredServices } from './data/servicesStore';
+import { getStoredPackages, saveStoredPackages } from './data/packagesData';
+import { getStoredGallery, saveStoredGallery } from './data/galleryData';
+import { getStoredVideos, saveStoredVideos } from './data/videosData';
+import { getStoredServices, saveStoredServices } from './data/servicesStore';
 import { useBrand } from './context/BrandContext';
 import { useAuth } from './context/AuthContext';
 import { LoginPage } from './components/auth/LoginPage';
@@ -73,6 +73,28 @@ function MarketingSite() {
   const [preselectedPromoCode, setPreselectedPromoCode] = useState<string | null>(null);
 
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+
+  // Inline CRUD handlers used by the section cards. State updates stay in sync
+  // with localStorage so edits survive reloads and route changes.
+  const handleUpdateServices = useCallback((next: ServiceItem[]) => {
+    setServices(next);
+    saveStoredServices(next);
+  }, []);
+
+  const handleUpdatePackages = useCallback((next: SalonPackage[]) => {
+    setPackages(next);
+    saveStoredPackages(next);
+  }, []);
+
+  const handleUpdateGallery = useCallback((next: GalleryItem[]) => {
+    setGalleryItems(next);
+    saveStoredGallery(next);
+  }, []);
+
+  const handleUpdateVideos = useCallback((next: VideoItem[]) => {
+    setVideos(next);
+    saveStoredVideos(next);
+  }, []);
 
   /**
    * Catalog management now lives in the authenticated owner dashboard.
@@ -183,6 +205,7 @@ function MarketingSite() {
               scrollToSection('gallery');
             }}
             onOpenManagement={() => handleOpenManagement('videos')}
+            onUpdateVideos={handleUpdateVideos}
           />
         )}
 
@@ -192,6 +215,7 @@ function MarketingSite() {
             packages={packages}
             onBookBundle={handleBookBundle}
             onOpenManagement={() => handleOpenManagement('packages')}
+            onUpdatePackages={handleUpdatePackages}
           />
         )}
 
@@ -200,6 +224,7 @@ function MarketingSite() {
           <ServicesSection
             services={services}
             onSelectService={handleSelectServiceFromList}
+            onUpdateServices={handleUpdateServices}
           />
         )}
 
@@ -219,6 +244,8 @@ function MarketingSite() {
             initialView={galleryView}
             onBookService={handleSelectGalleryItemForBooking}
             onOpenManagement={() => handleOpenManagement('gallery')}
+            onUpdateGallery={handleUpdateGallery}
+            onUpdateVideos={handleUpdateVideos}
           />
         )}
 
