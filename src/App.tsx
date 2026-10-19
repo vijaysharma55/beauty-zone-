@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link, Route, Routes, useNavigate } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { TrustHighlightsBar } from './components/TrustHighlightsBar';
@@ -19,17 +20,42 @@ import { Footer } from './components/Footer';
 import { FloatingActions } from './components/FloatingActions';
 import { MobileBottomDock } from './components/MobileBottomDock';
 import { DesignSystemInspector } from './components/DesignSystemInspector';
-import { ManagementModal } from './components/ManagementModal';
 import { WhiteLabelCustomizer } from './components/WhiteLabelCustomizer';
 import { ServiceCategory, SalonPackage, GalleryItem, VideoItem, ServiceItem } from './types';
-import { getStoredPackages, saveStoredPackages } from './data/packagesData';
-import { getStoredGallery, saveStoredGallery } from './data/galleryData';
-import { getStoredVideos, saveStoredVideos } from './data/videosData';
-import { getStoredServices, saveStoredServices } from './data/servicesStore';
+import { getStoredPackages } from './data/packagesData';
+import { getStoredGallery } from './data/galleryData';
+import { getStoredVideos } from './data/videosData';
+import { getStoredServices } from './data/servicesStore';
 import { useBrand } from './context/BrandContext';
+import { useAuth } from './context/AuthContext';
+import { LoginPage } from './components/auth/LoginPage';
+import { RegisterPage } from './components/auth/RegisterPage';
+import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { DashboardLayout } from './components/dashboard/DashboardLayout';
+import { OverviewPage } from './components/dashboard/OverviewPage';
+import { OnboardingPage } from './components/dashboard/OnboardingPage';
+import { WebsiteEditor } from './components/dashboard/WebsiteEditor';
+import { ServicesPage } from './components/dashboard/ServicesPage';
+import { StaffPage } from './components/dashboard/StaffPage';
+import { BillingPage } from './components/dashboard/BillingPage';
+import { AccountPage } from './components/dashboard/AccountPage';
+import { PreviewPage } from './components/dashboard/PreviewPage';
+import { AdminLayout } from './components/admin/AdminLayout';
+import { AdminOverview } from './components/admin/AdminOverview';
+import { AdminUsers } from './components/admin/AdminUsers';
+import { AdminSalons } from './components/admin/AdminSalons';
+import { AdminSubscriptions } from './components/admin/AdminSubscriptions';
+import { AdminSettings } from './components/admin/AdminSettings';
+import { PublicSalonPage } from './components/site/PublicSalonPage';
+import { VerifyEmailPage } from './components/dashboard/VerifyEmailPage';
+import { ApprovalPage } from './components/dashboard/ApprovalPage';
+import { AdminApprovals } from './components/admin/AdminApprovals';
+import { Button } from './components/ui';
 
-export function App() {
+function MarketingSite() {
   const { brand, formatPrice } = useBrand();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [services, setServices] = useState<ServiceItem[]>(() => getStoredServices());
   const [packages, setPackages] = useState<SalonPackage[]>(() => getStoredPackages());
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>(() => getStoredGallery());
@@ -45,32 +71,21 @@ export function App() {
   const [preselectedPromoCode, setPreselectedPromoCode] = useState<string | null>(null);
 
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
-  const [isManagementOpen, setIsManagementOpen] = useState(false);
-  const [managementInitialTab, setManagementInitialTab] = useState<'services' | 'packages' | 'gallery' | 'videos'>('packages');
 
-  const handleUpdateServices = (updated: ServiceItem[]) => {
-    setServices(updated);
-    saveStoredServices(updated);
-  };
-
-  const handleUpdatePackages = (updated: SalonPackage[]) => {
-    setPackages(updated);
-    saveStoredPackages(updated);
-  };
-
-  const handleUpdateGallery = (updated: GalleryItem[]) => {
-    setGalleryItems(updated);
-    saveStoredGallery(updated);
-  };
-
-  const handleUpdateVideos = (updated: VideoItem[]) => {
-    setVideos(updated);
-    saveStoredVideos(updated);
-  };
-
-  const handleOpenManagement = (tab: 'services' | 'packages' | 'gallery' | 'videos' = 'packages') => {
-    setManagementInitialTab(tab);
-    setIsManagementOpen(true);
+  /**
+   * Catalog management now lives in the authenticated owner dashboard.
+   * Anonymous visitors are sent to sign in instead of seeing an editing console.
+   */
+  const handleOpenManagement = (tab: 'services' | 'packages' | 'gallery' | 'videos' = 'services') => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    if (user.role === 'super_admin') {
+      navigate('/admin/salons');
+      return;
+    }
+    navigate(tab === 'gallery' ? '/dashboard/website' : tab === 'videos' ? '/dashboard/website' : '/dashboard/services');
   };
 
   const scrollToSection = (id: string) => {
@@ -283,24 +298,84 @@ export function App() {
         onClose={() => setIsInspectorOpen(false)}
       />
 
-      {/* Salon Management Console (Services, Packages, Gallery & Videos CRUD) */}
-      <ManagementModal
-        isOpen={isManagementOpen}
-        onClose={() => setIsManagementOpen(false)}
-        services={services}
-        onUpdateServices={handleUpdateServices}
-        packages={packages}
-        onUpdatePackages={handleUpdatePackages}
-        galleryItems={galleryItems}
-        onUpdateGallery={handleUpdateGallery}
-        videos={videos}
-        onUpdateVideos={handleUpdateVideos}
-        initialTab={managementInitialTab}
-      />
-
       {/* White-Label Brand Studio Drawer */}
       <WhiteLabelCustomizer />
     </div>
+  );
+}
+
+const NotFoundPage: React.FC = () => (
+  <div className="flex min-h-screen flex-col items-center justify-center bg-[#FAF5E5] px-6 text-center">
+    <p className="font-serif text-6xl font-bold text-[#D09A40]">404</p>
+    <h1 className="mt-2 font-serif text-2xl font-bold text-slate-900">Page not found</h1>
+    <p className="mt-2 max-w-md text-sm text-slate-600">
+      The page you were looking for doesn't exist. If you're looking for a salon website, check the link shared by the
+      salon owner.
+    </p>
+    <div className="mt-6 flex flex-wrap justify-center gap-2">
+      <Link to="/">
+        <Button variant="primary">Back to BeautyZone</Button>
+      </Link>
+      <Link to="/login">
+        <Button variant="secondary">Salon owner sign in</Button>
+      </Link>
+    </div>
+  </div>
+);
+
+export function App() {
+  return (
+    <Routes>
+      {/* Public marketing site (existing showcase, unchanged) */}
+      <Route path="/" element={<MarketingSite />} />
+
+      {/* Authentication */}
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/verify-email" element={<VerifyEmailPage />} />
+
+      {/* Salon owner dashboard — protected, salon-owner role only */}
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute role="salon_owner">
+            <DashboardLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<OverviewPage />} />
+        <Route path="onboarding" element={<OnboardingPage />} />
+        <Route path="website" element={<WebsiteEditor />} />
+        <Route path="services" element={<ServicesPage />} />
+        <Route path="staff" element={<StaffPage />} />
+        <Route path="approval" element={<ApprovalPage />} />
+        <Route path="preview" element={<PreviewPage />} />
+        <Route path="billing" element={<BillingPage />} />
+        <Route path="account" element={<AccountPage />} />
+      </Route>
+
+      {/* Super admin console — protected, super-admin role only */}
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute role="super_admin">
+            <AdminLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<AdminOverview />} />
+        <Route path="users" element={<AdminUsers />} />
+        <Route path="approvals" element={<AdminApprovals />} />
+        <Route path="salons" element={<AdminSalons />} />
+        <Route path="subscriptions" element={<AdminSubscriptions />} />
+        <Route path="settings" element={<AdminSettings />} />
+      </Route>
+
+      {/* Public, unauthenticated salon websites with unique URLs */}
+      <Route path="/salon/:slug" element={<PublicSalonPage />} />
+
+      <Route path="*" element={<NotFoundPage />} />
+    </Routes>
   );
 }
 
