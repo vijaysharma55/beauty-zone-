@@ -3,8 +3,19 @@ import { VideoItem } from '../types';
 import { RevealOnScroll } from './RevealOnScroll';
 import { InstagramIcon, FacebookIcon, YouTubeIcon } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
+import { SmartImage } from './crud/SmartImage';
+import { ItemActions } from './crud/ItemActions';
+import { CardEditorModal } from './crud/CardEditorModal';
+import { CrudToast, ManageControls, ManageHint } from './crud/ManageControls';
+import { useCardCollection } from './crud/useCardCollection';
+import {
+  emptyVideoValues,
+  normalizeVideo,
+  validateVideoValues,
+  videoEditorFields,
+  videoToEditorValues,
+} from './crud/videoEditorConfig';
 import { 
-  Sparkles, 
   Film, 
   Play, 
   ArrowRight, 
@@ -14,8 +25,6 @@ import {
   X, 
   ExternalLink,
   SlidersHorizontal,
-  ChevronLeft,
-  ChevronRight,
   Flame
 } from 'lucide-react';
 
@@ -24,6 +33,8 @@ interface FeaturedReelsShowcaseProps {
   onBookService: (serviceName: string) => void;
   onExploreAllVideos?: () => void;
   onOpenManagement?: () => void;
+  /** Persists the full video catalog after an inline create / edit / delete. */
+  onUpdateVideos?: (videos: VideoItem[]) => void;
 }
 
 export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
@@ -31,27 +42,25 @@ export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
   onBookService,
   onExploreAllVideos,
   onOpenManagement,
+  onUpdateVideos,
 }) => {
   const { t } = useBrand();
   const [activePlayVideo, setActivePlayVideo] = useState<VideoItem | null>(null);
-  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+  const manager = useCardCollection<VideoItem>(videos, onUpdateVideos, 'Reel');
 
-  // Filter only active & featured videos
-  const featuredVideos = useMemo(() => {
-    const active = videos.filter((v) => v.active);
-    const featured = active.filter((v) => v.featured);
-    // If no featured are explicitly marked, fallback to top active videos
-    return featured.length > 0 ? featured : active.slice(0, 6);
-  }, [videos]);
-
-  const handleScroll = (direction: 'left' | 'right') => {
-    if (scrollContainerRef.current) {
-      const scrollAmount = direction === 'left' ? -380 : 380;
-      scrollContainerRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
-    }
+  const removeReel = (id: string) => {
+    setActivePlayVideo((current) => (current?.id === id ? null : current));
+    manager.removeItem(id);
   };
 
-  if (featuredVideos.length === 0) return null;
+  // Show every active reel (featured first) so newly added or edited cards are
+  // always visible without hunting through carousels.
+  const featuredVideos = useMemo(() => {
+    return videos
+      // Hidden items stay visible while editing so they can be switched back on.
+      .filter((video) => video.active || manager.isManaging)
+      .sort((a, b) => Number(b.featured) - Number(a.featured));
+  }, [videos, manager.isManaging]);
 
   return (
     <section id="featured-reels" className="py-8 sm:py-16 md:py-20 bg-white border-t border-[#0F172A]/10 overflow-hidden w-full max-w-full">
@@ -76,26 +85,16 @@ export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
               </p>
             </div>
 
-            {/* Actions & Carousel Nav */}
-            <div className="flex items-center gap-3 self-start md:self-auto">
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => handleScroll('left')}
-                  className="w-9 h-9 rounded-full bg-neutral-100 hover:bg-[#FAF5E5] text-[#0F172A] hover:text-[#D09A40] border border-neutral-200 flex items-center justify-center transition-colors cursor-pointer"
-                  title="Scroll Left"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleScroll('right')}
-                  className="w-9 h-9 rounded-full bg-neutral-100 hover:bg-[#FAF5E5] text-[#0F172A] hover:text-[#D09A40] border border-neutral-200 flex items-center justify-center transition-colors cursor-pointer"
-                  title="Scroll Right"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
+            {/* Actions: manage, view-all & dashboard shortcut */}
+            <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+              {onUpdateVideos && (
+                <ManageControls
+                  isManaging={manager.isManaging}
+                  onToggle={manager.toggleManaging}
+                  onAdd={manager.openCreate}
+                  addLabel="Add Reel"
+                />
+              )}
 
               {onExploreAllVideos && (
                 <button
@@ -113,7 +112,7 @@ export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
                   type="button"
                   onClick={onOpenManagement}
                   className="p-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-600 hover:text-[#0F172A] border border-neutral-200 transition-colors cursor-pointer"
-                  title="Admin: Manage Videos & Reels"
+                  title="Admin dashboard: manage videos & reels"
                 >
                   <SlidersHorizontal className="w-4 h-4" />
                 </button>
@@ -122,51 +121,61 @@ export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
           </div>
         </RevealOnScroll>
 
-        {/* Horizontal Reels Carousel Container with Overlay Chevrons */}
-        <div className="relative group mt-6">
-          <button
-            type="button"
-            onClick={() => handleScroll('left')}
-            className="hidden sm:flex absolute -left-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover:opacity-100"
-            title="Previous Reels"
-            aria-label="Previous Reels"
-          >
-            <ChevronLeft className="w-5 h-5 text-[#0F172A]" />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleScroll('right')}
-            className="hidden sm:flex absolute -right-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 hover:bg-white text-[#0F172A] border border-[#0F172A]/15 shadow-md items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 opacity-80 group-hover:opacity-100"
-            title="Next Reels"
-            aria-label="Next Reels"
-          >
-            <ChevronRight className="w-5 h-5 text-[#0F172A]" />
-          </button>
+        <ManageHint isManaging={manager.isManaging} noun="reel" />
 
-          <div 
-            ref={scrollContainerRef}
-            className="flex gap-5 overflow-x-auto pb-4 scrollbar-none snap-x snap-mandatory -mx-4 px-4 sm:mx-0 sm:px-0 scroll-smooth scroll-pl-4 sm:scroll-pl-0"
-          >
-          {featuredVideos.map((video, idx) => {
-            const platformBadge = 
-              video.platform === 'youtube'
-                ? { label: 'YouTube', color: 'bg-red-600 text-white', icon: YouTubeIcon }
-                : video.platform === 'instagram'
-                ? { label: 'Instagram Reel', color: 'bg-gradient-to-r from-purple-600 to-pink-600 text-white', icon: InstagramIcon }
-                : { label: 'Facebook Video', color: 'bg-[#1877F2] text-white', icon: FacebookIcon };
+        {featuredVideos.length === 0 ? (
+          <div className="mt-6 flex flex-col items-center justify-center rounded-2xl border border-dashed border-[#0F172A]/20 bg-[#FAF5E5]/40 px-6 py-14 text-center">
+            <Film className="h-10 w-10 text-neutral-300" />
+            <h3 className="mt-3 font-serif text-lg font-bold text-[#0F172A]">
+              No reels in the showcase yet
+            </h3>
+            <p className="mt-1 max-w-md text-xs text-[#4A4A4A]">
+              Add a YouTube, Instagram or Facebook reel to feature it on the homepage. Every card
+              uses a fixed media frame, so any thumbnail stays perfectly cropped.
+            </p>
+            {manager.canManage && (
+              <button
+                type="button"
+                onClick={manager.openCreate}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-[#0F172A] px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-[#D09A40] hover:text-[#0F172A] cursor-pointer"
+              >
+                Add your first reel
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
+            {featuredVideos.map((video) => {
+              const platformBadge =
+                video.platform === 'youtube'
+                  ? { label: 'YouTube', color: 'bg-red-600 text-white', icon: YouTubeIcon }
+                  : video.platform === 'instagram'
+                  ? { label: 'Instagram Reel', color: 'bg-gradient-to-r from-purple-600 to-pink-600 text-white', icon: InstagramIcon }
+                  : { label: 'Facebook Video', color: 'bg-[#1877F2] text-white', icon: FacebookIcon };
 
-            return (
-              <FeaturedReelCard
-                key={video.id}
-                video={video}
-                platformBadge={platformBadge}
-                onPlay={(v) => setActivePlayVideo(v)}
-                onBook={onBookService}
-              />
-            );
-          })}
-        </div>
-      </div>
+              return (
+                <FeaturedReelCard
+                  key={video.id}
+                  video={video}
+                  platformBadge={platformBadge}
+                  onPlay={(v) => setActivePlayVideo(v)}
+                  onBook={onBookService}
+                  actions={
+                    manager.canManage ? (
+                      <ItemActions
+                        itemLabel="reel"
+                        alwaysVisible={manager.isManaging}
+                        onEdit={() => manager.openEdit(video)}
+                        onReplace={() => manager.openReplace(video)}
+                        onDelete={() => removeReel(video.id)}
+                      />
+                    ) : null
+                  }
+                />
+              );
+            })}
+          </div>
+        )}
 
         {/* Video Lightbox Player Modal */}
         {activePlayVideo && (
@@ -266,6 +275,29 @@ export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
           </div>
         )}
 
+        {manager.editorState && (
+          <CardEditorModal
+            key={manager.editorState.mode === 'edit' ? manager.editorState.item?.id : 'new-reel'}
+            title={manager.editorState.mode === 'edit' ? 'Edit reel' : 'Add a new reel'}
+            description={
+              manager.editorState.mode === 'edit'
+                ? `Update “${manager.editorState.item?.title || 'this reel'}”. The cover is cropped to the card frame with object-fit: cover.`
+                : 'Paste a YouTube, Instagram or Facebook link. The platform, embed URL and cover image are detected automatically.'
+            }
+            fields={videoEditorFields}
+            initialValues={
+              manager.editorState.mode === 'edit'
+                ? videoToEditorValues(manager.editorState.item)
+                : emptyVideoValues()
+            }
+            submitLabel={manager.editorState.mode === 'edit' ? 'Save reel' : 'Add reel'}
+            focusImage={manager.editorState.focusImage}
+            onClose={manager.closeEditor}
+            onSubmit={(values) => manager.saveItem(normalizeVideo(values, manager.editorState?.item))}
+            validate={validateVideoValues}
+          />
+        )}
+        <CrudToast message={manager.notice} />
       </div>
     </section>
   );
@@ -276,9 +308,10 @@ interface FeaturedReelCardProps {
   platformBadge: { label: string; color: string; icon: React.ElementType };
   onPlay: (video: VideoItem) => void;
   onBook: (title: string) => void;
+  actions?: React.ReactNode;
 }
 
-const FeaturedReelCard: React.FC<FeaturedReelCardProps> = ({ video, platformBadge, onPlay, onBook }) => {
+const FeaturedReelCard: React.FC<FeaturedReelCardProps> = ({ video, platformBadge, onPlay, onBook, actions }) => {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = React.useState(false);
 
@@ -302,14 +335,15 @@ const FeaturedReelCard: React.FC<FeaturedReelCardProps> = ({ video, platformBadg
 
   return (
     <div
-      className="w-[80vw] max-w-[290px] sm:w-[320px] shrink-0 snap-start bg-white rounded-2xl border border-[#0F172A]/10 hover:border-[#D09A40] shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden group"
+      className="relative w-full h-full bg-white rounded-2xl border border-[#0F172A]/10 hover:border-[#D09A40] shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden group"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
+      {actions}
       <div>
-        {/* Video Thumbnail / Hover Play Container */}
+        {/* Video Thumbnail / Hover Play Container — fixed height, object-cover */}
         <div 
-          className="relative aspect-[9/14] sm:aspect-[9/13] w-full bg-neutral-900 overflow-hidden cursor-pointer"
+          className="relative h-64 sm:h-72 w-full bg-neutral-900 overflow-hidden cursor-pointer"
           onClick={() => onPlay(video)}
         >
           {/* Video element for hover playback */}
@@ -323,16 +357,15 @@ const FeaturedReelCard: React.FC<FeaturedReelCardProps> = ({ video, platformBadg
             className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${isPlaying ? 'opacity-100 z-5' : 'opacity-0 z-0 pointer-events-none'}`}
           />
 
-          <img
-            src={video.thumbnail || '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg'}
+          <SmartImage
+            src={video.thumbnail || '/images/bridal_makeup_jaipur_1790672008691.jpg'}
             alt={video.title}
-            referrerPolicy="no-referrer"
-            className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ${isPlaying ? 'opacity-0' : 'opacity-90'}`}
+            className={`h-full w-full object-cover group-hover:scale-105 transition-transform duration-500 ${isPlaying ? 'opacity-0' : 'opacity-90'}`}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/20 pointer-events-none" />
 
           {/* Top Badges */}
-          <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-10">
+          <div className="absolute top-3 left-3 right-12 flex items-center justify-between z-10">
             <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold shadow-sm ${platformBadge.color}`}>
               <platformBadge.icon className="w-3 h-3 text-white" />
               <span>{platformBadge.label}</span>

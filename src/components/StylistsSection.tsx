@@ -1,21 +1,151 @@
 import React, { useState } from 'react';
 import { Stylist } from '../types';
-import { Award, Star, MapPin, Calendar, Sparkles, CheckCircle2, X, Eye } from 'lucide-react';
+import { Award, Star, MapPin, Calendar, Sparkles, CheckCircle2, X, Eye, Plus } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
+import { SmartImage } from './crud/SmartImage';
+import { ItemActions } from './crud/ItemActions';
+import { CardEditorModal, type EditorField } from './crud/CardEditorModal';
+import { CrudToast, ManageControls, ManageHint } from './crud/ManageControls';
+import { useCardCollection } from './crud/useCardCollection';
 
 interface StylistsSectionProps {
   onBookWithStylist: (stylistName: string, branchName: string) => void;
 }
 
+const STYLIST_CATEGORY_OPTIONS = [
+  { value: 'bridal', label: 'Bridal makeup' },
+  { value: 'hair', label: 'Hair & color' },
+  { value: 'skin', label: 'Skin & facials' },
+  { value: 'nails', label: 'Nail art' },
+];
+
+const buildStylistEditorFields = (branches: string[]): EditorField[] => [
+  {
+    key: 'avatar',
+    type: 'image',
+    label: 'Portrait',
+    span: 2,
+    aspect: 'aspect-[3/4]',
+    help: 'Portrait cards crop with object-fit: cover and object-top, so faces stay in frame at every width.',
+  },
+  { key: 'name', type: 'text', label: 'Full name', span: 2, required: true },
+  { key: 'role', type: 'text', label: 'Role / title', span: 2, required: true },
+  { key: 'category', type: 'select', label: 'Specialty', options: STYLIST_CATEGORY_OPTIONS, required: true },
+  {
+    key: 'branch',
+    type: 'select',
+    label: 'Home branch',
+    options: Array.from(new Set([...branches, 'All Salon Outlets'])),
+    required: true,
+  },
+  { key: 'experience', type: 'text', label: 'Experience', placeholder: 'e.g. 14+ Years' },
+  { key: 'rating', type: 'number', label: 'Rating (0–5)', min: 0, max: 5, step: 0.1 },
+  { key: 'reviewCount', type: 'number', label: 'Review count', min: 0 },
+  { key: 'bio', type: 'textarea', label: 'Bio', span: 2, rows: 4 },
+  {
+    key: 'specialties',
+    type: 'tags',
+    label: 'Specialties',
+    span: 2,
+    rows: 3,
+    separator: 'comma',
+    help: 'Separate specialties with commas. The first three appear on the card.',
+  },
+  {
+    key: 'certifications',
+    type: 'tags',
+    label: 'Certifications',
+    span: 2,
+    rows: 3,
+    separator: 'newline',
+    help: 'One certification per line.',
+  },
+];
+
+const emptyStylistValues = (branch: string): Record<string, any> => ({
+  avatar: '',
+  name: '',
+  role: '',
+  category: 'bridal',
+  branch,
+  experience: '5+ Years',
+  rating: 5,
+  reviewCount: 0,
+  bio: '',
+  specialties: [],
+  certifications: [],
+});
+
+const stylistToEditorValues = (stylist?: Stylist, branch = ''): Record<string, any> => {
+  if (!stylist) return emptyStylistValues(branch);
+  return {
+    avatar: stylist.avatar || '',
+    name: stylist.name,
+    role: stylist.role,
+    category: stylist.category,
+    branch: stylist.branch,
+    experience: stylist.experience,
+    rating: stylist.rating,
+    reviewCount: stylist.reviewCount,
+    bio: stylist.bio,
+    specialties: stylist.specialties || [],
+    certifications: stylist.certifications || [],
+  };
+};
+
+const normalizeStylistValues = (
+  values: Record<string, any>,
+  base?: Stylist
+): Stylist => ({
+  ...(base || {
+    id: `stylist-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: '',
+    role: '',
+    category: 'bridal',
+    branch: '',
+    experience: '',
+    rating: 5,
+    reviewCount: 0,
+    bio: '',
+    avatar: '',
+    specialties: [],
+    certifications: [],
+    portfolio: [],
+  }),
+  avatar: String(values.avatar || '').trim(),
+  name: String(values.name || '').trim(),
+  role: String(values.role || '').trim(),
+  category: String(values.category || 'bridal') as Stylist['category'],
+  branch: String(values.branch || '').trim(),
+  experience: String(values.experience || '').trim(),
+  rating: Math.min(5, Math.max(0, Number(values.rating) || 0)),
+  reviewCount: Math.max(0, Math.round(Number(values.review_count ?? values.reviewCount) || 0)),
+  bio: String(values.bio || '').trim(),
+  specialties: Array.isArray(values.specialties) ? values.specialties : [],
+  certifications: Array.isArray(values.certifications) ? values.certifications : [],
+  portfolio: base?.portfolio || [],
+});
+
 export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStylist }) => {
-  const { brand, t } = useBrand();
+  const { brand, t, updateBrand } = useBrand();
   const [selectedStylist, setSelectedStylist] = useState<Stylist | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'bridal' | 'hair' | 'skin' | 'nails'>('all');
+
+  const manager = useCardCollection<Stylist>(
+    brand.stylists,
+    (next) => updateBrand({ stylists: next }),
+    'Stylist'
+  );
 
   const filteredStylists =
     activeFilter === 'all'
       ? brand.stylists
       : brand.stylists.filter((s) => s.category === activeFilter);
+
+  const removeStylist = (id: string) => {
+    setSelectedStylist((current) => (current?.id === id ? null : current));
+    manager.removeItem(id);
+  };
 
   return (
     <section id="stylists" className="py-20 lg:py-28 bg-[#FAF5E5] border-t border-[#0F172A]/10 relative">
@@ -32,6 +162,16 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
           <p className="text-base text-[#4A4A4A]">
             {t('stylistsSubtitle')}
           </p>
+
+          <div className="flex justify-center pt-1">
+            <ManageControls
+              isManaging={manager.isManaging}
+              onToggle={manager.toggleManaging}
+              onAdd={manager.openCreate}
+              addLabel="Add Stylist"
+            />
+          </div>
+          <ManageHint isManaging={manager.isManaging} noun="stylist" />
         </div>
 
         {/* Specialty Filter Pills */}
@@ -57,20 +197,29 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
           ))}
         </div>
 
-        {/* Stylists Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-7">
+        {/* Stylists Cards Grid — identical dimensions in every column */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
           {filteredStylists.map((stylist) => (
             <div
               key={stylist.id}
-              className="bg-white rounded-3xl overflow-hidden border border-[#0F172A]/10 elevation-subtle card-lift flex flex-col justify-between group"
+              className="relative w-full bg-white rounded-3xl overflow-hidden border border-[#0F172A]/10 elevation-subtle card-lift flex flex-col justify-between group h-full"
             >
+              {manager.canManage && (
+                <ItemActions
+                  itemLabel="stylist"
+                  alwaysVisible={manager.isManaging}
+                  onEdit={() => manager.openEdit(stylist)}
+                  onReplace={() => manager.openReplace(stylist)}
+                  onDelete={() => removeStylist(stylist.id)}
+                />
+              )}
               <div>
                 {/* Portrait Header */}
-                <div className="relative h-72 overflow-hidden bg-[#0F172A]">
-                  <img
+                <div className="relative h-80 w-full overflow-hidden bg-[#0F172A]">
+                  <SmartImage
                     src={stylist.avatar}
                     alt={stylist.name}
-                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
+                    className="h-full w-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A] via-transparent to-transparent opacity-85" />
 
@@ -81,7 +230,7 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
                   </div>
 
                   {/* Rating Pill */}
-                  <div className="absolute top-3.5 right-3.5 bg-white/95 backdrop-blur-md text-[#0F172A] text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow-md">
+                  <div className="absolute top-3.5 right-12 bg-white/95 backdrop-blur-md text-[#0F172A] text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow-md">
                     <Star className="w-3.5 h-3.5 fill-[#D09A40] text-[#D09A40]" />
                     <span>{stylist.rating.toFixed(1)}</span>
                   </div>
@@ -145,6 +294,29 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
             </div>
           ))}
         </div>
+
+        {filteredStylists.length === 0 && (
+          <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-[#0F172A]/20 bg-white/70 px-6 py-14 text-center">
+            <Sparkles className="h-10 w-10 text-neutral-300" />
+            <h3 className="mt-3 font-serif text-lg font-bold text-[#0F172A]">
+              No specialists in this view
+            </h3>
+            <p className="mt-1 max-w-md text-xs text-[#4A4A4A]">
+              Choose another specialty filter, or add a stylist to the team. Portraits stay
+              perfectly cropped in the fixed 3:4 frame.
+            </p>
+            {manager.canManage && (
+              <button
+                type="button"
+                onClick={manager.openCreate}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-[#0F172A] px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-[#D09A40] hover:text-[#0F172A] cursor-pointer"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add a stylist
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Stylist Full Profile & Portfolio Modal */}
@@ -286,6 +458,37 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
           </div>
         </div>
       )}
+
+      {manager.editorState && (
+        <CardEditorModal
+          key={manager.editorState.mode === 'edit' ? manager.editorState.item?.id : 'new-stylist'}
+          title={manager.editorState.mode === 'edit' ? 'Edit stylist' : 'Add a stylist'}
+          description={
+            manager.editorState.mode === 'edit'
+              ? `Update “${manager.editorState.item?.name || 'this stylist'}”. The portrait is cropped to the card frame with object-fit: cover.`
+              : 'Add a specialist with a portrait, role, branch and specialties.'
+          }
+          fields={buildStylistEditorFields([
+            ...brand.branches.map((branch) => branch.name),
+            ...(manager.editorState.item?.branch ? [manager.editorState.item.branch] : []),
+          ])}
+          initialValues={
+            manager.editorState.mode === 'edit'
+              ? stylistToEditorValues(manager.editorState.item)
+              : {
+                  ...emptyStylistValues(brand.branches[0]?.name || 'All Salon Outlets'),
+                  category: activeFilter === 'all' ? 'bridal' : activeFilter,
+                }
+          }
+          submitLabel={manager.editorState.mode === 'edit' ? 'Save stylist' : 'Add stylist'}
+          focusImage={manager.editorState.focusImage}
+          onClose={manager.closeEditor}
+          onSubmit={(values) =>
+            manager.saveItem(normalizeStylistValues(values, manager.editorState?.item))
+          }
+        />
+      )}
+      <CrudToast message={manager.notice} />
     </section>
   );
 };

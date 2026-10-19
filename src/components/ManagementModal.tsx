@@ -111,14 +111,14 @@ const FESTIVAL_SUGGESTION_CHIPS = [
 ];
 
 const PRESET_SERVICE_IMAGES = [
-  { label: 'Bridal Makeup', url: '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg' },
-  { label: 'Hair Styling & Color', url: '/src/assets/images/hair_styling_luxe_1790672021591.jpg' },
-  { label: 'Skin & Facial Treatment', url: '/src/assets/images/skin_spa_treatment_1790672037475.jpg' },
-  { label: 'Nail Extensions & Art', url: '/src/assets/images/nail_art_luxe_1790676094903.jpg' },
-  { label: 'Body Spa & Ubtan', url: '/src/assets/images/prebridal_spa_ritual_1790676123541.jpg' },
-  { label: 'Home Salon Visits', url: '/src/assets/images/home_salon_service_1790676110547.jpg' },
-  { label: 'Academy & Masterclass', url: '/src/assets/images/academy_makeup_class_1790676134907.jpg' },
-  { label: 'Salon Ambience', url: '/src/assets/images/hero_jaipur_salon_1790671992521.jpg' },
+  { label: 'Bridal Makeup', url: '/images/bridal_makeup_jaipur_1790672008691.jpg' },
+  { label: 'Hair Styling & Color', url: '/images/hair_styling_luxe_1790672021591.jpg' },
+  { label: 'Skin & Facial Treatment', url: '/images/skin_spa_treatment_1790672037475.jpg' },
+  { label: 'Nail Extensions & Art', url: '/images/nail_art_luxe_1790676094903.jpg' },
+  { label: 'Body Spa & Ubtan', url: '/images/prebridal_spa_ritual_1790676123541.jpg' },
+  { label: 'Home Salon Visits', url: '/images/home_salon_service_1790676110547.jpg' },
+  { label: 'Academy & Masterclass', url: '/images/academy_makeup_class_1790676134907.jpg' },
+  { label: 'Salon Ambience', url: '/images/hero_jaipur_salon_1790671992521.jpg' },
 ];
 
 export const ManagementModal: React.FC<ManagementModalProps> = ({
@@ -162,7 +162,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
   const [srvDescription, setSrvDescription] = useState('');
   const [srvHighlights, setSrvHighlights] = useState<string[]>([]);
   const [newHighlightInput, setNewHighlightInput] = useState('');
-  const [srvImage, setSrvImage] = useState('/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg');
+  const [srvImage, setSrvImage] = useState('/images/bridal_makeup_jaipur_1790672008691.jpg');
   const [srvPopular, setSrvPopular] = useState(false);
   const [srvFormError, setSrvFormError] = useState<string | null>(null);
 
@@ -178,7 +178,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
       '100% Genuine branded international products',
       'Free consultation & aftercare advice'
     ]);
-    setSrvImage('/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg');
+    setSrvImage('/images/bridal_makeup_jaipur_1790672008691.jpg');
     setSrvPopular(false);
     setSrvFormError(null);
     setIsServiceFormOpen(true);
@@ -192,7 +192,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
     setSrvDuration(service.duration);
     setSrvDescription(service.description);
     setSrvHighlights([...service.highlights]);
-    setSrvImage(service.image || '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg');
+    setSrvImage(service.image || '/images/bridal_makeup_jaipur_1790672008691.jpg');
     setSrvPopular(!!service.popular);
     setSrvFormError(null);
     setIsServiceFormOpen(true);
@@ -318,7 +318,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
   const [pkgUsageRules, setPkgUsageRules] = useState<string[]>(DEFAULT_USAGE_RULES.slice(0, 3));
   const [newRuleInput, setNewRuleInput] = useState('');
   const [pkgOutlets, setPkgOutlets] = useState<string[]>(['All Salon Outlets']);
-  const [pkgImage, setPkgImage] = useState('/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg');
+  const [pkgImage, setPkgImage] = useState('/images/bridal_makeup_jaipur_1790672008691.jpg');
   const [pkgActive, setPkgActive] = useState(true);
   const [pkgFeatured, setPkgFeatured] = useState(false);
   const [pkgFormError, setPkgFormError] = useState<string | null>(null);
@@ -419,7 +419,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
       'Non-transferable to other clients once commenced'
     ]);
     setPkgOutlets(['All Salon Outlets']);
-    setPkgImage('/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg');
+    setPkgImage('/images/bridal_makeup_jaipur_1790672008691.jpg');
     setPkgActive(true);
     setPkgFeatured(false);
     setPkgFormError(null);
@@ -649,7 +649,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
   const [galType, setGalType] = useState<GalleryUploadType>('photo');
   const [galCategory, setGalCategory] = useState(GALLERY_CATEGORIES[0]);
   const [galService, setGalService] = useState(GALLERY_SERVICES[0]);
-  const [galImage, setGalImage] = useState('/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg');
+  const [galImage, setGalImage] = useState('/images/bridal_makeup_jaipur_1790672008691.jpg');
   const [galBeforeImage, setGalBeforeImage] = useState('');
   const [galFeatured, setGalFeatured] = useState(false);
   const [galActive, setGalActive] = useState(true);
@@ -663,7 +663,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
     setGalType('photo');
     setGalCategory(GALLERY_CATEGORIES[0]);
     setGalService(GALLERY_SERVICES[0]);
-    setGalImage('/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg');
+    setGalImage('/images/bridal_makeup_jaipur_1790672008691.jpg');
     setGalBeforeImage('');
     setGalFeatured(false);
     setGalActive(true);
@@ -832,7 +832,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
     setVidTitle('Bridal Nail Art & Swarovski Crystal Transformation');
     setVidDescription('Watch our senior nail artist create custom crystal bridal nail extensions with 24K gold foil.');
     setVidCategory('Nail Art Tutorials');
-    setVidThumbnail('/src/assets/images/nail_art_luxe_1790676094903.jpg');
+    setVidThumbnail('/images/nail_art_luxe_1790676094903.jpg');
     setVidFeatured(true);
     setVidActive(true);
     setVidAuthor('Meenakshi Rathore (Nail Lead)');
@@ -889,7 +889,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
       return;
     }
 
-    const thumbnailFinal = vidThumbnail.trim() || parsed.autoThumbnail || '/src/assets/images/hero_jaipur_salon_1790671992521.jpg';
+    const thumbnailFinal = vidThumbnail.trim() || parsed.autoThumbnail || '/images/hero_jaipur_salon_1790671992521.jpg';
 
     if (editingVideoId) {
       const updated = videoList.map((item) => {
@@ -1185,7 +1185,7 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
                               <td className="py-3.5 px-4">
                                 <div className="flex items-center gap-3">
                                   <img
-                                    src={service.image || '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg'}
+                                    src={service.image || '/images/bridal_makeup_jaipur_1790672008691.jpg'}
                                     alt={service.title}
                                     referrerPolicy="no-referrer"
                                     className="w-12 h-12 rounded-xl object-cover border border-neutral-200 shrink-0"

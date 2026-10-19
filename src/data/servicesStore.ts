@@ -1,0 +1,28 @@
+import { ServiceItem } from '../types';
+import { SALON_SERVICES } from './salonData';
+
+const SERVICES_STORAGE_KEY = 'whitelabel_salon_services_v2';
+
+export const getStoredServices = (): ServiceItem[] => {
+  try {
+    const raw = localStorage.getItem(SERVICES_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // An empty array is a valid saved catalog (all items deleted).
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load services from localStorage', e);
+  }
+  return SALON_SERVICES;
+};
+
+export const saveStoredServices = (services: ServiceItem[]): void => {
+  try {
+    localStorage.setItem(SERVICES_STORAGE_KEY, JSON.stringify(services));
+  } catch (e) {
+    console.error('Failed to save services to localStorage', e);
+  }
+};

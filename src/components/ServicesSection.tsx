@@ -1,17 +1,23 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { SALON_SERVICES } from '../data/salonData';
-import { ServiceItem, ServiceReview } from '../types';
+import { ServiceCategory, ServiceItem, ServiceReview } from '../types';
 import { INITIAL_SERVICE_REVIEWS, BASELINE_SERVICE_RATINGS } from '../data/serviceReviewsData';
 import { ServiceReviewModal } from './ServiceReviewModal';
 import { ServiceCompareModal } from './ServiceCompareModal';
 import { RevealOnScroll } from './RevealOnScroll';
 import { useBrand } from '../context/BrandContext';
+import { SmartImage } from './crud/SmartImage';
+import { ItemActions } from './crud/ItemActions';
+import { CardEditorModal, type EditorField } from './crud/CardEditorModal';
+import { CrudToast, ManageControls, ManageHint } from './crud/ManageControls';
+import { useCardCollection } from './crud/useCardCollection';
 import { 
   Check, 
   Sparkles, 
   ArrowUpRight, 
   Search, 
+  Plus,
   X,
   Crown, 
   Scissors, 
@@ -40,9 +46,96 @@ import {
 interface ServicesSectionProps {
   services?: ServiceItem[];
   onSelectService: (service: ServiceItem) => void;
+  /** Persists the full service catalog after an inline create / edit / delete. */
+  onUpdateServices?: (services: ServiceItem[]) => void;
 }
 
 export type ServiceFilterCategory = 'all' | 'hair' | 'skin' | 'bridal' | 'nails' | 'makeup' | 'spa' | 'academy';
+
+const SERVICE_CATEGORY_OPTIONS: { value: ServiceCategory; label: string }[] = [
+  { value: 'bridal', label: 'Bridal makeup' },
+  { value: 'hair', label: 'Hair care & styling' },
+  { value: 'skin', label: 'Skin & facials' },
+  { value: 'nails', label: 'Nail art' },
+  { value: 'spa', label: 'Spa & body care' },
+  { value: 'academy', label: 'Academy & masterclass' },
+];
+
+const SERVICE_EDITOR_FIELDS: EditorField[] = [
+  {
+    key: 'image',
+    type: 'image',
+    label: 'Service image',
+    span: 2,
+    aspect: 'aspect-[16/10]',
+    help: 'Shown in a fixed-height card frame with object-fit: cover on every card.',
+  },
+  { key: 'title', type: 'text', label: 'Service title', span: 2, required: true },
+  { key: 'category', type: 'select', label: 'Category', options: SERVICE_CATEGORY_OPTIONS, required: true },
+  { key: 'duration', type: 'text', label: 'Duration', placeholder: 'e.g. 90 mins', required: true },
+  { key: 'price', type: 'number', label: 'Starting price (₹)', min: 0, required: true },
+  { key: 'description', type: 'textarea', label: 'Description', span: 2, rows: 3 },
+  {
+    key: 'highlights',
+    type: 'tags',
+    label: 'Highlights',
+    span: 2,
+    rows: 3,
+    separator: 'comma',
+    help: 'Separate highlights with commas. The first one is shown on the card.',
+  },
+  { key: 'popular', type: 'checkbox', label: 'Mark as a popular treatment' },
+];
+
+const emptyServiceValues = (category: ServiceCategory = 'hair'): Record<string, any> => ({
+  image: '/images/skin_spa_treatment_1790672037475.jpg',
+  title: '',
+  category,
+  duration: '60 mins',
+  price: 0,
+  description: '',
+  highlights: [],
+  popular: false,
+});
+
+const serviceToEditorValues = (service?: ServiceItem): Record<string, any> => {
+  if (!service) return emptyServiceValues();
+  return {
+    image: service.image || '',
+    title: service.title,
+    category: service.category,
+    duration: service.duration,
+    price: service.price,
+    description: service.description,
+    highlights: service.highlights || [],
+    popular: !!service.popular,
+  };
+};
+
+const normalizeServiceValues = (
+  values: Record<string, any>,
+  base?: ServiceItem
+): ServiceItem => ({
+  ...(base || {
+    id: `svc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    title: '',
+    category: 'hair' as ServiceCategory,
+    price: 0,
+    duration: '',
+    description: '',
+    highlights: [],
+    popular: false,
+    image: '',
+  }),
+  image: String(values.image || '').trim() || undefined,
+  title: String(values.title || '').trim(),
+  category: String(values.category || 'hair') as ServiceCategory,
+  duration: String(values.duration || '').trim(),
+  price: Math.max(0, Math.round(Number(values.price) || 0)),
+  description: String(values.description || '').trim(),
+  highlights: Array.isArray(values.highlights) ? values.highlights : [],
+  popular: !!values.popular,
+});
 
 interface CategoryMetadata {
   id: ServiceFilterCategory;
@@ -56,10 +149,16 @@ interface CategoryMetadata {
   features: string[];
 }
 
-export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSelectService }) => {
+export const ServicesSection: React.FC<ServicesSectionProps> = ({
+  services,
+  onSelectService,
+  onUpdateServices,
+}) => {
   const { brand, t } = useBrand();
-  // Deduplicate raw services by unique id or normalized title
-  const rawServices = services && services.length > 0 ? services : SALON_SERVICES;
+  // Deduplicate raw services by unique id or normalized title. An intentionally
+  // empty catalog must stay empty (so deleting every service is reversible
+  // only through the Add action).
+  const rawServices = services ?? SALON_SERVICES;
   
   const allServices = useMemo(() => {
     const seen = new Set<string>();
@@ -70,6 +169,8 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
       return true;
     });
   }, [rawServices]);
+
+  const manager = useCardCollection<ServiceItem>(allServices, onUpdateServices, 'Service');
 
   const [activeCategory, setActiveCategory] = useState<ServiceFilterCategory>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'carousel'>('grid');
@@ -122,6 +223,12 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
 
   const handleRemoveFromCompare = (serviceId: string) => {
     setSelectedForCompare((prev) => prev.filter((s) => s.id !== serviceId));
+  };
+
+  const handleRemoveService = (serviceId: string) => {
+    setReviewModalService((current) => (current?.id === serviceId ? null : current));
+    handleRemoveFromCompare(serviceId);
+    manager.removeItem(serviceId);
   };
 
   const handleClearCompare = () => {
@@ -189,7 +296,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
       icon: Crown, 
       tagline: 'HD Airbrush Bridal Makeup & Draping',
       description: 'Waterproof HD airbrush makeup, fine jewelry setting, and couture outfit & veil draping.', 
-      image: '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg',
+      image: '/images/bridal_makeup_jaipur_1790672008691.jpg',
       altText: 'Bride wearing fine gold jewelry and couture lehenga with HD makeup',
       features: ['Temptu HD Airbrush', 'Jewelry Setting', 'Couture Draping', 'Wedding Visits'],
     },
@@ -200,7 +307,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
       icon: Scissors, 
       tagline: 'Chemical-Free Hair Botox & Balayage',
       description: '100% safe formaldehyde-free hair smoothening, Olaplex balayage coloring, and haircuts.', 
-      image: '/src/assets/images/hair_styling_luxe_1790672021591.jpg',
+      image: '/images/hair_styling_luxe_1790672021591.jpg',
       altText: 'Client with sleek balayage hair styled at luxury salon',
       features: ['Nanoplastia', 'Olaplex Protection', 'Custom Hair Colors', 'Wash & Blowout'],
     },
@@ -211,7 +318,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
       icon: Droplet, 
       tagline: '24K Gold Leaf Glow & Hydra-Facials',
       description: 'Deep-cleansing HydraFacials, signature 24K real gold leaf facials, and herbal de-tan.', 
-      image: '/src/assets/images/skin_spa_treatment_1790672037475.jpg',
+      image: '/images/skin_spa_treatment_1790672037475.jpg',
       altText: 'Client getting a relaxing 24K gold facial at luxury salon',
       features: ['Real 24K Gold', 'Extraction Care', 'Cooling Ice Globes', 'Herbal De-Tan'],
     },
@@ -222,7 +329,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
       icon: Sparkle, 
       tagline: 'Gel Extensions & Swarovski Art',
       description: 'Chip-proof gel nail extensions, chrome finishes, Swarovski crystal art, and Russian manicures.', 
-      image: '/src/assets/images/nail_art_luxe_1790676094903.jpg',
+      image: '/images/nail_art_luxe_1790676094903.jpg',
       altText: 'Bridal gel nail extensions with stone art',
       features: ['4-Week Gel', 'Swarovski Stones', 'Russian Manicure', 'Paraffin Spa'],
     },
@@ -233,7 +340,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
       icon: Sparkles, 
       tagline: 'HD Airbrush & Sangeet Party Glam Makeovers',
       description: 'Waterproof HD airbrush makeup, party glam, smokey eyes, and professional bridal makeup artistry.', 
-      image: '/src/assets/images/bridal_makeup_jaipur_1790672008691.jpg',
+      image: '/images/bridal_makeup_jaipur_1790672008691.jpg',
       altText: 'Bridal and party makeup artistry',
       features: ['Temptu HD Airbrush', 'Smokey & Cut-Crease Eyes', 'Full Touchup Kit', 'Lashes & Draping'],
     },
@@ -244,7 +351,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
       icon: Heart, 
       tagline: 'Rose Petal Milk Baths & Body Polishing',
       description: 'Indulgent body spa rituals featuring organic milk baths, fresh rose petals, and almond oil massages.', 
-      image: '/src/assets/images/prebridal_spa_ritual_1790676123541.jpg',
+      image: '/images/prebridal_spa_ritual_1790676123541.jpg',
       altText: 'Relaxing rose petal body spa treatment',
       features: ['Rose Milk Soak', 'Herbal Scrub', 'Steam Therapy', 'Essential Oils'],
     },
@@ -255,7 +362,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
       icon: GraduationCap, 
       tagline: 'Govt Certified Professional Courses',
       description: 'Diploma in bridal makeup and advanced hair chemical treatments with practice on live models.', 
-      image: '/src/assets/images/academy_makeup_class_1790676134907.jpg',
+      image: '/images/academy_makeup_class_1790676134907.jpg',
       altText: 'Students practicing makeup in professional Academy class',
       features: ['Govt & ISO Diploma', 'Full Vanity Kit', 'Live Models', 'Career Support'],
     },
@@ -453,6 +560,15 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
                 </select>
               </div>
 
+              {onUpdateServices && (
+                <ManageControls
+                  isManaging={manager.isManaging}
+                  onToggle={manager.toggleManaging}
+                  onAdd={manager.openCreate}
+                  addLabel="Add Service"
+                />
+              )}
+
               {/* Compare Button */}
               <button
                 type="button"
@@ -471,6 +587,8 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
             </div>
           </div>
         </RevealOnScroll>
+
+        <ManageHint isManaging={manager.isManaging} noun="service" />
 
         {/* ========================================================
             PRIMARY CATEGORY FILTER NAVIGATION SYSTEM
@@ -669,29 +787,6 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
           </div>
         </div>
 
-        {/* Empty State */}
-        {filteredServices.length === 0 && (
-          <div className="mt-8 p-8 text-center bg-white rounded-2xl border border-[#0F172A]/10 max-w-md mx-auto">
-            <Search className="w-10 h-10 text-[#D09A40] mx-auto mb-3 opacity-60" />
-            <h3 className="text-lg font-bold text-[#0F172A]">No Services Found</h3>
-            <p className="text-xs text-[#4A4A4A] mt-1 mb-4">
-              Try adjusting your price filter or search query to explore our beauty catalog.
-            </p>
-            <div className="flex items-center justify-center gap-2">
-              <button
-                onClick={() => {
-                  setSearchQuery('');
-                  setMaxPrice(50000);
-                  setActiveCategory('all');
-                }}
-                className="px-4 py-2 bg-[#0F172A] text-white rounded-xl text-xs font-bold hover:bg-[#D09A40] transition-colors cursor-pointer"
-              >
-                Reset All Filters
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* ========================================================
             TAG-BASED FILTER COMPONENT ABOVE SERVICES GRID
             Instantly toggle between 'Hair', 'Skin', 'Bridal', 'Nails', and 'Makeup' views
@@ -798,10 +893,10 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
         {/* ========================================================
             SERVICES RENDERING: Grid View vs Carousel Rows
         ======================================================== */}
-        {/* Case 1: Grid View (Active when viewMode === 'grid') */}
+        {/* Case 1: Grid View — uniform 3-column cards */}
         {viewMode === 'grid' && filteredServices.length > 0 && (
           <div className="mt-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
               {(activeCategory === 'all'
                 ? filteredServices
                 : categorizedFilteredServices[activeCategory] || []
@@ -816,8 +911,55 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
                   onSelectService={onSelectService}
                   onImageError={handleImageError}
                   layout="grid"
+                  actions={
+                    manager.canManage ? (
+                      <ItemActions
+                        itemLabel="service"
+                        alwaysVisible={manager.isManaging}
+                        onEdit={() => manager.openEdit(service)}
+                        onReplace={() => manager.openReplace(service)}
+                        onDelete={() => handleRemoveService(service.id)}
+                      />
+                    ) : null
+                  }
                 />
               ))}
+            </div>
+          </div>
+        )}
+
+        {filteredServices.length === 0 && (
+          <div className="mt-6 flex flex-col items-center justify-center rounded-2xl border border-dashed border-[#0F172A]/20 bg-[#FAF5E5]/40 px-6 py-14 text-center">
+            <Scissors className="h-10 w-10 text-neutral-300" />
+            <h3 className="mt-3 font-serif text-lg font-bold text-[#0F172A]">
+              No treatments match this view
+            </h3>
+            <p className="mt-1 max-w-md text-xs text-[#4A4A4A]">
+              Clear the search or category filter, or add a new service to the catalog.
+            </p>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setMaxPrice(50000);
+                  setActiveCategory('all');
+                }}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-[#0F172A]/15 bg-white px-4 py-2.5 text-xs font-bold text-[#0F172A] transition-colors hover:border-[#D09A40] hover:bg-[#FAF5E5] cursor-pointer"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reset filters
+              </button>
+              {manager.canManage && (
+                <button
+                  type="button"
+                  onClick={manager.openCreate}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#0F172A] px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-[#D09A40] hover:text-[#0F172A] cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add a service
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -845,6 +987,17 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
                     setActiveCategory(id);
                     setViewMode('grid');
                   }}
+                  actionsForService={(service) =>
+                    manager.canManage ? (
+                      <ItemActions
+                        itemLabel="service"
+                        alwaysVisible={manager.isManaging}
+                        onEdit={() => manager.openEdit(service)}
+                        onReplace={() => manager.openReplace(service)}
+                        onDelete={() => handleRemoveService(service.id)}
+                      />
+                    ) : null
+                  }
                 />
               );
             })}
@@ -921,6 +1074,36 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services, onSe
         onAddService={handleAddToCompare}
         onClearAll={handleClearCompare}
       />
+
+      {manager.editorState && (
+        <CardEditorModal
+          key={manager.editorState.mode === 'edit' ? manager.editorState.item?.id : 'new-service'}
+          title={manager.editorState.mode === 'edit' ? 'Edit service' : 'Add a new service'}
+          description={
+            manager.editorState.mode === 'edit'
+              ? `Update “${manager.editorState.item?.title || 'this service'}”. The image stays cropped inside the fixed card frame.`
+              : 'Add a treatment with pricing, duration, highlights and a card image.'
+          }
+          fields={SERVICE_EDITOR_FIELDS}
+          initialValues={
+            manager.editorState.mode === 'edit'
+              ? serviceToEditorValues(manager.editorState.item)
+              : emptyServiceValues(
+                  activeCategory !== 'all' &&
+                    SERVICE_CATEGORY_OPTIONS.some((option) => option.value === activeCategory)
+                    ? (activeCategory as ServiceCategory)
+                    : 'hair'
+                )
+          }
+          submitLabel={manager.editorState.mode === 'edit' ? 'Save service' : 'Add service'}
+          focusImage={manager.editorState.focusImage}
+          onClose={manager.closeEditor}
+          onSubmit={(values) =>
+            manager.saveItem(normalizeServiceValues(values, manager.editorState?.item))
+          }
+        />
+      )}
+      <CrudToast message={manager.notice} />
     </section>
   );
 };
@@ -935,6 +1118,7 @@ interface ServiceCardItemProps {
   onSelectService: (service: ServiceItem) => void;
   onImageError: (id: string) => void;
   layout?: 'grid' | 'carousel';
+  actions?: React.ReactNode;
 }
 
 const ServiceCardItem: React.FC<ServiceCardItemProps> = ({
@@ -946,6 +1130,7 @@ const ServiceCardItem: React.FC<ServiceCardItemProps> = ({
   onSelectService,
   onImageError,
   layout = 'carousel',
+  actions,
 }) => {
   const { t } = useBrand();
   return (
@@ -954,22 +1139,22 @@ const ServiceCardItem: React.FC<ServiceCardItemProps> = ({
         layout === 'grid'
           ? 'w-full h-full'
           : 'w-[185px] sm:w-[215px] min-w-[175px] max-w-[225px] shrink-0 snap-start'
-      } rounded-xl border p-3 flex flex-col justify-between transition-all group/card shadow-2xs hover:shadow-md ${
+      } relative rounded-xl border p-3 flex flex-col justify-between transition-all group group/card shadow-2xs hover:shadow-md ${
         isCompared
           ? 'bg-amber-50/50 border-[#D09A40] ring-1 ring-[#D09A40]'
           : 'bg-[#FAF5E5]/40 hover:bg-white border-[#0F172A]/10 hover:border-[#D09A40]'
       }`}
     >
+      {actions}
       <div>
-        {/* Compact Service Image Header */}
-        <div className="relative aspect-[16/10] -mx-3 -mt-3 mb-2.5 overflow-hidden rounded-t-xl bg-neutral-200">
+        {/* Compact Service Image Header — fixed height, object-fit: cover */}
+        <div className="relative h-48 w-full -mx-3 -mt-3 mb-2.5 overflow-hidden rounded-t-xl bg-neutral-200">
           {!hasFailed && service.image ? (
-            <img
+            <SmartImage
               src={service.image}
               alt={service.title}
-              loading="lazy"
-              onError={() => onImageError(service.id)}
-              className="w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-500"
+              className="h-full w-full object-cover group-hover/card:scale-105 transition-transform duration-500"
+              fallbackClassName="rounded-t-xl"
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-[#FAF5E5] text-[#D09A40]">
@@ -984,7 +1169,7 @@ const ServiceCardItem: React.FC<ServiceCardItemProps> = ({
           </div>
 
           {service.popular && (
-            <div className="absolute top-1.5 right-1.5 bg-[#D09A40] text-white px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase">
+            <div className="absolute top-1.5 right-10 bg-[#D09A40] text-white px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase">
               Popular
             </div>
           )}
@@ -1058,6 +1243,7 @@ interface CategoryHorizontalRowProps {
   onOpenReviewModal: (service: ServiceItem) => void;
   onImageError: (id: string) => void;
   onFilterCategory?: (id: ServiceFilterCategory) => void;
+  actionsForService?: (service: ServiceItem) => React.ReactNode;
 }
 
 const CategoryHorizontalRow: React.FC<CategoryHorizontalRowProps> = ({
@@ -1071,6 +1257,7 @@ const CategoryHorizontalRow: React.FC<CategoryHorizontalRowProps> = ({
   onOpenReviewModal,
   onImageError,
   onFilterCategory,
+  actionsForService,
 }) => {
   const rowRef = useRef<HTMLDivElement>(null);
   const Icon = category.icon;
@@ -1170,6 +1357,7 @@ const CategoryHorizontalRow: React.FC<CategoryHorizontalRowProps> = ({
               onSelectService={onSelectService}
               onImageError={onImageError}
               layout="carousel"
+              actions={actionsForService?.(service)}
             />
           ))}
         </div>
