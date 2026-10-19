@@ -90,6 +90,246 @@
   border-color: var(--wl-accent) !important;
 }
 
+/* ------------------------------------------------------------------ */
+/* Shared action & control primitives                                  */
+/* ------------------------------------------------------------------ */
+/* These are theme-bound (they follow the white-label accent/primary    */
+/* variables) so every button, switch and field stays on-brand even     */
+/* when a tenant re-skins the storefront at runtime.                    */
+/* ------------------------------------------------------------------ */
+
+.action-base {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease,
+    box-shadow 0.2s ease, transform 0.15s ease;
+}
+
+.action-base:focus-visible {
+  outline: 2px solid var(--wl-accent);
+  outline-offset: 2px;
+}
+
+.action-base:disabled,
+.action-base[aria-disabled='true'] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Primary call-to-action — accent filled */
+.primary-action {
+  background-color: var(--wl-accent);
+  color: var(--wl-primary);
+  border: 1px solid var(--wl-accent);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.14);
+}
+
+.primary-action:not(:disabled):hover {
+  background-color: var(--wl-accent-hover);
+  border-color: var(--wl-accent-hover);
+}
+
+/* Secondary call-to-action — outlined */
+.secondary-action {
+  background-color: transparent;
+  color: var(--wl-primary);
+  border: 1px solid color-mix(in srgb, var(--wl-primary) 22%, transparent);
+}
+
+.secondary-action:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--wl-primary) 6%, transparent);
+  border-color: color-mix(in srgb, var(--wl-primary) 40%, transparent);
+}
+
+/* Tertiary / low-emphasis */
+.ghost-action {
+  background-color: transparent;
+  color: color-mix(in srgb, var(--wl-primary) 70%, transparent);
+  border: 1px solid transparent;
+}
+
+.ghost-action:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--wl-primary) 8%, transparent);
+  color: var(--wl-primary);
+}
+
+/* Destructive */
+.danger-action {
+  background-color: #dc2626;
+  color: #fff;
+  border: 1px solid #dc2626;
+}
+
+.danger-action:not(:disabled):hover {
+  background-color: #b91c1c;
+}
+
+/* Inverted (on dark sections) */
+.inverted-action {
+  background-color: var(--wl-primary);
+  color: var(--wl-bg);
+  border: 1px solid var(--wl-primary);
+}
+
+.inverted-action:not(:disabled):hover {
+  background-color: var(--wl-accent);
+  color: var(--wl-primary);
+  border-color: var(--wl-accent);
+}
+
+.action-sm {
+  padding: 0.5rem 0.9rem;
+  font-size: 0.75rem;
+}
+.action-md {
+  padding: 0.7rem 1.25rem;
+  font-size: 0.8rem;
+}
+.action-lg {
+  padding: 0.95rem 1.75rem;
+  font-size: 0.95rem;
+}
+
+/* ---------- Toggle switch (e.g. "accepts online booking") ---------- */
+.toggle-switch {
+  position: relative;
+  display: inline-flex;
+  height: 1.5rem;
+  width: 2.75rem;
+  flex-shrink: 0;
+  align-items: center;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-color: color-mix(in srgb, var(--wl-primary) 20%, transparent);
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+}
+
+.toggle-switch:focus-visible {
+  outline: 2px solid var(--wl-accent);
+  outline-offset: 2px;
+}
+
+.toggle-switch[aria-checked='true'] {
+  background-color: var(--wl-accent);
+  border-color: var(--wl-accent);
+}
+
+.toggle-switch:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.toggle-switch__knob {
+  position: absolute;
+  left: 0.125rem;
+  top: 0.125rem;
+  height: 1.2rem;
+  width: 1.2rem;
+  border-radius: 9999px;
+  background-color: var(--wl-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toggle-switch[aria-checked='true'] .toggle-switch__knob {
+  transform: translateX(1.25rem);
+}
+
+/* ---------- Form control primitives ---------- */
+.field-input {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--wl-primary) 15%, transparent);
+  background-color: var(--wl-bg);
+  padding: 0.8rem 0.9rem;
+  font-size: 0.875rem;
+  color: var(--wl-primary);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.field-input::placeholder {
+  color: color-mix(in srgb, var(--wl-text-muted) 65%, transparent);
+}
+
+.field-input:focus {
+  outline: none;
+  border-color: var(--wl-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--wl-accent) 25%, transparent);
+}
+
+.field-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.field-input--error {
+  border-color: #f43f5e;
+}
+
+.field-input--error:focus {
+  border-color: #f43f5e;
+  box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.22);
+}
+
+/* ---------- Status chips ---------- */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.status-chip--info {
+  background-color: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.28);
+  color: #1d4ed8;
+}
+
+.status-chip--success {
+  background-color: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #047857;
+}
+
+.status-chip--warning {
+  background-color: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.32);
+  color: #b45309;
+}
+
+.status-chip--danger {
+  background-color: rgba(220, 38, 38, 0.1);
+  border-color: rgba(220, 38, 38, 0.28);
+  color: #b91c1c;
+}
+
+.status-chip--neutral {
+  background-color: color-mix(in srgb, var(--wl-primary) 7%, transparent);
+  border-color: color-mix(in srgb, var(--wl-primary) 15%, transparent);
+  color: color-mix(in srgb, var(--wl-primary) 70%, transparent);
+}
+
+/* Reduce motion preferences respected across the animated primitives */
+@media (prefers-reduced-motion: reduce) {
+  .action-base,
+  .toggle-switch,
+  .toggle-switch__knob,
+  .card-lift {
+    transition: none !important;
+  }
+}
+
 /* Custom Design Token Utilities */
 .elevation-soft {
   box-shadow: 0 18px 45px rgba(0, 0, 0, 0.12);

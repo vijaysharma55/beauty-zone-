@@ -14,6 +14,7 @@ import {
   PageHeader,
   Textarea,
   Toggle,
+  Switch,
 } from '../ui';
 import { ImageUploader } from './ImageUploader';
 
@@ -24,9 +25,18 @@ interface Draft {
   photoUrl: string;
   specialties: string;
   active: boolean;
+  bookingEnabled: boolean;
 }
 
-const emptyDraft: Draft = { name: '', roleTitle: '', bio: '', photoUrl: '', specialties: '', active: true };
+const emptyDraft: Draft = {
+  name: '',
+  roleTitle: '',
+  bio: '',
+  photoUrl: '',
+  specialties: '',
+  active: true,
+  bookingEnabled: true,
+};
 
 const initials = (name: string) =>
   name
@@ -79,6 +89,7 @@ export const StaffPage: React.FC = () => {
       photoUrl: member.photoUrl,
       specialties: member.specialties.join(', '),
       active: member.active,
+      bookingEnabled: member.bookingEnabled !== false,
     });
     setError('');
     setModalOpen(true);
@@ -101,6 +112,7 @@ export const StaffPage: React.FC = () => {
           .filter(Boolean)
           .slice(0, 20),
         active: draft.active,
+        bookingEnabled: draft.bookingEnabled,
       };
       if (editing) {
         const res = await api.patch<{ staff: SalonStaff }>(`/salon/staff/${editing.id}`, payload);
@@ -125,6 +137,20 @@ export const StaffPage: React.FC = () => {
       const res = await api.patch<{ staff: SalonStaff }>(`/salon/staff/${member.id}`, { active: !member.active });
       setStaff((prev) => prev.map((s) => (s.id === member.id ? res.staff : s)));
     } catch (err) {
+      setError(errorMessage(err));
+    }
+  };
+
+  const toggleBooking = async (member: SalonStaff) => {
+    const next = !(member.bookingEnabled !== false);
+    // Optimistic update so the switch responds instantly.
+    setStaff((prev) => prev.map((s) => (s.id === member.id ? { ...s, bookingEnabled: next } : s)));
+    try {
+      const res = await api.patch<{ staff: SalonStaff }>(`/salon/staff/${member.id}`, { bookingEnabled: next });
+      setStaff((prev) => prev.map((s) => (s.id === member.id ? res.staff : s)));
+    } catch (err) {
+      // Roll back on failure.
+      setStaff((prev) => prev.map((s) => (s.id === member.id ? { ...s, bookingEnabled: !next } : s)));
       setError(errorMessage(err));
     }
   };
@@ -207,6 +233,17 @@ export const StaffPage: React.FC = () => {
                     </div>
                   )}
                 </div>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2">
+                <span className="text-[11px] font-semibold text-slate-600">Online booking</span>
+                <Switch
+                  checked={member.bookingEnabled !== false}
+                  onChange={() => toggleBooking(member)}
+                  label={`${
+                    member.bookingEnabled !== false ? 'Stop' : 'Start'
+                  } accepting online bookings for ${member.name}`}
+                  hideLabel
+                />
               </div>
               {member.bio && <p className="mt-3 line-clamp-3 text-sm text-slate-600">{member.bio}</p>}
               {member.specialties.length > 0 && (
@@ -300,6 +337,12 @@ export const StaffPage: React.FC = () => {
             checked={draft.active}
             onChange={(v) => setDraft({ ...draft, active: v })}
             label="Show on public website"
+          />
+          <Switch
+            checked={draft.bookingEnabled}
+            onChange={(v) => setDraft({ ...draft, bookingEnabled: v })}
+            label="Accepts online bookings"
+            description="When off, clients can still see this specialist but cannot pick them for an online appointment."
           />
         </form>
       </Modal>

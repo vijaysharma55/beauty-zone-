@@ -28,6 +28,7 @@ const navItems = [
   { to: '/dashboard/website', label: 'My Website', icon: Globe },
   { to: '/dashboard/services', label: 'Services & Prices', icon: Scissors },
   { to: '/dashboard/staff', label: 'Team', icon: Users },
+  { to: '/dashboard/bookings', label: 'Bookings', icon: Calendar },
   { to: '/dashboard/approval', label: 'Approvals', icon: FileCheck2 },
   { to: '/dashboard/preview', label: 'Preview', icon: Eye },
   { to: '/dashboard/billing', label: 'Subscription', icon: CreditCard },

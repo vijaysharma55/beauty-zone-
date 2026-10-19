@@ -303,3 +303,102 @@ export const formatDate = (iso?: string | null) => {
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 };
+
+/* ------------------------------------------------------------------ */
+/* Theme-bound action + switch primitives                              */
+/* ------------------------------------------------------------------ */
+/* These render the `.primary-action` / `.secondary-action` / ...       */
+/* classes defined in index.css, so every button and switch follows the  */
+/* live white-label theme instead of hard-coded Tailwind hex values.    */
+/* ------------------------------------------------------------------ */
+
+export type ActionVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'inverted';
+export type ActionSize = 'sm' | 'md' | 'lg';
+
+const actionVariantClass: Record<ActionVariant, string> = {
+  primary: 'primary-action',
+  secondary: 'secondary-action',
+  ghost: 'ghost-action',
+  danger: 'danger-action',
+  inverted: 'inverted-action',
+};
+
+const actionSizeClass: Record<ActionSize, string> = {
+  sm: 'action-sm',
+  md: 'action-md',
+  lg: 'action-lg',
+};
+
+export const ActionButton: React.FC<
+  React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    variant?: ActionVariant;
+    size?: ActionSize;
+    loading?: boolean;
+    block?: boolean;
+  }
+> = ({ variant = 'primary', size = 'md', loading = false, block = false, className, children, disabled, type = 'button', ...rest }) => (
+  <button
+    {...rest}
+    type={type}
+    disabled={disabled || loading}
+    aria-busy={loading || undefined}
+    className={cn(
+      'action-base',
+      actionVariantClass[variant],
+      actionSizeClass[size],
+      block && 'w-full',
+      className
+    )}
+  >
+    {loading && <Spinner className="h-4 w-4" />}
+    {children}
+  </button>
+);
+
+/**
+ * Accessible on/off switch (role="switch").
+ * Used for controls such as "accepts online booking" on a specialist.
+ */
+export const Switch: React.FC<{
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+  description?: string;
+  disabled?: boolean;
+  hideLabel?: boolean;
+  id?: string;
+}> = ({ checked, onChange, label, description, disabled, hideLabel = false, id }) => (
+  <label
+    htmlFor={id}
+    className={cn('flex select-none', hideLabel ? 'items-center' : 'items-start gap-3', disabled ? 'cursor-not-allowed' : 'cursor-pointer')}
+  >
+    <button
+      id={id}
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className="toggle-switch"
+    >
+      <span className="toggle-switch__knob" />
+    </button>
+    {!hideLabel && (
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-slate-800">{label}</span>
+        {description && <span className="mt-0.5 block text-xs text-slate-500">{description}</span>}
+      </span>
+    )}
+  </label>
+);
+
+/** Small status pill built on the themed `.status-chip` classes. */
+export const StatusChip: React.FC<{
+  tone?: 'info' | 'success' | 'warning' | 'danger' | 'neutral';
+  children: React.ReactNode;
+  className?: string;
+}> = ({ tone = 'neutral', children, className }) => (
+  <span className={cn('status-chip', `status-chip--${tone}`, className)}>{children}</span>
+);

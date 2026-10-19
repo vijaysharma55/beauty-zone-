@@ -34,6 +34,7 @@ import {
 } from '../security.js';
 import { requireAuth, requireRole, asyncHandler } from '../middleware.js';
 import { workflowInfo, submitForApproval, listVersions, serializeVersion } from '../workflow.js';
+import { ownerBookingsRouter } from './bookings.js';
 
 export const salonRouter = Router();
 
@@ -349,6 +350,23 @@ salonRouter.get('/subscription', (req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
+/* Appointments (owner's own salon only)                               */
+/* ------------------------------------------------------------------ */
+
+salonRouter.use('/bookings', (req, res, next) => {
+  // Resolve the salon from the session so nested booking routes stay tenant-scoped.
+  try {
+    req.salon = findSalonByOwner(req.user.id);
+  } catch (err) {
+    return next(err);
+  }
+  if (!req.salon) {
+    return res.status(409).json({ error: 'Complete salon onboarding first.', code: 'ONBOARDING_REQUIRED' });
+  }
+  return next();
+}, ownerBookingsRouter);
+
+/* ------------------------------------------------------------------ */
 /* Image uploads                                                       */
 /* ------------------------------------------------------------------ */
 
@@ -505,6 +523,9 @@ function staffPayload(body, { partial = false } = {}) {
     );
   }
   if (body.active !== undefined) out.active = bool(body.active, true) ? 1 : 0;
+  // "Accepts online booking" — when off the specialist is still shown on the
+  // website but is not offered in the booking picker.
+  if (body.bookingEnabled !== undefined) out.booking_enabled = bool(body.bookingEnabled, true) ? 1 : 0;
   if (body.sortOrder !== undefined) out.sort_order = int(body.sortOrder, { min: 0, max: 10_000, field: 'Sort order' });
   return out;
 }
@@ -520,8 +541,8 @@ salonRouter.post('/staff', (req, res) => {
   const id = newId();
   const ts = nowIso();
   db.prepare(
-    `INSERT INTO staff (id, salon_id, name, role_title, bio, photo_url, specialties_json, active, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO staff (id, salon_id, name, role_title, bio, photo_url, specialties_json, active, booking_enabled, sort_order, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     salon.id,
@@ -531,6 +552,7 @@ salonRouter.post('/staff', (req, res) => {
     data.photo_url,
     data.specialties_json,
     data.active ?? 1,
+    data.booking_enabled ?? 1,
     data.sort_order ?? getStaffForSalon(salon.id).length,
     ts,
     ts

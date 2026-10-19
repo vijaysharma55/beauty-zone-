@@ -25,9 +25,14 @@ import {
   Gift,
   Mic,
   MicOff,
+  Loader2,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import { WhatsAppIcon } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
+import { api } from '../lib/api';
+import { useAvailability, FALLBACK_SLOTS } from '../hooks/useAvailability';
 
 declare global {
   interface Window {
@@ -44,17 +49,52 @@ interface BookingSectionProps {
   preselectedBranch?: string | null;
   preselectedStylistName?: string | null;
   preselectedPromoCode?: string | null;
+  /** Salon slug whose opening hours drive slot generation (public salon sites). */
+  salonSlug?: string | null;
+  /** Service duration in minutes used when generating the slot grid. */
+  defaultDurationMinutes?: number;
 }
 
-const TIME_SLOTS = [
-  '10:00 AM',
-  '11:30 AM',
-  '01:00 PM',
-  '02:30 PM',
-  '04:00 PM',
-  '05:30 PM',
-  '07:00 PM',
-];
+/** Legacy static grid — kept as the last-resort render when a date is not chosen yet. */
+const TIME_SLOTS = FALLBACK_SLOTS.map((slot) => slot.label);
+
+/**
+ * Cash value of a redeemed loyalty reward.
+ *
+ * Looks the reward up in the live catalogue (by title, then by fuzzy match) and
+ * parses the advertised worth, e.g. "100% Free Service (Worth ₹1,800)" → 1800.
+ * Falls back to the smallest catalogue value so a renamed reward still applies
+ * a sensible discount instead of silently breaking a check-out.
+ */
+const catalogueFloor = () =>
+  REWARD_OFFERS.reduce((min, offer) => {
+    const value = Number.parseInt(offer.discountValue.replace(/[^\d]/g, ''), 10);
+    return Number.isFinite(value) && value > 0 ? Math.min(min, value) : min;
+  }, 500);
+
+function rewardValueFor(rewardTitle: string): number {
+  const title = (rewardTitle || '').toLowerCase();
+  const exact = REWARD_OFFERS.find((offer) => offer.title.toLowerCase() === title);
+  const match =
+    exact ||
+    REWARD_OFFERS.find((offer) => {
+      const words = offer.title
+        .toLowerCase()
+        .replace(/[^a-z\s]/g, ' ')
+        .split(/\s+/)
+        .filter((w) => w.length > 3);
+      return words.some((w) => title.includes(w));
+    });
+
+  if (match) {
+    const parsed = Number.parseInt(match.discountValue.replace(/[^\d]/g, ''), 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+
+  const fromTitle = Number.parseInt((rewardTitle || '').replace(/[^\d]/g, ''), 10);
+  if (Number.isFinite(fromTitle) && fromTitle > 0) return fromTitle;
+  return catalogueFloor();
+}
 
 export const BookingSection: React.FC<BookingSectionProps> = ({
   services = SALON_SERVICES,
@@ -64,6 +104,8 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   preselectedBranch,
   preselectedStylistName,
   preselectedPromoCode,
+  salonSlug = null,
+  defaultDurationMinutes = 60,
 }) => {
   const { brand, formatPrice, convertPrice, t } = useBrand();
   const catalogServices = services.length > 0 ? services : SALON_SERVICES;
@@ -115,6 +157,17 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   const [isListening, setIsListening] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [voiceFeedback, setVoiceFeedback] = useState<string | null>(null);
+
+  // Submit lifecycle: idle → submitting → confirmed / failed (with retry)
+  const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'failed'>('idle');
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{
+    fullName?: string;
+    phone?: string;
+    appointmentDate?: string;
+    homeAddress?: string;
+  }>({});
+  const [attemptCount, setAttemptCount] = useState(0);
 
   // Keep branch & locality synced when white-label brand changes
   useEffect(() => {
@@ -212,17 +265,12 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     );
 
     if (matchedRedeemed) {
-      let discountAmt = 500;
-      if (matchedRedeemed.rewardTitle.includes('1,500')) discountAmt = 1500;
-      else if (matchedRedeemed.rewardTitle.includes('Hair Spa')) discountAmt = 1800;
-      else if (matchedRedeemed.rewardTitle.includes('Gold')) discountAmt = 2500;
-      else if (matchedRedeemed.rewardTitle.includes('Nail')) discountAmt = 1499;
-      else if (matchedRedeemed.rewardTitle.includes('Travel')) discountAmt = 600;
-
       setAppliedPromo({
         code: clean,
         title: matchedRedeemed.rewardTitle,
-        discountAmount: discountAmt,
+        // Resolve the value from the reward catalogue instead of string-matching
+        // the title, so a renamed or newly added reward still discounts correctly.
+        discountAmount: rewardValueFor(matchedRedeemed.rewardTitle),
       });
       return;
     }
@@ -332,6 +380,53 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
 
   const treatmentPrice = selectedServiceObj ? selectedServiceObj.price : 4999;
 
+  /**
+   * Service length in minutes. `ServiceItem.duration` is a display string
+   * ("210 mins", "7 Sessions"), so we parse the leading number and clamp it to a
+   * sane booking window. Salon services from the API expose durationMinutes.
+   */
+  const serviceDurationMinutes = useMemo(() => {
+    const raw = (selectedServiceObj as ServiceItem | undefined)?.duration;
+    if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return Math.min(1440, raw);
+    if (typeof raw === 'string') {
+      const parsed = Number.parseInt(raw.replace(/[^\d]/g, ''), 10);
+      if (Number.isFinite(parsed) && parsed > 0) return Math.min(1440, parsed);
+    }
+    const apiDuration = Number((selectedServiceObj as { durationMinutes?: number } | undefined)?.durationMinutes);
+    if (Number.isFinite(apiDuration) && apiDuration > 0) return Math.min(1440, apiDuration);
+    return Math.min(1440, Math.max(5, defaultDurationMinutes));
+  }, [selectedServiceObj, defaultDurationMinutes]);
+
+  /**
+   * Live availability for the chosen date.
+   * Falls back to the static grid if the API is unreachable (see the hook).
+   */
+  const availability = useAvailability({
+    date: form.appointmentDate || undefined,
+    slug: salonSlug,
+    durationMinutes: serviceDurationMinutes,
+    enabled: Boolean(form.appointmentDate),
+  });
+
+  const timeSlotOptions = availability.slots.length > 0 ? availability.slots : FALLBACK_SLOTS;
+
+  // Keep the selected slot valid whenever the generated grid changes.
+  useEffect(() => {
+    if (timeSlotOptions.length === 0) return;
+    const stillValid = timeSlotOptions.some((slot) => slot.label === form.timeSlot);
+    if (!stillValid) {
+      setForm((prev) => ({ ...prev, timeSlot: timeSlotOptions[0].label }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availability.slots, form.appointmentDate]);
+
+  /** Local calendar day (YYYY-MM-DD) used for the date input's min value. */
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }, []);
+
   const calculateDistanceFee = (km: number): number => {
     const base = brand.homeServiceBaseFee || 250;
     const perKm = brand.homeServicePerKmRate || 30;
@@ -381,19 +476,61 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     setIsPaymentModalOpen(false);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.fullName.trim() || !form.phone.trim() || !form.appointmentDate) return;
+  /**
+   * Client-side validation. Returns a map of field → message instead of relying
+   * on `alert()` or silently doing nothing, so errors are visible and recoverable.
+   */
+  const validateForm = () => {
+    const errors: {
+      fullName?: string;
+      phone?: string;
+      appointmentDate?: string;
+      homeAddress?: string;
+    } = {};
 
-    if (form.locationType === 'home') {
-      if (!form.homeAddress.trim()) {
-        alert(`Please enter your complete doorstep address in ${brand.cityName}.`);
-        return;
-      }
-      if (!form.advancePaymentVerified) {
-        setIsPaymentModalOpen(true);
-        return;
-      }
+    if (!form.fullName.trim()) errors.fullName = 'Please enter your name.';
+    else if (form.fullName.trim().length < 2) errors.fullName = 'Please enter your full name.';
+
+    const digits = form.phone.replace(/\D/g, '');
+    if (!form.phone.trim()) errors.phone = 'Please enter a contact number.';
+    else if (digits.length < 8 || digits.length > 15) errors.phone = 'Enter a valid phone number (8–15 digits).';
+
+    if (!form.appointmentDate) errors.appointmentDate = 'Please choose a date.';
+    else if (availability.closed) errors.appointmentDate = 'We are closed on this day — please pick another date.';
+    else if (availability.status === 'empty') {
+      errors.appointmentDate = 'No slots left on this date. Please choose another day.';
+    } else if (form.appointmentDate < todayStr) {
+      errors.appointmentDate = 'Please choose today or a future date.';
+    }
+
+    if (form.locationType === 'home' && form.homeAddress.trim().length < 8) {
+      errors.homeAddress = 'Please enter your complete doorstep address.';
+    }
+
+    return errors;
+  };
+
+  /**
+   * Creates the booking. The request is recorded server-side when a salon is
+   * known; failures never block the flow — we surface a retryable error state
+   * and keep the WhatsApp confirmation path available as a manual fallback.
+   */
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitError(null);
+
+    const errors = validateForm();
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      const firstKey = Object.keys(errors)[0];
+      const el = document.getElementById(`booking-${firstKey}`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
+    if (form.locationType === 'home' && !form.advancePaymentVerified) {
+      setIsPaymentModalOpen(true);
+      return;
     }
 
     const randomDigits = Math.floor(1000 + Math.random() * 9000);
@@ -402,8 +539,48 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
       form.locationType === 'home'
         ? `${prefix}-HOME-${randomDigits}`
         : `${prefix}-SALON-${randomDigits}`;
-    setBookingRefCode(ref);
-    setIsSubmitted(true);
+
+    setSubmitState('submitting');
+    // Track retries so the recovery copy can change after the first failure.
+    setAttemptCount((n) => n + 1);
+
+    try {
+      if (salonSlug) {
+        await api.post('/public/bookings', {
+          slug: salonSlug,
+          fullName: form.fullName.trim(),
+          phone: form.phone.trim(),
+          service: form.selectedService,
+          serviceCategory: form.serviceCategory,
+          stylist: form.preferredStylist,
+          date: form.appointmentDate,
+          time: form.timeSlot,
+          locationType: form.locationType,
+          branch: form.locationType === 'salon' ? form.selectedBranch : null,
+          address: form.locationType === 'home' ? form.homeAddress.trim() : null,
+          locality: form.locationType === 'home' ? form.locality : null,
+          distanceKm: form.locationType === 'home' ? form.distanceKm : null,
+          bridalTrial: form.bridalTrialRequired,
+          notes: form.specialNotes.trim(),
+          promoCode: appliedPromo?.code || null,
+          estimatedTotal: totalEstimatedAmount,
+          advancePaid: form.locationType === 'home' ? advanceRequired : 0,
+          advanceRef: form.advancePaymentVerified ? form.advancePaymentRef : null,
+          reference: ref,
+        });
+      }
+      setBookingRefCode(ref);
+      setSubmitState('idle');
+      setIsSubmitted(true);
+    } catch (err) {
+      console.error('[booking] submission failed', err);
+      setSubmitState('failed');
+      setSubmitError(
+        err instanceof Error
+          ? err.message
+          : 'We could not save your booking just now. Please retry — or confirm on WhatsApp.'
+      );
+    }
   };
 
   const buildWhatsAppBookingUrl = () => {
@@ -432,8 +609,6 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
 
     return `https://wa.me/${brand.whatsappNumber}?text=${encodeURIComponent(message)}`;
   };
-
-  const todayStr = new Date().toISOString().split('T')[0];
 
   const branchSummary =
     brand.branches.length > 0
@@ -469,7 +644,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
         {/* Booking Card Container */}
         <div className="bg-white text-[#0F172A] rounded-3xl shadow-2xl border border-[#D09A40]/30 overflow-hidden">
           {!isSubmitted ? (
-            <form onSubmit={handleSubmit} className="p-6 sm:p-10 space-y-7">
+            <form id="booking-form" onSubmit={handleSubmit} className="p-6 sm:p-10 space-y-7" noValidate>
               {/* Speak to Book Voice AI Bar */}
               <div className="p-4 rounded-2xl bg-[#FAF5E5] border border-[#D09A40]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-start gap-3">
@@ -504,7 +679,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                   type="button"
                   onClick={handleStartVoiceBooking}
                   disabled={isListening}
-                  className="px-4 py-2 rounded-xl bg-[#0F172A] hover:bg-[#D09A40] text-[#FAF5E5] hover:text-[#0F172A] text-xs font-bold transition-colors shrink-0 cursor-pointer"
+                  className="action-base inverted-action action-sm shrink-0"
                 >
                   {isListening ? 'Listening...' : 'Speak Now'}
                 </button>
@@ -651,7 +826,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                     </div>
                   </div>
 
-                  <div>
+                  <div id="booking-homeAddress">
                     <label className="block text-xs font-bold text-[#0F172A] mb-1.5">
                       Complete House / Flat / Hotel Address in {brand.cityName} *
                     </label>
@@ -660,16 +835,24 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                       required
                       placeholder={`House/Flat No., Street, Landmark, ${brand.cityName}`}
                       value={form.homeAddress}
-                      onChange={(e) => setForm({ ...form, homeAddress: e.target.value })}
-                      className="w-full px-4 py-3 rounded-xl bg-white border border-[#0F172A]/15 text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                      onChange={(e) => {
+                        setFieldErrors((prev) => ({ ...prev, homeAddress: undefined }));
+                        setForm({ ...form, homeAddress: e.target.value });
+                      }}
+                      className={`w-full px-4 py-3 rounded-xl bg-white border text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40] ${
+                        fieldErrors.homeAddress ? 'border-rose-400' : 'border-[#0F172A]/15'
+                      }`}
                     />
+                    {fieldErrors.homeAddress && (
+                      <p className="mt-1.5 text-[11px] font-semibold text-rose-600">{fieldErrors.homeAddress}</p>
+                    )}
                   </div>
                 </div>
               )}
 
               {/* 2. Personal Contact Info */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div>
+                <div id="booking-fullName">
                   <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
                     {t('bookingFullName')}
                   </label>
@@ -680,13 +863,21 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                       required
                       placeholder="e.g., Priya Sharma"
                       value={form.fullName}
-                      onChange={(e) => setForm({ ...form, fullName: e.target.value })}
-                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                      onChange={(e) => {
+                        setFieldErrors((prev) => ({ ...prev, fullName: undefined }));
+                        setForm({ ...form, fullName: e.target.value });
+                      }}
+                      className={`w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40] ${
+                        fieldErrors.fullName ? 'border-rose-400' : 'border-[#0F172A]/15'
+                      }`}
                     />
                   </div>
+                  {fieldErrors.fullName && (
+                    <p className="mt-1.5 text-[11px] font-semibold text-rose-600">{fieldErrors.fullName}</p>
+                  )}
                 </div>
 
-                <div>
+                <div id="booking-phone">
                   <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
                     {t('bookingPhone')}
                   </label>
@@ -695,12 +886,21 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                     <input
                       type="tel"
                       required
+                      inputMode="tel"
                       placeholder={brand.phoneDisplay}
                       value={form.phone}
-                      onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                      onChange={(e) => {
+                        setFieldErrors((prev) => ({ ...prev, phone: undefined }));
+                        setForm({ ...form, phone: e.target.value });
+                      }}
+                      className={`w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40] ${
+                        fieldErrors.phone ? 'border-rose-400' : 'border-[#0F172A]/15'
+                      }`}
                     />
                   </div>
+                  {fieldErrors.phone && (
+                    <p className="mt-1.5 text-[11px] font-semibold text-rose-600">{fieldErrors.phone}</p>
+                  )}
                 </div>
               </div>
 
@@ -755,7 +955,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
 
               {/* 4. Preferred Date & Time */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div>
+                <div id="booking-appointmentDate">
                   <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
                     {t('bookingPreferredDate')}
                   </label>
@@ -766,10 +966,23 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                       required
                       min={todayStr}
                       value={form.appointmentDate}
-                      onChange={(e) => setForm({ ...form, appointmentDate: e.target.value })}
-                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                      onChange={(e) => {
+                        setFieldErrors((prev) => ({ ...prev, appointmentDate: undefined }));
+                        setForm({ ...form, appointmentDate: e.target.value });
+                      }}
+                      className={`w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40] ${
+                        fieldErrors.appointmentDate ? 'border-rose-400' : 'border-[#0F172A]/15'
+                      }`}
                     />
                   </div>
+                  {fieldErrors.appointmentDate && (
+                    <p className="mt-1.5 text-[11px] font-semibold text-rose-600">{fieldErrors.appointmentDate}</p>
+                  )}
+                  {!fieldErrors.appointmentDate && availability.open && availability.close && (
+                    <p className="mt-1.5 text-[11px] text-[#4A4A4A]">
+                      Open {availability.open} – {availability.close}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -780,16 +993,66 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                     <Clock className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
                     <select
                       value={form.timeSlot}
+                      disabled={availability.status === 'loading' || availability.closed}
                       onChange={(e) => setForm({ ...form, timeSlot: e.target.value })}
-                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40] disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      {TIME_SLOTS.map((slot) => (
-                        <option key={slot} value={slot}>
-                          {slot}
+                      {availability.status === 'loading' ? (
+                        <option value={form.timeSlot}>
+                          {availability.retrying ? 'Retrying…' : 'Checking availability…'}
                         </option>
-                      ))}
+                      ) : availability.closed ? (
+                        <option value="">Closed on this day</option>
+                      ) : timeSlotOptions.length === 0 ? (
+                        <option value="">No slots available</option>
+                      ) : (
+                        timeSlotOptions.map((slot) => (
+                          <option key={slot.value} value={slot.label}>
+                            {slot.label}
+                            {slot.end && slot.start ? ` – ${slot.end}` : ''}
+                          </option>
+                        ))
+                      )}
                     </select>
                   </div>
+
+                  {/* Availability recovery states */}
+                  {availability.status === 'loading' && (
+                    <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-[#4A4A4A]">
+                      <Loader2 className="w-3 h-3 animate-spin text-[#D09A40]" />
+                      {availability.retrying ? 'Still trying to reach the booking service…' : 'Loading available times…'}
+                    </p>
+                  )}
+
+                  {availability.closed && (
+                    <p className="mt-1.5 text-[11px] font-semibold text-amber-700">
+                      We're closed on this day. Please choose another date.
+                    </p>
+                  )}
+
+                  {!availability.closed && availability.status === 'empty' && (
+                    <p className="mt-1.5 text-[11px] font-semibold text-amber-700">
+                      {availability.reason === 'no_slots_left_today'
+                        ? 'No slots left today — please pick another date.'
+                        : 'No slots left on this date. Please choose another day.'}
+                    </p>
+                  )}
+
+                  {availability.usingFallback && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-700" />
+                      <p className="flex-1 text-[11px] leading-snug text-amber-800">
+                        Live availability is unreachable — showing standard times. Confirm your slot on WhatsApp.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={availability.reload}
+                        className="action-base inverted-action action-sm"
+                      >
+                        <RefreshCw className="w-3 h-3" /> Retry
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -862,7 +1125,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                     <button
                       type="button"
                       onClick={() => validateAndApplyPromo(promoCodeInput)}
-                      className="px-5 py-2.5 rounded-xl bg-[#0F172A] hover:bg-[#D09A40] text-[#FAF5E5] hover:text-[#0F172A] font-bold text-xs transition-colors cursor-pointer shrink-0"
+                      className="action-base inverted-action action-sm shrink-0"
                     >
                       Apply Voucher
                     </button>
@@ -921,7 +1184,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsPaymentModalOpen(true)}
-                      className="mt-1 px-4 py-2 text-xs font-bold text-white bg-amber-800 hover:bg-amber-900 rounded-xl transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                      className="action-base primary-action action-sm mt-1"
                     >
                       <CreditCard className="w-3.5 h-3.5" />
                       <span>Pay Advance Token ({formatPrice(advanceRequired)})</span>
@@ -961,13 +1224,56 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
 
                 <button
                   type="submit"
-                  className="w-full sm:w-auto px-8 py-4 rounded-xl bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A] font-bold text-base shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer"
+                  disabled={submitState === 'submitting'}
+                  className="action-base primary-action action-lg w-full sm:w-auto"
                 >
-                  {form.locationType === 'home' && !form.advancePaymentVerified
-                    ? `Pay ${formatPrice(advanceRequired)} Token & Book`
-                    : t('bookingConfirmBtn')}
+                  {submitState === 'submitting' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> Confirming…
+                    </>
+                  ) : form.locationType === 'home' && !form.advancePaymentVerified ? (
+                    `Pay ${formatPrice(advanceRequired)} Token & Book`
+                  ) : (
+                    t('bookingConfirmBtn')
+                  )}
                 </button>
               </div>
+
+              {/* Submission error + recovery actions */}
+              {submitState === 'failed' && submitError && (
+                <div className="flex flex-col gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="flex items-start gap-2 text-xs leading-snug text-rose-800">
+                    <AlertTriangle className="mt-0.5 w-4 h-4 shrink-0" />
+                    <span>
+                      {submitError}
+                      {attemptCount > 1 ? ' (We will keep your details — just press retry.)' : ''}
+                    </span>
+                  </p>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSubmitState('idle');
+                        setSubmitError(null);
+                        // Re-run the same submit path (attempt counter tracks retries).
+                        const formEl = document.getElementById('booking-form') as HTMLFormElement | null;
+                        formEl?.requestSubmit();
+                      }}
+                      className="action-base danger-action action-sm"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> {attemptCount > 1 ? 'Try again' : 'Retry booking'}
+                    </button>
+                    <a
+                      href={buildWhatsAppBookingUrl()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-[#10B981] px-3.5 py-2 text-xs font-bold text-white transition-colors hover:bg-[#059669]"
+                    >
+                      <WhatsAppIcon className="w-3.5 h-3.5" /> Confirm on WhatsApp
+                    </a>
+                  </div>
+                </div>
+              )}
             </form>
           ) : (
             /* Confirmation State */
@@ -1032,7 +1338,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                 </a>
                 <button
                   onClick={() => setIsSubmitted(false)}
-                  className="w-full sm:w-auto px-6 py-4 rounded-xl border border-[#0F172A]/20 text-xs font-semibold text-[#0F172A] hover:bg-[#FAF5E5] transition-colors cursor-pointer"
+                  className="action-base secondary-action action-lg w-full sm:w-auto"
                 >
                   Modify Details
                 </button>
@@ -1047,8 +1353,10 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F172A]/80 backdrop-blur-sm">
           <div className="bg-white text-[#0F172A] rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl relative border border-[#D09A40]/40">
             <button
+              type="button"
+              aria-label="Close payment dialog"
               onClick={() => setIsPaymentModalOpen(false)}
-              className="absolute top-4 right-4 text-[#4A4A4A] hover:text-[#0F172A] p-1 cursor-pointer"
+              className="action-base ghost-action action-sm absolute top-3 right-3"
             >
               <X className="w-5 h-5" />
             </button>

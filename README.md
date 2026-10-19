@@ -96,13 +96,16 @@ cookies automatically gain the `Secure` flag when `NODE_ENV=production`.
 ### Tests
 
 ```bash
-npm run test:api    # boots a real server on a temp DB and runs 34 API tests
+npm run verify      # lint (tsc --noEmit) → 52 tests → production build
+npm run test:unit   # 11 unit tests: subdomain parsing + slot generation
+npm run test:api    # 40 end-to-end API tests (boots a real server on a temp DB)
 npm run lint        # TypeScript check
 ```
 
 The suite covers the full approval lifecycle (email verification, submit, request changes, resubmit,
 approve, publish, rejected sites, suspension), snapshot isolation for unapproved edits, role gates,
-tenant isolation, CSRF blocking, admin self-protection, password rotation and more.
+tenant isolation, CSRF blocking, admin self-protection, password rotation, subdomain tenant
+resolution, availability/slot generation, the booking lifecycle and AI fallback behaviour.
 
 ### Email delivery
 
@@ -128,10 +131,13 @@ of being sent through an SMTP provider. Outside production the API also returns
 5. `/dashboard/approval` — workflow stepper, blockers, submit/resubmit, publish/unpublish and the
    full submission history with reviewer notes.
 6. `/dashboard/services` — full CRUD for services (price in paise server-side, duration bounds).
-7. `/dashboard/staff` — full CRUD for team members, photo upload, specialties.
-8. `/dashboard/preview` — the current draft rendering, private to the owner.
-9. `/dashboard/billing` — plan, status, renewal date (managed by the platform admin).
-10. `/dashboard/account` — password change and “sign out everywhere”.
+7. `/dashboard/staff` — full CRUD for team members, photo upload, specialties and an
+   “accepts online bookings” switch per specialist.
+8. `/dashboard/bookings` — appointment inbox: every request submitted from the live website,
+   filterable by status, with confirm / complete / decline / cancel actions.
+9. `/dashboard/preview` — the current draft rendering, private to the owner.
+10. `/dashboard/billing` — plan, status, renewal date (managed by the platform admin).
+11. `/dashboard/account` — password change and “sign out everywhere”.
 
 ### Super admin
 `/admin` — platform stats including pending approvals; `/admin/approvals` — review queue with the
@@ -145,6 +151,44 @@ registration toggle, trial length, default plan, support email, maintenance mess
 `/salon/:slug` renders only salons that are published, not suspended, and have an approved version.
 Draft, pending-only, rejected, suspended and unknown slugs all return the same 404 page, so
 unapproved content never leaks. Inactive services/staff and moderation fields are stripped.
+Visitors can request an appointment from the salon's own booking panel; the request is stored and
+appears instantly in the owner's dashboard inbox.
+
+---
+
+## 4b. Subdomain (tenant) routing
+
+A salon is reachable both by path and by subdomain:
+
+| URL | Renders |
+| --- | ------- |
+| `beautyzone.app/salon/lumina-luxe` | the salon website |
+| `lumina-luxe.beautyzone.app` | the same salon website, resolved from the `Host` header |
+| `lumina-luxe.beautyzone.vercel.app` | same, on Vercel preview/production |
+| `www.beautyzone.app` | the marketing homepage (not a tenant) |
+
+Resolution happens in `server/subdomain.js` and is exposed to the browser via
+`GET /api/public/tenant`:
+
+```jsonc
+// live tenant
+{ "tenant": { "mode": "subdomain", "slug": "lumina-luxe", "salonId": "…", "salonName": "Lumina Luxe", "found": true } }
+// unknown / unpublished / unapproved — never an error, never a 500
+{ "tenant": { "mode": "subdomain", "slug": "ghost-salon", "found": false, "reason": "not_found" } }
+```
+
+`reason` is one of `not_found` · `not_published` · `not_approved` · `lookup_error`.
+
+**Fallback contract:** reserved labels (`www`, `api`, `admin`, `dashboard`, …), bare IPs,
+`localhost` and preview hosts (`*.e2b.app`, `*.onrender.com`, `*.netlify.app`) are never treated as
+tenants, and every branch of the middleware ends in `next()` — a database error can never take an
+SSR route down. Unresolved subdomains render a themed "not available" page with the reason instead
+of silently showing the marketing site.
+
+Add `?slug=<slug>` to `/api/public/tenant` to simulate a tenant on any host (handy in previews).
+
+Wildcard DNS (`*.beautyzone.app → <your Vercel project>`) must be configured in the Vercel
+dashboard; `vercel.json` already forwards `/api/*` and falls everything else back to the SPA.
 
 ---
 
@@ -170,7 +214,12 @@ All routes are JSON and cookie-authenticated. Writes require a same-origin `Orig
 `GET /` (includes `workflow` + version history), `POST /onboarding`, `PATCH /` (draft saves),
 `POST /submit`, `POST /publish`, `POST /unpublish`, `GET /versions`, `GET /subscription`,
 `GET|POST /services`, `PATCH|DELETE /services/:id`, `GET|POST /staff`, `PATCH|DELETE /staff/:id`,
+`GET /bookings` (own salon's appointment inbox), `PATCH /bookings/:id` (`requested` → `confirmed` →
+`completed`, or `declined` / `cancelled`),
 `POST /uploads?kind=logo|cover|gallery|staff` (raw image body, max 5 MB).
+
+Staff accept `bookingEnabled` — when `false` the specialist is still shown on the website but marked
+*“Call the salon to book this artist”* and is not offered in the booking picker.
 
 ### Admin (`/api/admin`) — `super_admin` only
 `GET /overview`, `GET /approvals`, `GET /approvals/:versionId`,
@@ -182,7 +231,31 @@ All routes are JSON and cookie-authenticated. Writes require a same-origin `Orig
 
 ### Public (`/api/public`) — no login
 `GET /salons` (live only), `GET /salons/:slug` (approved snapshot only), `GET /slug-available?slug=…`,
-`GET /templates`.
+`GET /templates`, `GET /tenant` (subdomain → salon resolution),
+`GET /availability?date=YYYY-MM-DD[&slug=…][&duration=60][&slot=30][&tzOffset=…]`,
+`POST /bookings` (create an appointment request).
+
+`GET /availability` always answers `200`. Slots are generated from the approved snapshot's opening
+hours, filtered by the service duration and today's lead time, and capped at 48:
+
+```jsonc
+{
+  "date": "2026-10-20", "day": "tue", "open": "10:00", "close": "20:00",
+  "closed": false, "source": "salon", "degraded": false,
+  "slots": [{ "value": "10:00", "label": "10:00 AM", "start": "10:00", "end": "11:00", "available": true }]
+}
+```
+
+When the salon is unknown or has no hours, platform defaults are used and `degraded` is `true` so
+the UI can be honest about it.
+
+### AI assist (`/api/ai`) — graceful by design
+`GET /status`, `POST /taglines`, `POST /description`, `POST /review-reply` (auth required).
+
+Set `GEMINI_API_KEY` to enable live generation. **These endpoints never fail hard:** a missing key,
+an unavailable SDK, a timeout (12 s) or an empty model response all fall back to deterministic local
+templates and answer `200` with `source: "fallback"` and a populated `warnings` array. Every provider
+failure is logged with the `[ai]` prefix.
 
 ---
 
@@ -227,20 +300,30 @@ server/
   workflow.js       Approval state machine, snapshots, publish gating
   migrations.js     Idempotent ALTERs + legacy backfills
   mailer.js         Outbox file mailer + verification/review templates
+  subdomain.js      Tenant subdomain parsing + resolution middleware
+  availability.js   Pure time-slot generation engine (opening hours → slots)
   routes/
     auth.js         Register / login / Google / verification / session / password
     salon.js        Owner dashboard API (tenant-scoped) + submit/publish
     admin.js        Super admin API + approval review + suspension
-    public.js       Approved salon websites only
-  tests/api.test.js End-to-end API, RBAC & approval-workflow tests
+    public.js       Approved salon websites, tenant, availability, booking intake
+    bookings.js     Public booking intake + owner inbox (tenant-scoped)
+    ai.js           AI assist endpoints with deterministic fallbacks
+  tests/api.test.js End-to-end API, RBAC, booking & approval-workflow tests
+  tests/unit.test.js Subdomain parsing + slot-generation unit tests
 src/
   components/auth/       Login, register, route protection
-  components/dashboard/  Owner dashboard pages (incl. approval status & history)
+  components/dashboard/  Owner dashboard pages (incl. bookings, approval status & history)
   components/admin/      Super admin console pages
-  components/site/       Public salon website renderer
+  components/site/       Public salon website renderer + subdomain resolution + booking panel
+  hooks/useTenant.ts     Client-side tenant resolution
+  hooks/useAvailability.ts Slot loading with retry + graceful fallback
   context/AuthContext.tsx
-  lib/api.ts
+  lib/api.ts             Fetch wrapper (ApiError, typed methods)
+  lib/ai.ts              AI helpers with local fallbacks
 data/                    SQLite database + uploads (gitignored)
+docs/SUPABASE_RLS.md     RLS policy mapping if the store is ever moved to Postgres
+AUDIT.md                 End-to-end gap audit & remediation log
 ```
 
 ---
@@ -253,3 +336,7 @@ data/                    SQLite database + uploads (gitignored)
 3. Back up `DATA_DIR` (SQLite file + uploads). WAL mode is enabled for concurrency.
 4. Configure `GOOGLE_CLIENT_ID` with your production origin if Google sign-in is required.
 5. Keep `ALLOWED_ORIGINS` empty unless a separate trusted frontend domain must send writes.
+6. On Vercel: add the wildcard domain `*.beautyzone.app` so tenant subdomains resolve, and set
+   `APP_URL`. `vercel.json` already handles the `/api` passthrough and SPA fallback.
+7. Optional: set `GEMINI_API_KEY` (and `GEMINI_MODEL`) to enable live AI suggestions. Without it the
+   AI endpoints still work, using deterministic local templates.

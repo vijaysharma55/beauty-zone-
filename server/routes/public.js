@@ -2,6 +2,13 @@ import { Router } from 'express';
 import { db, findSalonBySlug, serializeSalon } from '../db.js';
 import { getLiveContent, hasLiveApproval } from '../workflow.js';
 import { rateLimit } from '../security.js';
+import { tenantInfoFromReq } from '../subdomain.js';
+import {
+  generateSlots,
+  FALLBACK_TIMINGS,
+  DEFAULT_SLOT_MINUTES,
+  DEFAULT_LEAD_MINUTES,
+} from '../availability.js';
 
 export const publicRouter = Router();
 
@@ -86,6 +93,7 @@ function livePayload(salon) {
       photoUrl: member.photoUrl,
       specialties: Array.isArray(member.specialties) ? member.specialties : [],
       active: true,
+      bookingEnabled: member.bookingEnabled !== false,
       sortOrder: member.sortOrder,
     }));
   return { salon: merged, services, staff };
@@ -144,6 +152,128 @@ publicRouter.get(
     return res.json(payload);
   }
 );
+
+/**
+ * Public availability for a salon (or the showcase site when no slug is given).
+ *
+ * GET /api/public/availability?date=YYYY-MM-DD[&slug=…][&duration=60][&slot=30]
+ *
+ * Always answers 200 with a well-formed payload. When the salon is unknown or
+ * not live we fall back to the platform default hours so the booking form keeps
+ * working, and we say so in `source` / `degraded` so the UI can be honest.
+ */
+publicRouter.get(
+  '/availability',
+  rateLimit({ windowMs: 60_000, max: 180, key: 'availability' }),
+  (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const date = String(req.query.date || '').trim();
+    const slug = typeof req.query.slug === 'string' ? req.query.slug.trim() : '';
+    const durationRaw = Number(req.query.duration);
+    const slotRaw = Number(req.query.slot);
+    const offsetRaw = Number(req.query.tzOffset);
+
+    const durationMinutes = Number.isFinite(durationRaw) && durationRaw > 0 ? Math.min(1440, Math.round(durationRaw)) : 60;
+    const slotMinutes = Number.isFinite(slotRaw) && slotRaw >= 5 ? Math.min(240, Math.round(slotRaw)) : DEFAULT_SLOT_MINUTES;
+    const tzOffset = Number.isFinite(offsetRaw) ? Math.max(-840, Math.min(840, Math.round(offsetRaw))) : 0;
+
+    // Resolve timings: live salon snapshot → tenant subdomain → platform defaults.
+    let timings = FALLBACK_TIMINGS;
+    let source = 'default';
+    let salonName = null;
+
+    const candidateSlug = slug || (req.tenantSalon ? req.tenantSalon.slug : '');
+    if (candidateSlug) {
+      try {
+        const salon = findLiveSalon(candidateSlug);
+        if (salon) {
+          const live = getLiveContent(salon);
+          const snapshotTimings = live?.salon?.timings;
+          if (Array.isArray(snapshotTimings) && snapshotTimings.length > 0) {
+            timings = snapshotTimings;
+            source = 'salon';
+            salonName = salon.name;
+          }
+        } else {
+          source = 'default';
+        }
+      } catch (err) {
+        console.error('[availability] failed to read salon hours, using defaults', err.message);
+        source = 'default';
+      }
+    }
+
+    let result;
+    try {
+      result = generateSlots({
+        date,
+        timings,
+        durationMinutes,
+        slotMinutes,
+        leadMinutes: DEFAULT_LEAD_MINUTES,
+        timeZoneOffsetMinutes: tzOffset,
+      });
+    } catch (err) {
+      console.error('[availability] slot generation failed', err.message);
+      result = { date, day: null, slots: [], closed: false, reason: 'generation_failed' };
+    }
+
+    return res.json({
+      date: result.date,
+      day: result.day,
+      open: result.open ?? null,
+      close: result.close ?? null,
+      closed: Boolean(result.closed),
+      slots: result.slots || [],
+      reason: result.reason || null,
+      source,
+      salonName,
+      degraded: source === 'default',
+    });
+  }
+);
+
+/**
+ * Tenant resolution for the current hostname.
+ *
+ * Answers whether the browser is visiting a tenant subdomain, and whether that
+ * tenant is live. Never throws: unknown / invalid / unassigned subdomains simply
+ * come back with `found: false` plus a reason, so SSR routes stay stable.
+ */
+publicRouter.get('/tenant', rateLimit({ windowMs: 60_000, max: 240, key: 'tenant' }), (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  let tenant;
+  try {
+    tenant = tenantInfoFromReq(req);
+  } catch (err) {
+    console.error('[tenant] resolution failed', err.message);
+    tenant = { mode: 'path', slug: null, found: false, reason: 'lookup_error' };
+  }
+
+  // Explicit ?slug= override lets preview/dev hosts simulate a tenant subdomain.
+  const rawSlug = req.query.slug;
+  const override = typeof rawSlug === 'string' ? rawSlug.toLowerCase().trim() : '';
+  if (override && /^[a-z0-9][a-z0-9-]{1,58}[a-z0-9]$/.test(override)) {
+    try {
+      const salon = findSalonBySlug(override);
+      if (salon && salon.website_published && hasLiveApproval(salon)) {
+        tenant = { mode: 'subdomain', slug: override, salonId: salon.id, salonName: salon.name, found: true };
+      } else {
+        tenant = {
+          mode: 'subdomain',
+          slug: override,
+          found: false,
+          reason: !salon ? 'not_found' : !salon.website_published ? 'not_published' : 'not_approved',
+        };
+      }
+    } catch (err) {
+      console.error('[tenant] override lookup failed', err.message);
+      tenant = { mode: 'subdomain', slug: override, found: false, reason: 'lookup_error' };
+    }
+  }
+
+  return res.json({ tenant });
+});
 
 /** Public "is this address free?" check used during onboarding. */
 publicRouter.get('/slug-available', slugLimiter, (req, res) => {
