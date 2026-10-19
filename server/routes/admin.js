@@ -252,7 +252,11 @@ adminRouter.patch('/salons/:salonId', (req, res) => {
   if (req.body?.city !== undefined) updates.city = str(req.body.city, { max: 100, field: 'City' });
   if (req.body?.addressLine !== undefined) updates.address_line = str(req.body.addressLine, { max: 300, field: 'Address' });
   if (req.body?.phone !== undefined) updates.phone = str(req.body.phone, { max: 40, field: 'Phone' });
-  if (req.body?.email !== undefined) updates.email = str(req.body.email, { max: 254, field: 'Email' });
+  if (req.body?.email !== undefined) {
+    const email = str(req.body.email, { max: 254, field: 'Email' });
+    if (email && !EMAIL_RE.test(email)) throw new ValidationError('Contact email must be a valid email address');
+    updates.email = email;
+  }
   if (req.body?.slug !== undefined) {
     const slug = normalizeSlug(req.body.slug);
     const existing = db.prepare('SELECT id FROM salons WHERE slug = ? COLLATE NOCASE').get(slug);

@@ -22,7 +22,7 @@ The original luxury salon showcase remains the public marketing homepage at `/`.
 | Publish / unpublish own website | — | ✅ | — |
 | View own subscription | — | ✅ | — |
 | List / create / disable users, change roles | ✅ | — | — |
-| View every salon, force publish / unpublish | ✅ | — | — |
+| View every salon, inspect services/team, edit website details, force publish / unpublish | ✅ | — | — |
 | Manage all subscriptions & billing periods | ✅ | — | — |
 | Edit platform settings, view audit log | ✅ | — | — |
 
@@ -77,7 +77,7 @@ cookies automatically gain the `Secure` flag when `NODE_ENV=production`.
 ### Tests
 
 ```bash
-npm run test:api    # boots a real server on a temp DB and runs 21 API tests
+npm run test:api    # boots a real server on a temp DB and runs 22 API tests
 npm run lint        # TypeScript check
 ```
 
@@ -104,7 +104,7 @@ publish/unpublish visibility, CSRF blocking, admin self-protection, password rot
 
 ### Super admin
 `/admin` — platform stats; `/admin/users` — create/disable accounts, change roles, reset passwords;
-`/admin/salons` — inspect any salon, publish/unpublish on behalf of an owner; `/admin/subscriptions` —
+`/admin/salons` — inspect any salon's profile, services, prices and team; edit website details; publish/unpublish on behalf of an owner; `/admin/subscriptions` —
 change plan/status/period or extend 30 days; `/admin/settings` — registration toggle, trial length,
 default plan, support email, maintenance message, audit log.
 

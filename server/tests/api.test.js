@@ -371,6 +371,32 @@ test('super admin can manage users, salons and settings', async () => {
   await admin.patch('/api/admin/settings', { allowRegistrations: true });
 });
 
+test('admin can inspect and edit any published website', async () => {
+  const admin = await loginAs('admin@test.local', 'Admin@12345');
+  const salons = await admin.get('/api/admin/salons');
+  const target = salons.data.salons.find((s) => s.slug === 'lumina-luxe') || salons.data.salons[0];
+
+  const detail = await admin.get(`/api/admin/salons/${target.id}`);
+  assert.equal(detail.status, 200);
+  assert.ok(Array.isArray(detail.data.services));
+  assert.ok(Array.isArray(detail.data.staff));
+  assert.ok(detail.data.services.length > 0, 'admin can inspect services for moderation');
+
+  const slugTaken = await admin.patch(`/api/admin/salons/${target.id}`, { slug: 'second-studio' });
+  assert.equal(slugTaken.status, 409);
+
+  const updated = await admin.patch(`/api/admin/salons/${target.id}`, {
+    tagline: 'Reviewed by platform moderation',
+    city: 'Jaipur',
+    email: 'hello@lumina.test',
+  });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.data.salon.tagline, 'Reviewed by platform moderation');
+
+  const badEmail = await admin.patch(`/api/admin/salons/${target.id}`, { email: 'not-an-email' });
+  assert.equal(badEmail.status, 400);
+});
+
 test('admin cannot disable or demote themselves', async () => {
   const admin = await loginAs('admin@test.local', 'Admin@12345');
   const me = (await admin.get('/api/auth/me')).data.user;

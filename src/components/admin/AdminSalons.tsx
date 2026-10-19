@@ -1,18 +1,64 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Building2, ExternalLink, Globe, Search, Eye, EyeOff } from 'lucide-react';
+import {
+  Building2,
+  ExternalLink,
+  Globe,
+  Search,
+  Eye,
+  EyeOff,
+  Pencil,
+  Save,
+  Scissors,
+  Users,
+  X,
+} from 'lucide-react';
 import { api, errorMessage } from '../../lib/api';
-import type { Salon } from '../../types/auth';
+import type { Salon, SalonService, SalonStaff } from '../../types/auth';
 import {
   Alert,
   Badge,
   Button,
   Card,
   EmptyState,
+  Field,
   Input,
   Modal,
   PageHeader,
+  Spinner,
+  Textarea,
+  formatCurrency,
   formatDate,
 } from '../ui';
+
+interface AdminSalonDetail {
+  salon: Salon;
+  services: SalonService[];
+  staff: SalonStaff[];
+}
+
+interface EditDraft {
+  name: string;
+  slug: string;
+  tagline: string;
+  description: string;
+  city: string;
+  state: string;
+  addressLine: string;
+  phone: string;
+  email: string;
+}
+
+const toDraft = (salon: Salon): EditDraft => ({
+  name: salon.name,
+  slug: salon.slug,
+  tagline: salon.tagline || '',
+  description: salon.description || '',
+  city: salon.city || '',
+  state: salon.state || '',
+  addressLine: salon.addressLine || '',
+  phone: salon.phone || '',
+  email: salon.email || '',
+});
 
 export const AdminSalons: React.FC = () => {
   const [salons, setSalons] = useState<Salon[]>([]);
@@ -21,7 +67,13 @@ export const AdminSalons: React.FC = () => {
   const [notice, setNotice] = useState('');
   const [query, setQuery] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<Salon | null>(null);
+
+  const [detail, setDetail] = useState<AdminSalonDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<EditDraft | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -43,18 +95,71 @@ export const AdminSalons: React.FC = () => {
     setTimeout(() => setNotice(''), 4000);
   };
 
+  const openDetail = async (salon: Salon) => {
+    setDetail(null);
+    setDetailError('');
+    setEditing(false);
+    setDetailLoading(true);
+    try {
+      const res = await api.get<AdminSalonDetail>(`/admin/salons/${salon.id}`);
+      setDetail({ salon: res.salon, services: res.services, staff: res.staff });
+      setDraft(toDraft(res.salon));
+    } catch (err) {
+      setDetailError(errorMessage(err));
+      // Fall back to the row data already loaded so the owner can still act.
+      setDetail({ salon, services: [], staff: [] });
+      setDraft(toDraft(salon));
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const closeDetail = () => {
+    setDetail(null);
+    setDraft(null);
+    setEditing(false);
+    setDetailError('');
+  };
+
+  const applySalonUpdate = (updated: Salon) => {
+    setSalons((prev) => prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)));
+    setDetail((current) =>
+      current && current.salon.id === updated.id ? { ...current, salon: { ...current.salon, ...updated } } : current
+    );
+  };
+
   const togglePublished = async (salon: Salon) => {
     setBusyId(salon.id);
     setError('');
+    setDetailError('');
     try {
       const res = await api.patch<{ salon: Salon }>(`/admin/salons/${salon.id}`, { published: !salon.published });
-      setSalons((prev) => prev.map((s) => (s.id === salon.id ? { ...s, ...res.salon } : s)));
-      setDetail((current) => (current && current.id === salon.id ? { ...current, ...res.salon } : current));
+      applySalonUpdate(res.salon);
       flash(res.salon.published ? 'Website published.' : 'Website unpublished.');
     } catch (err) {
-      setError(errorMessage(err));
+      const message = errorMessage(err);
+      setError(message);
+      setDetailError(message);
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const saveDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!detail || !draft) return;
+    setSaving(true);
+    setDetailError('');
+    try {
+      const res = await api.patch<{ salon: Salon }>(`/admin/salons/${detail.salon.id}`, draft);
+      applySalonUpdate(res.salon);
+      setDraft(toDraft(res.salon));
+      setEditing(false);
+      flash('Website details updated.');
+    } catch (err) {
+      setDetailError(errorMessage(err));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -74,10 +179,10 @@ export const AdminSalons: React.FC = () => {
       <PageHeader
         eyebrow="Moderation"
         title="Salons & published websites"
-        description="Review every salon, inspect its public data and force-unpublish anything that breaks policy."
+        description="Review every salon, inspect its services and team, edit website details and force-unpublish anything that breaks policy."
       />
 
-      {error && <Alert tone="error">{error}</Alert>}
+      {error && !detail && <Alert tone="error">{error}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}
 
       <Card>
@@ -165,7 +270,7 @@ export const AdminSalons: React.FC = () => {
                     <td className="px-5 py-3 text-xs text-slate-500">{formatDate(salon.createdAt)}</td>
                     <td className="px-5 py-3">
                       <div className="flex flex-wrap items-center justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => setDetail(salon)} title="Inspect salon">
+                        <Button variant="ghost" size="sm" onClick={() => openDetail(salon)} title="Inspect salon">
                           <Eye className="h-3.5 w-3.5" />
                         </Button>
                         {salon.published && (
@@ -201,50 +306,215 @@ export const AdminSalons: React.FC = () => {
         )}
       </Card>
 
-      <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.name || 'Salon details'} maxWidth="max-w-2xl">
-        {detail && (
+      <Modal
+        open={!!detail || detailLoading}
+        onClose={closeDetail}
+        title={detail?.salon.name || 'Salon details'}
+        maxWidth="max-w-3xl"
+        footer={
+          detail ? (
+            <>
+              {editing ? (
+                <>
+                  <Button variant="ghost" onClick={() => setEditing(false)}>
+                    <X className="h-4 w-4" /> Cancel
+                  </Button>
+                  <Button variant="gold" onClick={saveDetails} loading={saving}>
+                    <Save className="h-4 w-4" /> Save details
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="secondary" onClick={() => setEditing(true)}>
+                    <Pencil className="h-4 w-4" /> Edit website details
+                  </Button>
+                  <Button
+                    variant={detail.salon.published ? 'danger' : 'primary'}
+                    loading={busyId === detail.salon.id}
+                    onClick={() => togglePublished(detail.salon)}
+                  >
+                    {detail.salon.published ? 'Force unpublish' : 'Publish salon'}
+                  </Button>
+                </>
+              )}
+            </>
+          ) : null
+        }
+      >
+        {detailLoading ? (
+          <div className="flex items-center justify-center py-10">
+            <Spinner className="h-6 w-6 text-[#D09A40]" />
+          </div>
+        ) : detail ? (
           <div className="space-y-4 text-sm">
+            {detailError && <Alert tone="error">{detailError}</Alert>}
+
             <div className="flex flex-wrap items-center gap-2">
-              <Badge tone={detail.published ? 'green' : 'amber'}>{detail.published ? 'Published' : 'Draft'}</Badge>
-              <Badge tone="slate">/salon/{detail.slug}</Badge>
-              {detail.subscription && (
+              <Badge tone={detail.salon.published ? 'green' : 'amber'}>
+                {detail.salon.published ? 'Published' : 'Draft'}
+              </Badge>
+              <Badge tone="slate">/salon/{detail.salon.slug}</Badge>
+              {detail.salon.subscription && (
                 <Badge tone="gold" className="capitalize">
-                  {detail.subscription.plan} · {detail.subscription.status}
+                  {detail.salon.subscription.plan} · {detail.salon.subscription.status}
                 </Badge>
               )}
-            </div>
-            {detail.tagline && <p className="text-slate-600">{detail.tagline}</p>}
-            {detail.description && <p className="text-slate-600">{detail.description}</p>}
-            <dl className="grid gap-2 sm:grid-cols-2">
-              <Detail label="Owner" value={`${detail.owner?.name} · ${detail.owner?.email}`} />
-              <Detail label="Phone" value={detail.phone || '—'} />
-              <Detail label="Email" value={detail.email || '—'} />
-              <Detail
-                label="Address"
-                value={[detail.addressLine, detail.city, detail.state].filter(Boolean).join(', ') || '—'}
-              />
-              <Detail label="Services" value={String(detail.serviceCount ?? 0)} />
-              <Detail label="Published at" value={formatDate(detail.publishedAt)} />
-            </dl>
-            <div className="flex flex-wrap gap-2 pt-2">
-              {detail.published && (
-                <a href={`/salon/${detail.slug}`} target="_blank" rel="noreferrer">
-                  <Button variant="secondary" size="sm">
-                    <ExternalLink className="h-3.5 w-3.5" /> Open website
-                  </Button>
+              {detail.salon.published && (
+                <a
+                  href={`/salon/${detail.salon.slug}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-[#8a641f] hover:underline"
+                >
+                  <ExternalLink className="h-3 w-3" /> Open live site
                 </a>
               )}
-              <Button
-                variant={detail.published ? 'danger' : 'primary'}
-                size="sm"
-                loading={busyId === detail.id}
-                onClick={() => togglePublished(detail)}
-              >
-                {detail.published ? 'Force unpublish' : 'Publish salon'}
-              </Button>
+            </div>
+
+            {editing && draft ? (
+              <form onSubmit={saveDetails} className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Salon name" htmlFor="admin-salon-name" required>
+                    <Input
+                      id="admin-salon-name"
+                      value={draft.name}
+                      onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                      required
+                    />
+                  </Field>
+                  <Field label="Website address" htmlFor="admin-salon-slug" required hint="Changing this breaks old links.">
+                    <div className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 focus-within:border-[#D09A40] focus-within:ring-2 focus-within:ring-[#D09A40]/25">
+                      <span className="shrink-0 text-sm text-slate-400">/salon/</span>
+                      <input
+                        id="admin-salon-slug"
+                        value={draft.slug}
+                        onChange={(e) => setDraft({ ...draft, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
+                        className="w-full border-0 bg-transparent py-2.5 text-sm focus:outline-none"
+                        required
+                      />
+                    </div>
+                  </Field>
+                  <Field label="Tagline" htmlFor="admin-salon-tagline" className="sm:col-span-2">
+                    <Input
+                      id="admin-salon-tagline"
+                      value={draft.tagline}
+                      onChange={(e) => setDraft({ ...draft, tagline: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Description" htmlFor="admin-salon-description" className="sm:col-span-2">
+                    <Textarea
+                      id="admin-salon-description"
+                      value={draft.description}
+                      onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="City" htmlFor="admin-salon-city">
+                    <Input
+                      id="admin-salon-city"
+                      value={draft.city}
+                      onChange={(e) => setDraft({ ...draft, city: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="State / region" htmlFor="admin-salon-state">
+                    <Input
+                      id="admin-salon-state"
+                      value={draft.state}
+                      onChange={(e) => setDraft({ ...draft, state: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Address" htmlFor="admin-salon-address" className="sm:col-span-2">
+                    <Input
+                      id="admin-salon-address"
+                      value={draft.addressLine}
+                      onChange={(e) => setDraft({ ...draft, addressLine: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Phone" htmlFor="admin-salon-phone">
+                    <Input
+                      id="admin-salon-phone"
+                      value={draft.phone}
+                      onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Contact email" htmlFor="admin-salon-email">
+                    <Input
+                      id="admin-salon-email"
+                      type="email"
+                      value={draft.email}
+                      onChange={(e) => setDraft({ ...draft, email: e.target.value })}
+                    />
+                  </Field>
+                </div>
+              </form>
+            ) : (
+              <>
+                {detail.salon.tagline && <p className="text-slate-600">{detail.salon.tagline}</p>}
+                {detail.salon.description && <p className="text-slate-600">{detail.salon.description}</p>}
+                <dl className="grid gap-2 sm:grid-cols-2">
+                  <Detail label="Owner" value={`${detail.salon.owner?.name} · ${detail.salon.owner?.email}`} />
+                  <Detail label="Phone" value={detail.salon.phone || '—'} />
+                  <Detail label="Email" value={detail.salon.email || '—'} />
+                  <Detail
+                    label="Address"
+                    value={
+                      [detail.salon.addressLine, detail.salon.city, detail.salon.state].filter(Boolean).join(', ') || '—'
+                    }
+                  />
+                  <Detail label="Services" value={`${detail.services.filter((s) => s.active).length} active / ${detail.services.length} total`} />
+                  <Detail label="Team" value={`${detail.staff.filter((s) => s.active).length} active / ${detail.staff.length} total`} />
+                  <Detail label="Published at" value={formatDate(detail.salon.publishedAt)} />
+                  <Detail label="Last updated" value={formatDate(detail.salon.updatedAt)} />
+                </dl>
+              </>
+            )}
+
+            <div className="rounded-xl border border-slate-200">
+              <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <Scissors className="h-3.5 w-3.5 text-[#D09A40]" /> Services & prices
+              </div>
+              {detail.services.length === 0 ? (
+                <p className="px-4 py-3 text-xs text-slate-500">No services created yet.</p>
+              ) : (
+                <ul className="max-h-48 divide-y divide-slate-100 overflow-y-auto">
+                  {detail.services.map((service) => (
+                    <li key={service.id} className="flex items-center justify-between gap-3 px-4 py-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-medium text-slate-800">{service.name}</p>
+                        <p className="text-[11px] capitalize text-slate-500">
+                          {service.category} · {service.durationMinutes} min
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {!service.active && <Badge tone="amber">Hidden</Badge>}
+                        <span className="text-xs font-semibold text-slate-800">{formatCurrency(service.pricePaise)}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-slate-200">
+              <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <Users className="h-3.5 w-3.5 text-[#D09A40]" /> Team
+              </div>
+              {detail.staff.length === 0 ? (
+                <p className="px-4 py-3 text-xs text-slate-500">No team members added yet.</p>
+              ) : (
+                <ul className="flex flex-wrap gap-2 p-4">
+                  {detail.staff.map((member) => (
+                    <li key={member.id}>
+                      <Badge tone={member.active ? 'slate' : 'amber'}>
+                        {member.name}
+                        {member.roleTitle ? ` — ${member.roleTitle}` : ''}
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
-        )}
+        ) : null}
       </Modal>
     </div>
   );
