@@ -34,7 +34,7 @@ export const FoundersNote: React.FC<FoundersNoteProps> = ({ onBookBridalConsult 
                   <img
                     src={brand.founderImage}
                     alt={`${brand.founderName} — ${brand.founderRole}`}
-                    className="w-full h-[380px] sm:h-[420px] object-cover object-top"
+                    className="w-full h-64 sm:h-80 object-cover object-center aspect-[4/3]"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A] via-[#0F172A]/20 to-transparent" />
 

@@ -19,6 +19,7 @@ import { FAQSection } from './components/FAQSection';
 import { Footer } from './components/Footer';
 import { FloatingActions } from './components/FloatingActions';
 import { MobileBottomDock } from './components/MobileBottomDock';
+import { BrandingModal } from './components/BrandingModal';
 import { DesignSystemInspector } from './components/DesignSystemInspector';
 import { WhiteLabelCustomizer } from './components/WhiteLabelCustomizer';
 import { ServiceCategory, SalonPackage, GalleryItem, VideoItem, ServiceItem } from './types';
@@ -73,6 +74,7 @@ function MarketingSite() {
   const [preselectedPromoCode, setPreselectedPromoCode] = useState<string | null>(null);
 
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [isBrandingModalOpen, setIsBrandingModalOpen] = useState(false);
 
   // Inline CRUD handlers used by the section cards. State updates stay in sync
   // with localStorage so edits survive reloads and route changes.
@@ -312,7 +314,10 @@ function MarketingSite() {
 
       {/* Floating WhatsApp & White-Label Studio Quick Actions */}
       {brand.sections.showFloatingActions && (
-        <FloatingActions onBookClick={() => scrollToSection('booking')} />
+        <FloatingActions 
+          onBookClick={() => scrollToSection('booking')} 
+          onOpenBranding={() => setIsBrandingModalOpen(true)}
+        />
       )}
 
       {/* Sticky Mobile Bottom Navigation Bar */}
@@ -325,6 +330,12 @@ function MarketingSite() {
       <DesignSystemInspector
         isOpen={isInspectorOpen}
         onClose={() => setIsInspectorOpen(false)}
+      />
+
+      {/* Branding Management Modal */}
+      <BrandingModal
+        isOpen={isBrandingModalOpen}
+        onClose={() => setIsBrandingModalOpen(false)}
       />
 
       {/* White-Label Brand Studio Drawer */}

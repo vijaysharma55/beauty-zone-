@@ -5,9 +5,10 @@ import { useBrand } from '../context/BrandContext';
 
 interface FloatingActionsProps {
   onBookClick: () => void;
+  onOpenBranding?: () => void;
 }
 
-export const FloatingActions: React.FC<FloatingActionsProps> = ({ onBookClick }) => {
+export const FloatingActions: React.FC<FloatingActionsProps> = ({ onBookClick, onOpenBranding }) => {
   const { brand, setIsCustomizerOpen } = useBrand();
   const [showScrollTop, setShowScrollTop] = useState(false);
 
@@ -44,6 +45,16 @@ export const FloatingActions: React.FC<FloatingActionsProps> = ({ onBookClick })
       >
         <Palette className="w-4 h-4 text-[#D09A40]" />
         <span className="hidden sm:inline">White-Label Studio</span>
+      </button>
+
+      {/* Founder Branding Edit */}
+      <button
+        onClick={onOpenBranding}
+        className="flex items-center gap-2 bg-[#FAF5E5] hover:bg-white text-[#0F172A] border border-[#D09A40]/50 font-bold text-xs px-3.5 py-2.5 rounded-full shadow-xl transition-all hover:scale-105 cursor-pointer"
+        title="Edit Founder Branding"
+      >
+        <ImageIcon className="w-4 h-4 text-[#D09A40]" />
+        <span className="hidden sm:inline">Edit Founder</span>
       </button>
 
       {/* Direct WhatsApp Concierge */}

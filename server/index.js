@@ -26,7 +26,7 @@ import { bookingsRouter } from './routes/bookings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
-const PORT = Number(process.env.PORT || 3000);
+const PORT = process.env.PORT || 3000;
 const isProd = process.env.NODE_ENV === 'production';
 
 /**
@@ -127,6 +127,7 @@ if (isProd) {
       host: '0.0.0.0',
       allowedHosts: true,
       hmr: false,
+      port: 0,
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
     appType: 'custom',
@@ -172,5 +173,13 @@ function shutdown(signal) {
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 5000).unref();
 }
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));

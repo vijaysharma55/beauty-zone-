@@ -30,6 +30,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { WhatsAppIcon } from './SocialIcons';
+import { BookingSummaryModal } from './BookingSummaryModal';
 import { useBrand } from '../context/BrandContext';
 import { api } from '../lib/api';
 import { useAvailability, FALLBACK_SLOTS } from '../hooks/useAvailability';
@@ -140,6 +141,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   });
 
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [bookingRefCode, setBookingRefCode] = useState('');
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [copiedUpi, setCopiedUpi] = useState(false);
@@ -572,6 +574,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
       setBookingRefCode(ref);
       setSubmitState('idle');
       setIsSubmitted(true);
+      setIsSummaryModalOpen(true);
     } catch (err) {
       console.error('[booking] submission failed', err);
       setSubmitState('failed');
@@ -1484,6 +1487,14 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
           </div>
         </div>
       )}
+      <BookingSummaryModal
+        isOpen={isSummaryModalOpen}
+        onClose={() => setIsSummaryModalOpen(false)}
+        bookingRef={bookingRefCode}
+        form={form}
+        serviceTitle={form.selectedService}
+        price={formatPrice(totalEstimatedAmount)}
+      />
     </section>
   );
 };

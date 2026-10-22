@@ -70,16 +70,16 @@ export const Hero: React.FC<HeroProps> = ({
 
             {/* Display Headline */}
             <h1 className="font-serif text-4xl sm:text-5xl xl:text-[56px] font-bold text-[#FAF5E5] leading-[1.12] tracking-tight">
-              {brand.heroHeadlineLine1}{' '}
+              Best Salon Services for {' '}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D09A40] via-[#F3D088] to-[#D09A40] italic font-normal">
-                {brand.heroHeadlineHighlight}
+                You
               </span>{' '}
-              {brand.heroHeadlineLine2}
+              {brand.cityName}
             </h1>
 
             {/* Subtitle */}
             <p className="text-base sm:text-lg text-[#FAF5E5]/80 max-w-2xl font-light leading-relaxed">
-              {brand.heroDescription}
+              We offer simple, professional salon services right at your doorstep or our nearby studio. Book your look for any occasion today!
             </p>
 
             {/* Key Value Highlights */}
