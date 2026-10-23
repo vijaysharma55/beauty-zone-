@@ -103,6 +103,20 @@ app.use(
   })
 );
 
+// Statically serve public images with immediate revalidation so newly generated images always load
+app.use(
+  '/images',
+  express.static(path.join(ROOT, 'public/images'), {
+    maxAge: 0,
+    etag: true,
+    lastModified: true,
+    setHeaders: (res) => {
+      res.set('Cache-Control', 'public, max-age=0, must-revalidate');
+      res.set('X-Content-Type-Options', 'nosniff');
+    },
+  })
+);
+
 app.use('/api', notFound);
 
 /* ------------------------------------------------------------------ */

@@ -2,7 +2,7 @@ import { WhiteLabelConfig, WhiteLabelTheme } from '../types';
 import { SALON_BRANCHES, TESTIMONIALS } from './salonData';
 import { SALON_STYLISTS } from './stylistsData';
 
-export const WHITE_LABEL_STORAGE_KEY = 'whitelabel_salon_brand_config_v2';
+export const WHITE_LABEL_STORAGE_KEY = 'whitelabel_salon_brand_config_v3';
 
 export const THEME_PRESETS: WhiteLabelTheme[] = [
   {
@@ -688,12 +688,32 @@ export const WHITE_LABEL_PRESETS: {
 export function loadWhiteLabelConfig(): WhiteLabelConfig {
   if (typeof window === 'undefined') return DEFAULT_WHITE_LABEL_CONFIG;
   try {
+    localStorage.removeItem('whitelabel_salon_brand_config_v2');
     const raw = localStorage.getItem(WHITE_LABEL_STORAGE_KEY);
     if (!raw) return DEFAULT_WHITE_LABEL_CONFIG;
     const parsed = JSON.parse(raw);
+
+    // Auto-migrate legacy placeholder image paths to the latest 8K photorealistic assets
+    const sanitizeImagePath = (url: any, fallback: string) => {
+      if (!url || typeof url !== 'string') return fallback;
+      if (url.includes('hero_jaipur_salon')) return '/images/jaipur_luxury_salon_1792644552318.jpg';
+      if (url.includes('bridal_makeup_jaipur')) return fallback;
+      if (url.includes('founder_portrait')) return '/images/salon_founder_portrait_1792648125569.jpg';
+      return url;
+    };
+
+    const heroImage = sanitizeImagePath(parsed.heroImage, DEFAULT_WHITE_LABEL_CONFIG.heroImage);
+    const bridalImage = parsed.bridalImage && !parsed.bridalImage.includes('bridal_makeup_jaipur')
+      ? parsed.bridalImage
+      : DEFAULT_WHITE_LABEL_CONFIG.bridalImage;
+    const founderImage = sanitizeImagePath(parsed.founderImage, DEFAULT_WHITE_LABEL_CONFIG.founderImage);
+
     return {
       ...DEFAULT_WHITE_LABEL_CONFIG,
       ...parsed,
+      heroImage,
+      bridalImage,
+      founderImage,
       theme: {
         ...DEFAULT_WHITE_LABEL_CONFIG.theme,
         ...(parsed.theme || {}),

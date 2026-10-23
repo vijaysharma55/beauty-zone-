@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, ArrowUp, Palette, Image as ImageIcon } from 'lucide-react';
+import { Calendar, ArrowUp, Palette, Image as ImageIcon, RefreshCw } from 'lucide-react';
 import { WhatsAppIcon } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
 
@@ -24,6 +24,26 @@ export const FloatingActions: React.FC<FloatingActionsProps> = ({ onBookClick, o
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleReloadImages = () => {
+    [
+      'whitelabel_salon_brand_config_v2',
+      'whitelabel_salon_brand_config_v3',
+      'whitelabel_salon_gallery_v2',
+      'whitelabel_salon_gallery_v3',
+      'whitelabel_salon_services_v2',
+      'whitelabel_salon_services_v3',
+      'whitelabel_salon_packages_v2',
+      'whitelabel_salon_packages_v3',
+      'whitelabel_salon_videos_v2',
+      'whitelabel_salon_videos_v3',
+    ].forEach((k) => {
+      try {
+        localStorage.removeItem(k);
+      } catch {}
+    });
+    window.location.reload();
+  };
+
   return (
     <div className="fixed bottom-20 lg:bottom-6 right-4 sm:right-6 z-40 flex flex-col items-end gap-2.5">
       {/* Scroll to Top */}
@@ -36,6 +56,16 @@ export const FloatingActions: React.FC<FloatingActionsProps> = ({ onBookClick, o
           <ArrowUp className="w-4 h-4" />
         </button>
       )}
+
+      {/* Reload All Images (Cache Buster) */}
+      <button
+        onClick={handleReloadImages}
+        className="flex items-center gap-2 bg-[#0F172A] hover:bg-slate-800 text-[#FAF5E5] border border-[#D09A40]/50 font-bold text-xs px-3.5 py-2.5 rounded-full shadow-xl transition-all hover:scale-105 cursor-pointer"
+        title="Reload all website images and reset local cache"
+      >
+        <RefreshCw className="w-4 h-4 text-[#D09A40]" />
+        <span className="hidden sm:inline">Reload Images</span>
+      </button>
 
       {/* White-Label Brand Studio Floating Trigger */}
       <button

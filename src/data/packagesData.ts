@@ -3,13 +3,18 @@ import { SalonPackage } from '../types';
 export const PACKAGE_PRESET_IMAGES = [
   {
     label: 'Bridal Makeover & Draping',
-    url: '/images/bridal_makeup_jaipur_1790672008691.jpg',
+    url: '/images/jaipur_royal_bride_1792647664582.jpg',
     category: 'Bridal',
   },
   {
-    label: 'Hair Botox & Luxury Styling',
-    url: '/images/hair_styling_luxe_1790672021591.jpg',
+    label: 'Hair Botox & Nanoplastia',
+    url: '/images/luxury_hair_nanoplastia_1792647835332.jpg',
     category: 'Hair',
+  },
+  {
+    label: 'Bridal Gel Nail Extensions & Art',
+    url: '/images/bridal_nail_art_1792647953738.jpg',
+    category: 'Nails',
   },
   {
     label: 'Party Glam & Sangeet Makeup',
@@ -23,12 +28,12 @@ export const PACKAGE_PRESET_IMAGES = [
   },
   {
     label: 'Luxury Salon Atmosphere',
-    url: '/images/hero_jaipur_salon_1790671992521.jpg',
+    url: '/images/jaipur_luxury_salon_1792644552318.jpg',
     category: 'Salon',
   },
   {
     label: 'Academy & Masterclass',
-    url: '/images/academy_makeup_class_1790676134907.jpg',
+    url: '/images/makeup_academy_class_1792648280089.jpg',
     category: 'Academy',
   },
 ];
@@ -147,7 +152,7 @@ export const PACKAGE_PRESET_TEMPLATES: PackagePresetTemplate[] = [
     regularPrice: 9500,
     packagePrice: 6650,
     validity: '30 Days from purchase',
-    image: '/images/hero_jaipur_salon_1790671992521.jpg',
+    image: '/images/jaipur_luxury_salon_1792644552318.jpg',
     services: [
       'Hydra-Facial Deep Clean with Blackhead Removal',
       'Rose Petal & Milk Body Spa with Warm Almond Oil Massage',
@@ -355,17 +360,18 @@ export const INITIAL_PACKAGES: SalonPackage[] = [
       'Valid at all salon branches'
     ],
     outlets: ['All Salon Outlets'],
-    image: '/images/hero_jaipur_salon_1790671992521.jpg',
+    image: '/images/jaipur_luxury_salon_1792644552318.jpg',
     active: true,
     featured: false,
   }
 ];
 
-const PACKAGES_STORAGE_KEY = 'whitelabel_salon_packages_v2';
+const PACKAGES_STORAGE_KEY = 'whitelabel_salon_packages_v3';
 
 export function getStoredPackages(): SalonPackage[] {
   if (typeof window === 'undefined') return INITIAL_PACKAGES;
   try {
+    localStorage.removeItem('whitelabel_salon_packages_v2');
     const raw = localStorage.getItem(PACKAGES_STORAGE_KEY);
     if (!raw) {
       localStorage.setItem(PACKAGES_STORAGE_KEY, JSON.stringify(INITIAL_PACKAGES));

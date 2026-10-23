@@ -158,11 +158,12 @@ export const INITIAL_GALLERY_ITEMS: GalleryItem[] = [
   }
 ];
 
-const GALLERY_STORAGE_KEY = 'whitelabel_salon_gallery_v2';
+const GALLERY_STORAGE_KEY = 'whitelabel_salon_gallery_v3';
 
 export function getStoredGallery(): GalleryItem[] {
   if (typeof window === 'undefined') return INITIAL_GALLERY_ITEMS;
   try {
+    localStorage.removeItem('whitelabel_salon_gallery_v2');
     const raw = localStorage.getItem(GALLERY_STORAGE_KEY);
     if (!raw) {
       localStorage.setItem(GALLERY_STORAGE_KEY, JSON.stringify(INITIAL_GALLERY_ITEMS));

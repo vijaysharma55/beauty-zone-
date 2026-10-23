@@ -1,10 +1,11 @@
 import { ServiceItem } from '../types';
 import { SALON_SERVICES } from './salonData';
 
-const SERVICES_STORAGE_KEY = 'whitelabel_salon_services_v2';
+const SERVICES_STORAGE_KEY = 'whitelabel_salon_services_v3';
 
 export const getStoredServices = (): ServiceItem[] => {
   try {
+    localStorage.removeItem('whitelabel_salon_services_v2');
     const raw = localStorage.getItem(SERVICES_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);

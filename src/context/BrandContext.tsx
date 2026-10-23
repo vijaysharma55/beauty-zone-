@@ -323,7 +323,23 @@ export const BrandProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const resetToDefault = useCallback(() => {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem(WHITE_LABEL_STORAGE_KEY);
+      [
+        WHITE_LABEL_STORAGE_KEY,
+        'whitelabel_salon_brand_config_v2',
+        'whitelabel_salon_brand_config_v3',
+        'whitelabel_salon_gallery_v2',
+        'whitelabel_salon_gallery_v3',
+        'whitelabel_salon_services_v2',
+        'whitelabel_salon_services_v3',
+        'whitelabel_salon_packages_v2',
+        'whitelabel_salon_packages_v3',
+        'whitelabel_salon_videos_v2',
+        'whitelabel_salon_videos_v3',
+      ].forEach((key) => {
+        try {
+          localStorage.removeItem(key);
+        } catch {}
+      });
     }
     setBrand(JSON.parse(JSON.stringify(DEFAULT_WHITE_LABEL_CONFIG)));
   }, []);

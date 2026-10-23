@@ -33,12 +33,12 @@ export const VIDEO_PRESET_THUMBNAILS = [
   },
   {
     label: 'Luxury Salon Ambience',
-    url: '/images/hero_jaipur_salon_1790671992521.jpg',
+    url: '/images/jaipur_luxury_salon_1792644552318.jpg',
     category: 'Salon Tour & Ambience'
   },
   {
     label: 'Academy Masterclass',
-    url: '/images/academy_makeup_class_1790676134907.jpg',
+    url: '/images/makeup_academy_class_1792648280089.jpg',
     category: 'Academy Masterclass'
   }
 ];
@@ -214,7 +214,7 @@ export const INITIAL_VIDEOS: VideoItem[] = [
     title: 'Walkthrough of our Private Bridal Suite & Flagship Luxury Salon',
     description: 'Explore our newly renovated flagship salon featuring private dressing rooms, Italian spa chairs, and sterilized beauty stations.',
     category: 'Salon Tour & Ambience',
-    thumbnail: '/images/hero_jaipur_salon_1790671992521.jpg',
+    thumbnail: '/images/jaipur_luxury_salon_1792644552318.jpg',
     videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4',
     featured: true,
     active: true,
@@ -235,7 +235,7 @@ export const INITIAL_VIDEOS: VideoItem[] = [
     title: 'Bridal Makeup Masterclass: Eye Contouring & 16-Hour Waterproof Base',
     description: 'Highlights from our 15-day professional bridal certification academy class held at our Studio Academy branch.',
     category: 'Academy Masterclass',
-    thumbnail: '/images/academy_makeup_class_1790676134907.jpg',
+    thumbnail: '/images/makeup_academy_class_1792648280089.jpg',
     videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
     featured: false,
     active: true,
@@ -250,11 +250,12 @@ export const INITIAL_VIDEOS: VideoItem[] = [
   }
 ];
 
-const VIDEOS_STORAGE_KEY = 'whitelabel_salon_videos_v2';
+const VIDEOS_STORAGE_KEY = 'whitelabel_salon_videos_v3';
 
 export function getStoredVideos(): VideoItem[] {
   if (typeof window === 'undefined') return INITIAL_VIDEOS;
   try {
+    localStorage.removeItem('whitelabel_salon_videos_v2');
     const raw = localStorage.getItem(VIDEOS_STORAGE_KEY);
     if (!raw) {
       localStorage.setItem(VIDEOS_STORAGE_KEY, JSON.stringify(INITIAL_VIDEOS));
