@@ -151,7 +151,12 @@ export const SalonSite: React.FC<{
       {/* Hero */}
       <section className="relative overflow-hidden" style={{ backgroundColor: heroBg }}>
         {salon.coverImage && (
-          <img src={salon.coverImage} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" />
+          <img
+            src={salon.coverImage}
+            alt={`${salon.name} interior`}
+            referrerPolicy="no-referrer"
+            className="absolute inset-0 h-full w-full object-cover opacity-40"
+          />
         )}
         <div
           className="absolute inset-0"
@@ -403,27 +408,33 @@ export const SalonSite: React.FC<{
           </p>
           <h2 className={`mt-1 ${headingClass} text-3xl font-bold`}>Recent work</h2>
           <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {salon.gallery.map((image, index) => (
-              <figure
-                key={`${image.url}-${index}`}
-                className="group relative overflow-hidden rounded-xl"
-                style={{ backgroundColor: surface }}
-              >
-                <img
-                  src={image.url}
-                  alt={image.caption || `${salon.name} work ${index + 1}`}
-                  loading="lazy"
-                  className="aspect-[4/5] w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-                {image.caption && (
-                  <figcaption
-                    className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 text-xs font-medium text-white"
-                  >
-                    {image.caption}
-                  </figcaption>
-                )}
-              </figure>
-            ))}
+            {salon.gallery.map((rawImage, index) => {
+              const imgUrl = typeof rawImage === 'string' ? rawImage : rawImage?.url || '';
+              const imgCaption = typeof rawImage === 'string' ? '' : rawImage?.caption || '';
+              if (!imgUrl) return null;
+              return (
+                <figure
+                  key={`${imgUrl}-${index}`}
+                  className="group relative overflow-hidden rounded-xl"
+                  style={{ backgroundColor: surface }}
+                >
+                  <img
+                    src={imgUrl}
+                    alt={imgCaption || `${salon.name} work ${index + 1}`}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    className="aspect-[4/5] w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                  {imgCaption && (
+                    <figcaption
+                      className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 text-xs font-medium text-white"
+                    >
+                      {imgCaption}
+                    </figcaption>
+                  )}
+                </figure>
+              );
+            })}
           </div>
         </section>
       )}

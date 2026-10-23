@@ -139,7 +139,7 @@ export const DEFAULT_WHITE_LABEL_CONFIG: WhiteLabelConfig = {
   heroHeadlineLine2: 'Luxury Studio',
   heroDescription:
     'Experience long-lasting HD Airbrush bridal makeovers, chemical-free hair smoothening, and clinical Hydra-Facials by certified master stylists using 100% authentic international products.',
-  heroImage: '/images/hero_jaipur_salon_1790671992521.jpg',
+  heroImage: '/images/jaipur_luxury_salon_1792644552318.jpg',
   heroPrimaryCta: 'Book Appointment',
   heroSecondaryCta: 'Explore Services & Prices',
   heroFloatingCardTitle: 'Private Bridal & VIP Suites',
@@ -172,7 +172,7 @@ export const DEFAULT_WHITE_LABEL_CONFIG: WhiteLabelConfig = {
   bridalBadgeText: 'Wedding & Destination Bridal Specialists',
   bridalHeadline: 'Flawless 16-Hour Waterproof Bridal Artistry',
   bridalSubheadline: 'From intimate ceremonies to grand palace weddings, our senior bridal team travels to your venue or welcomes you in our private bridal suites.',
-  bridalImage: '/images/bridal_makeup_jaipur_1790672008691.jpg',
+  bridalImage: '/images/jaipur_royal_bride_1792647664582.jpg',
   bridalFeatures: [
     'HD & Silicone Airbrush Makeup with MAC, Charlotte Tilbury & Huda Beauty',
     'Complete Fine Jewelry Setting, Veil Fixing & Couture Outfit Draping',
@@ -188,7 +188,7 @@ export const DEFAULT_WHITE_LABEL_CONFIG: WhiteLabelConfig = {
     'When we founded our flagship studio, our mission was simple: to bring international backstage makeup artistry, clinical skin therapies, and damage-free hair treatments under one roof with transparent pricing.',
   founderBioParagraph2:
     'Every brush is UV-sterilized, every serum is opened in front of you, and every stylist is trained to listen first. Whether it is your wedding day or a relaxing weekend spa ritual, you are in caring, expert hands.',
-  founderImage: '/images/bridal_makeup_jaipur_1790672008691.jpg',
+  founderImage: '/images/salon_founder_portrait_1792648125569.jpg',
   founderStats: [
     { value: '4,500+', label: 'Brides Styled' },
     { value: '4.9 ★', label: 'Google Rating' },
@@ -255,7 +255,7 @@ export const DEFAULT_WHITE_LABEL_CONFIG: WhiteLabelConfig = {
     ogTitle: 'Lumina Luxe — Signature Bridal, Hair & Skin Luxury Studio',
     ogDescription:
       '4.9 ★ Rated across 3,500+ clients. Visit our luxury studio branches or book doorstep salon & bridal services.',
-    ogImageUrl: '/images/hero_jaipur_salon_1790671992521.jpg',
+    ogImageUrl: '/images/jaipur_luxury_salon_1792644552318.jpg',
     twitterCardType: 'summary_large_image',
     robotsIndexing: true,
     googleAnalyticsId: '',

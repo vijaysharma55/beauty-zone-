@@ -4,13 +4,12 @@ import { parseCookies, hashToken, SESSION_COOKIE, HttpError } from './security.j
 /* Security headers applied to every response. */
 export function securityHeaders(req, res, next) {
   res.set('X-Content-Type-Options', 'nosniff');
-  res.set('X-Frame-Options', 'SAMEORIGIN');
   res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.set('X-XSS-Protection', '0');
   res.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   res.set(
     'Content-Security-Policy',
-    "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' https://accounts.google.com https://accounts.google.com/gsi/client; frame-src 'self' https://accounts.google.com; connect-src 'self' https://accounts.google.com; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+    "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' https://accounts.google.com https://accounts.google.com/gsi/client; frame-src 'self' https://accounts.google.com; connect-src 'self' https://accounts.google.com; base-uri 'self'; form-action 'self'; frame-ancestors 'self' https://*.google.com https://localhost.corp.google.com:26001;"
   );
   if (process.env.NODE_ENV === 'production') {
     res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');

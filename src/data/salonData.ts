@@ -11,7 +11,7 @@ export const SALON_SERVICES: ServiceItem[] = [
     description: 'Complete luxury bridal makeup package for grand weddings. Includes HD airbrush makeup, bespoke eye artistry, jewelry setting, and outfit & veil draping.',
     highlights: ['HD Airbrush Finish', 'Fine Jewelry & Veil Setting', 'Couture Outfit Draping', 'Free Eyelashes & Hair Accessories'],
     popular: true,
-    image: '/images/bridal_makeup_jaipur_1790672008691.jpg',
+    image: '/images/jaipur_royal_bride_1792647664582.jpg',
   },
   {
     id: 'b2',
@@ -22,7 +22,7 @@ export const SALON_SERVICES: ServiceItem[] = [
     description: 'Top-quality waterproof airbrush makeup that stays 100% fresh all day and night through wedding rituals, tears, and photos under bright lights.',
     highlights: ['Temptu Airbrush Kit', 'Pre-Makeup Skin Prep', 'Senior Master Artist', 'Full Touch-Up Kit Included'],
     popular: true,
-    image: '/images/bridal_makeup_jaipur_1790672008691.jpg',
+    image: '/images/jaipur_royal_bride_1792647664582.jpg',
   },
   {
     id: 'b3',
@@ -55,7 +55,7 @@ export const SALON_SERVICES: ServiceItem[] = [
     description: 'Safe, chemical-free treatment that removes frizz and gives silky, shiny, straight hair. Ideal for rough, damaged hair and humid or dry weather.',
     highlights: ['Zero Frizz for 5+ Months', '100% Formaldehyde-Free', 'Super Shiny Mirror Finish', 'Free After-Care Guide'],
     popular: true,
-    image: '/images/hair_styling_luxe_1790672021591.jpg',
+    image: '/images/luxury_hair_nanoplastia_1792647835332.jpg',
   },
   {
     id: 'h2',
@@ -132,7 +132,7 @@ export const SALON_SERVICES: ServiceItem[] = [
     description: 'Strong, chip-proof gel nail extensions with your choice of glitter, real Swarovski stone work, gold foil, and French ombré tips.',
     highlights: ['Stays Strong for 4 Weeks', 'Real Swarovski Stones', 'Cuticle Cleaning Included', 'High-Gloss Top Coat'],
     popular: true,
-    image: '/images/nail_art_luxe_1790676094903.jpg',
+    image: '/images/bridal_nail_art_1792647953738.jpg',
   },
   {
     id: 'n2',
@@ -177,7 +177,7 @@ export const SALON_SERVICES: ServiceItem[] = [
     description: 'Complete hands-on makeup artist diploma course by senior educators. Learn HD makeup, bridal hair styling, vanity setup, and social media growth.',
     highlights: ['Govt & ISO Certified Diploma', 'Practice on Live Models', 'Full Makeup Kit Included', '100% Job & Freelance Support'],
     popular: true,
-    image: '/images/academy_makeup_class_1790676134907.jpg',
+    image: '/images/makeup_academy_class_1792648280089.jpg',
   },
   {
     id: 'a2',

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, ArrowUp, Palette } from 'lucide-react';
+import { Calendar, ArrowUp, Palette, Image as ImageIcon } from 'lucide-react';
 import { WhatsAppIcon } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
 

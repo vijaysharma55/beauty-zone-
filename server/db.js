@@ -519,12 +519,20 @@ export function seedIfEmpty(hashPassword) {
      VALUES (?, ?, ?, 'password', ?, 'salon_owner', 'active', 1, ?, ?, ?)`
   ).run(ownerId, ownerEmail, hashPassword(ownerPassword), 'Aanya Sharma', ts, ts, ts);
 
+  const luminaGallery = JSON.stringify([
+    { url: '/images/jaipur_luxury_salon_1792644552318.jpg', caption: 'Lumina Luxe Royal Interior Studio — Jaipur' },
+    { url: '/images/jaipur_royal_bride_1792647664582.jpg', caption: 'Signature Royal HD Bridal Makeover & Draping' },
+    { url: '/images/luxury_hair_nanoplastia_1792647835332.jpg', caption: 'Moroccan Nanoplastia & Hair Botox Suite' },
+    { url: '/images/bridal_nail_art_1792647953738.jpg', caption: 'Russian Gel Nail Extensions & 24K Gold Foil Art' },
+    { url: '/images/skin_spa_treatment_1790672037475.jpg', caption: 'HydraFacial Glow Ritual Room' },
+  ]);
+
   db.prepare(
     `INSERT INTO salons (id, owner_id, name, slug, tagline, description, logo_url, cover_image, gallery_json,
         phone, email, whatsapp, address_line, city, state, postal_code, country, map_url, instagram,
         hero_title, hero_subtitle, theme_json, website_published, published_at, onboarding_completed,
         status, approved_at, template_id, timings_json, owner_name, owner_phone, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, '', '', '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 1, 'approved', ?, 'luxe', ?, 'Aanya Sharma', '919800012345', ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, '', '/images/jaipur_luxury_salon_1792644552318.jpg', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 1, 'approved', ?, 'luxe', ?, 'Aanya Sharma', '919800012345', ?, ?)`
   ).run(
     salonId,
     ownerId,
@@ -532,6 +540,7 @@ export function seedIfEmpty(hashPassword) {
     'lumina-luxe',
     'Luxury Salon & Bridal Studio',
     'Bespoke bridal artistry, clinical skin treatments and luxury hair care by certified master stylists.',
+    luminaGallery,
     '+91 98000 12345',
     ownerEmail,
     '919800012345',

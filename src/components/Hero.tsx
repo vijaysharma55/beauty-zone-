@@ -173,6 +173,7 @@ export const Hero: React.FC<HeroProps> = ({
                   src={brand.heroImage}
                   alt={`${brand.brandName} — ${brand.cityName}`}
                   className="w-full h-[420px] sm:h-[500px] object-cover object-center transform hover:scale-105 transition-transform duration-700"
+                  referrerPolicy="no-referrer"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A] via-transparent to-transparent opacity-80" />
 

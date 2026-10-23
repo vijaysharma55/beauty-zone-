@@ -117,8 +117,8 @@ const PRESET_SERVICE_IMAGES = [
   { label: 'Nail Extensions & Art', url: '/images/nail_art_luxe_1790676094903.jpg' },
   { label: 'Body Spa & Ubtan', url: '/images/prebridal_spa_ritual_1790676123541.jpg' },
   { label: 'Home Salon Visits', url: '/images/home_salon_service_1790676110547.jpg' },
-  { label: 'Academy & Masterclass', url: '/images/academy_makeup_class_1790676134907.jpg' },
-  { label: 'Salon Ambience', url: '/images/hero_jaipur_salon_1790671992521.jpg' },
+  { label: 'Academy & Masterclass', url: '/images/makeup_academy_class_1792648280089.jpg' },
+  { label: 'Jaipur Salon Ambience', url: '/images/jaipur_luxury_salon_1792644552318.jpg' },
 ];
 
 export const ManagementModal: React.FC<ManagementModalProps> = ({

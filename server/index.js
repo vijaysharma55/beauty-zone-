@@ -26,8 +26,18 @@ import { bookingsRouter } from './routes/bookings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
-const PORT = process.env.PORT || 3000;
+
+// Resolve port: prefer CLI --port argument, then DEFAULT_APP_PORT, then process.env.PORT (if not 8080 Nginx port), defaulting to 3000
+const portArgIdx = process.argv.indexOf('--port');
+const cliPort = portArgIdx !== -1 && process.argv[portArgIdx + 1] ? Number(process.argv[portArgIdx + 1]) : null;
+const envPort = process.env.APP_PORT || process.env.DEFAULT_APP_PORT || (process.env.PORT && process.env.PORT !== '8080' ? process.env.PORT : null);
+const PORT = Number(cliPort || envPort || 3000);
 const isProd = process.env.NODE_ENV === 'production';
+
+// Ensure DISABLE_HMR is set in AI Studio container to avoid port 24678 conflicts
+if (!process.env.DISABLE_HMR) {
+  process.env.DISABLE_HMR = 'true';
+}
 
 /**
  * Synchronous scrypt hash used only for first-boot demo seeding.
@@ -165,6 +175,14 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`    Super admin : ${process.env.SEED_ADMIN_EMAIL || 'admin@beautyzone.app'} / ${process.env.SEED_ADMIN_PASSWORD || 'Admin@12345'}`);
     console.log(`    Salon owner : ${process.env.SEED_OWNER_EMAIL || 'owner@luminaluxe.in'} / ${process.env.SEED_OWNER_PASSWORD || 'Owner@12345'}`);
     console.log('  Change these passwords after your first login.\n');
+  }
+});
+
+server.on('error', (err) => {
+  console.error('[server error]', err);
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use. Exiting process so supervisor can restart cleanly.`);
+    process.exit(1);
   }
 });
 

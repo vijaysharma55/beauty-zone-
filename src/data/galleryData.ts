@@ -35,7 +35,7 @@ export const INITIAL_GALLERY_ITEMS: GalleryItem[] = [
     description: 'Transforming rough, dry, and frizzy hair into super smooth, shiny hair using our chemical-free Moroccan treatment.',
     category: 'Hair Care & Color',
     service: 'Moroccan Nanoplastia & Hair Botox Treatment',
-    image: '/images/hair_styling_luxe_1790672021591.jpg',
+    image: '/images/luxury_hair_nanoplastia_1792647835332.jpg',
     before_image: '/images/home_salon_service_1790676110547.jpg',
     sort_order: 1,
     featured: true,
@@ -50,7 +50,7 @@ export const INITIAL_GALLERY_ITEMS: GalleryItem[] = [
     description: 'Complete royal bridal makeover done at a luxury palace resort with sweatproof HD airbrush base and bespoke jewelry setting.',
     category: 'Bridal Makeup',
     service: 'Signature Royal HD Bridal Makeover',
-    image: '/images/bridal_makeup_jaipur_1790672008691.jpg',
+    image: '/images/jaipur_royal_bride_1792647664582.jpg',
     sort_order: 2,
     featured: true,
     active: true,
@@ -93,9 +93,9 @@ export const INITIAL_GALLERY_ITEMS: GalleryItem[] = [
     description: 'Neat almond-shaped gel nail extensions with real Swarovski crystals and hand-painted gold foil art.',
     category: 'Nail Art & Extensions',
     service: 'Bridal Gel Nail Extensions with Nail Art',
-    image: '/images/nail_art_luxe_1790676094903.jpg',
+    image: '/images/bridal_nail_art_1792647953738.jpg',
     sort_order: 5,
-    featured: false,
+    featured: true,
     active: true,
     artist: 'Zoya Khan (Senior Nail Artist)',
     created_at: '2026-09-23'
@@ -135,12 +135,26 @@ export const INITIAL_GALLERY_ITEMS: GalleryItem[] = [
     description: 'Live practical training on airbrush makeup, long-lasting primers, and couture draping for academy diploma students.',
     category: 'Destination Weddings',
     service: 'Signature Royal HD Bridal Makeover',
-    image: '/images/academy_makeup_class_1790676134907.jpg',
+    image: '/images/makeup_academy_class_1792648280089.jpg',
     sort_order: 8,
-    featured: false,
+    featured: true,
     active: true,
     artist: 'Master Academy Educators',
     created_at: '2026-09-26'
+  },
+  {
+    id: 'gal-9',
+    type: 'work_showcase',
+    title: 'Flagship Jaipur Luxury Studio Ambience',
+    description: 'Bespoke Rajasthani gold arch aesthetics, velvet styling chairs, illuminated vanity mirrors, and luxury beauty product galleries.',
+    category: 'Destination Weddings',
+    service: 'Signature Royal HD Bridal Makeover',
+    image: '/images/jaipur_luxury_salon_1792644552318.jpg',
+    sort_order: 9,
+    featured: true,
+    active: true,
+    artist: 'Lumina Luxe Flagship Architecture Team',
+    created_at: '2026-10-22'
   }
 ];
 
