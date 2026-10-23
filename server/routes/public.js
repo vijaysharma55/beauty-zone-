@@ -103,16 +103,51 @@ publicRouter.get(
   '/salons',
   rateLimit({ windowMs: 60_000, max: 120, key: 'public-list' }),
   (req, res) => {
-    const rows = db
+    const city = typeof req.query.city === 'string' ? req.query.city.trim() : '';
+    const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+
+    const conditions = [
+      's.website_published = 1',
+      's.suspended = 0',
+      "s.status NOT IN ('rejected', 'changes_requested')",
+      "EXISTS (SELECT 1 FROM salon_versions v WHERE v.salon_id = s.id AND v.status = 'approved')",
+    ];
+    const params = [];
+
+    if (city && city.toLowerCase() !== 'all') {
+      conditions.push('LOWER(TRIM(s.city)) = LOWER(?)');
+      params.push(city);
+    }
+
+    if (q) {
+      conditions.push('(LOWER(s.name) LIKE ? OR LOWER(s.tagline) LIKE ? OR LOWER(s.city) LIKE ?)');
+      const like = `%${q.toLowerCase()}%`;
+      params.push(like, like, like);
+    }
+
+    const sql = `SELECT s.* FROM salons s
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY s.published_at DESC
+       LIMIT 60`;
+
+    const rows = db.prepare(sql).all(...params);
+
+    // Collect distinct live cities with 'Jaipur' always available as a primary geography
+    const cityRows = db
       .prepare(
-        `SELECT s.* FROM salons s
+        `SELECT DISTINCT TRIM(s.city) AS city FROM salons s
          WHERE s.website_published = 1 AND s.suspended = 0
            AND s.status NOT IN ('rejected', 'changes_requested')
-           AND EXISTS (SELECT 1 FROM salon_versions v WHERE v.salon_id = s.id AND v.status = 'approved')
-         ORDER BY s.published_at DESC
-         LIMIT 60`
+           AND s.city IS NOT NULL AND TRIM(s.city) != ''`
       )
       .all();
+    const dbCities = cityRows.map((r) => r.city).filter(Boolean);
+    const availableCities = Array.from(new Set(['Jaipur', ...dbCities])).sort((a, b) => {
+      if (a.toLowerCase() === 'jaipur') return -1;
+      if (b.toLowerCase() === 'jaipur') return 1;
+      return a.localeCompare(b);
+    });
+
     res.json({
       salons: rows.map((row) => {
         const base = serializeSalon(row, { publicView: true });
@@ -137,6 +172,12 @@ publicRouter.get(
           url: `/salon/${row.slug}`,
         };
       }),
+      cities: availableCities,
+      total: rows.length,
+      filter: {
+        city: city || null,
+        q: q || null,
+      },
     });
   }
 );

@@ -49,6 +49,7 @@ import { AdminSalons } from './components/admin/AdminSalons';
 import { AdminSubscriptions } from './components/admin/AdminSubscriptions';
 import { AdminSettings } from './components/admin/AdminSettings';
 import { PublicSalonPage } from './components/site/PublicSalonPage';
+import { SalonDirectoryPage } from './components/site/SalonDirectoryPage';
 import { VerifyEmailPage } from './components/dashboard/VerifyEmailPage';
 import { ApprovalPage } from './components/dashboard/ApprovalPage';
 import { AdminApprovals } from './components/admin/AdminApprovals';
@@ -411,6 +412,9 @@ export function App() {
         <Route path="subscriptions" element={<AdminSubscriptions />} />
         <Route path="settings" element={<AdminSettings />} />
       </Route>
+
+      {/* Public salon directory and search with city filtering */}
+      <Route path="/salons" element={<SalonDirectoryPage />} />
 
       {/* Public, unauthenticated salon websites with unique URLs */}
       <Route path="/salon/:slug" element={<PublicSalonPage />} />

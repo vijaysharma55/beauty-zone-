@@ -214,6 +214,25 @@ adminRouter.post(
 /* ------------------------------------------------------------------ */
 
 adminRouter.get('/salons', (req, res) => {
+  const city = typeof req.query.city === 'string' ? req.query.city.trim() : '';
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+
+  const conditions = [];
+  const params = [];
+
+  if (city && city.toLowerCase() !== 'all') {
+    conditions.push('LOWER(TRIM(s.city)) = LOWER(?)');
+    params.push(city);
+  }
+
+  if (q) {
+    conditions.push('(LOWER(s.name) LIKE ? OR LOWER(s.slug) LIKE ? OR LOWER(u.email) LIKE ? OR LOWER(s.city) LIKE ?)');
+    const like = `%${q.toLowerCase()}%`;
+    params.push(like, like, like, like);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
   const rows = db
     .prepare(
       `SELECT s.*, u.name AS owner_name, u.email AS owner_email, u.status AS owner_status,
@@ -222,14 +241,32 @@ adminRouter.get('/salons', (req, res) => {
        FROM salons s
        JOIN users u ON u.id = s.owner_id
        LEFT JOIN subscriptions sub ON sub.salon_id = s.id
+       ${whereClause}
        ORDER BY s.created_at DESC`
     )
+    .all(...params);
+
+  // Retrieve distinct salon cities and ensure 'Jaipur' is prominently featured
+  const cityRows = db
+    .prepare("SELECT DISTINCT TRIM(s.city) AS city FROM salons s WHERE s.city IS NOT NULL AND TRIM(s.city) != ''")
     .all();
+  const dbCities = cityRows.map((r) => r.city).filter(Boolean);
+  const cities = Array.from(new Set(['Jaipur', ...dbCities])).sort((a, b) => {
+    if (a.toLowerCase() === 'jaipur') return -1;
+    if (b.toLowerCase() === 'jaipur') return 1;
+    return a.localeCompare(b);
+  });
+
   res.json({
     salons: rows.map((row) => ({
       ...serializeSalon(row, { includeOwner: true }),
       serviceCount: row.service_count,
     })),
+    cities,
+    filter: {
+      city: city || null,
+      q: q || null,
+    },
   });
 });
 

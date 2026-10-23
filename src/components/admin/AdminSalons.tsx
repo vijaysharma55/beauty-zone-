@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Users,
   X,
+  MapPin,
 } from 'lucide-react';
 import { api, errorMessage } from '../../lib/api';
 import { StatusBadge } from '../dashboard/WorkflowStatus';
@@ -69,6 +70,8 @@ export const AdminSalons: React.FC = () => {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [query, setQuery] = useState('');
+  const [selectedCity, setSelectedCity] = useState<string>('all');
+  const [availableCities, setAvailableCities] = useState<string[]>(['Jaipur']);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const [detail, setDetail] = useState<AdminSalonDetail | null>(null);
@@ -80,16 +83,26 @@ export const AdminSalons: React.FC = () => {
   const [suspendReason, setSuspendReason] = useState('');
   const [suspendBusy, setSuspendBusy] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (cityFilter?: string, searchFilter?: string) => {
     try {
-      const res = await api.get<{ salons: Salon[] }>('/admin/salons');
+      const params = new URLSearchParams();
+      const cityToUse = cityFilter !== undefined ? cityFilter : selectedCity;
+      const queryToUse = searchFilter !== undefined ? searchFilter : query;
+      if (cityToUse && cityToUse !== 'all') params.set('city', cityToUse);
+      if (queryToUse.trim()) params.set('q', queryToUse.trim());
+
+      const url = `/admin/salons${params.toString() ? `?${params.toString()}` : ''}`;
+      const res = await api.get<{ salons: Salon[]; cities?: string[] }>(url);
       setSalons(res.salons);
+      if (Array.isArray(res.cities) && res.cities.length > 0) {
+        setAvailableCities(res.cities);
+      }
     } catch (err) {
       setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedCity, query]);
 
   useEffect(() => {
     load();
@@ -194,14 +207,17 @@ export const AdminSalons: React.FC = () => {
   };
 
   const filtered = salons.filter((s) => {
+    const matchesCity =
+      selectedCity === 'all' ||
+      (s.city || '').trim().toLowerCase() === selectedCity.trim().toLowerCase();
     const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return (
+    const matchesQuery =
+      !q ||
       s.name.toLowerCase().includes(q) ||
       s.slug.toLowerCase().includes(q) ||
       (s.owner?.email || '').toLowerCase().includes(q) ||
-      (s.city || '').toLowerCase().includes(q)
-    );
+      (s.city || '').toLowerCase().includes(q);
+    return matchesCity && matchesQuery;
   });
 
   return (
@@ -217,20 +233,114 @@ export const AdminSalons: React.FC = () => {
 
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <Building2 className="h-4 w-4 text-[#D09A40]" /> {salons.length} salon{salons.length === 1 ? '' : 's'} ·{' '}
-            {salons.filter((s) => s.published).length} live
+          <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500">
+            <span className="flex items-center gap-1.5 font-medium text-slate-700">
+              <Building2 className="h-4 w-4 text-[#D09A40]" /> {salons.length} salon{salons.length === 1 ? '' : 's'} ·{' '}
+              {salons.filter((s) => s.published).length} live
+            </span>
           </div>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search salons or owners…"
-              className="w-64 pl-9"
-              aria-label="Search salons"
-            />
+
+          <div className="flex flex-wrap items-center gap-3">
+            {/* City Location Filter */}
+            <div className="flex items-center gap-1.5">
+              <MapPin className="h-4 w-4 text-[#D09A40] shrink-0" />
+              <select
+                value={selectedCity}
+                onChange={(e) => {
+                  const newCity = e.target.value;
+                  setSelectedCity(newCity);
+                  load(newCity, query);
+                }}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-xs transition hover:border-[#D09A40] focus:border-[#D09A40] focus:outline-none focus:ring-1 focus:ring-[#D09A40] cursor-pointer"
+                aria-label="Filter salons by city location"
+              >
+                <option value="all">All Cities ({salons.length})</option>
+                {availableCities.map((cityName) => {
+                  const count = salons.filter(
+                    (s) => (s.city || '').trim().toLowerCase() === cityName.toLowerCase()
+                  ).length;
+                  return (
+                    <option key={cityName} value={cityName}>
+                      {cityName} {count > 0 ? `(${count})` : ''}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            {/* Keyword Search Input */}
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={query}
+                onChange={(e) => {
+                  const newQ = e.target.value;
+                  setQuery(newQ);
+                }}
+                placeholder="Search salons or owners…"
+                className="w-56 pl-9 text-xs"
+                aria-label="Search salons"
+              />
+            </div>
+
+            {(selectedCity !== 'all' || query) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSelectedCity('all');
+                  setQuery('');
+                  load('all', '');
+                }}
+                className="text-xs text-slate-500 hover:text-slate-800"
+              >
+                Reset
+              </Button>
+            )}
           </div>
+        </div>
+
+        {/* Quick Location Pills */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/60 px-5 py-2 text-xs">
+          <span className="font-medium text-slate-500">Geography:</span>
+          <button
+            onClick={() => {
+              setSelectedCity('all');
+              load('all', query);
+            }}
+            className={`cursor-pointer rounded-full px-2.5 py-1 text-xs font-semibold transition ${
+              selectedCity === 'all'
+                ? 'bg-[#0F172A] text-white shadow-xs'
+                : 'bg-white text-slate-600 hover:bg-slate-200/70 border border-slate-200'
+            }`}
+          >
+            All Cities ({salons.length})
+          </button>
+          {availableCities.map((cityName) => {
+            const count = salons.filter(
+              (s) => (s.city || '').trim().toLowerCase() === cityName.toLowerCase()
+            ).length;
+            const isSelected = selectedCity.toLowerCase() === cityName.toLowerCase();
+            return (
+              <button
+                key={cityName}
+                onClick={() => {
+                  setSelectedCity(cityName);
+                  load(cityName, query);
+                }}
+                className={`cursor-pointer inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition ${
+                  isSelected
+                    ? 'bg-[#D09A40] text-[#0F172A] shadow-xs ring-1 ring-[#D09A40]'
+                    : 'bg-white text-slate-600 hover:bg-slate-200/70 border border-slate-200'
+                }`}
+              >
+                <span>{cityName}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${isSelected ? 'bg-[#0F172A]/20' : 'bg-slate-100'}`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {loading ? (

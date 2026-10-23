@@ -1,5 +1,6 @@
 import React from 'react';
-import { MapPin, Phone, Clock, Star, CheckCircle, Calendar, Navigation } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { MapPin, Phone, Clock, Star, CheckCircle, Calendar, Navigation, Compass, ArrowRight } from 'lucide-react';
 import { WhatsAppIcon } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
 
@@ -33,6 +34,16 @@ export const SalonsLocations: React.FC<SalonsLocationsProps> = ({ onSelectBranch
           <p className="text-base text-[#4A4A4A]">
             {t('locationsSubtitle')}
           </p>
+          <div className="pt-2">
+            <Link
+              to="/salons?city=Jaipur"
+              className="inline-flex items-center gap-2 rounded-full bg-[#0F172A] px-5 py-2.5 text-xs font-bold text-[#FAF5E5] hover:bg-slate-800 transition shadow-sm"
+            >
+              <Compass className="w-4 h-4 text-[#D09A40]" />
+              <span>Explore Verified Salons in Jaipur</span>
+              <ArrowRight className="w-3.5 h-3.5 text-[#D09A40]" />
+            </Link>
+          </div>
         </div>
 
         {/* Branches Grid */}

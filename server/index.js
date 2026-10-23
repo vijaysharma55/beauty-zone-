@@ -30,7 +30,7 @@ const ROOT = path.resolve(__dirname, '..');
 // Resolve port: prefer CLI --port argument, then DEFAULT_APP_PORT, then process.env.PORT (if not 8080 Nginx port), defaulting to 3000
 const portArgIdx = process.argv.indexOf('--port');
 const cliPort = portArgIdx !== -1 && process.argv[portArgIdx + 1] ? Number(process.argv[portArgIdx + 1]) : null;
-const envPort = process.env.APP_PORT || process.env.DEFAULT_APP_PORT || (process.env.PORT && process.env.PORT !== '8080' ? process.env.PORT : null);
+const envPort = process.env.APP_PORT || (process.env.PORT && process.env.PORT !== '8080' ? process.env.PORT : null) || process.env.DEFAULT_APP_PORT;
 const PORT = Number(cliPort || envPort || 3000);
 const isProd = process.env.NODE_ENV === 'production';
 

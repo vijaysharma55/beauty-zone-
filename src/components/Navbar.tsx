@@ -91,6 +91,16 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </span>
             <span className="text-[#D09A40]">•</span>
+            <Link
+              to="/salons?city=Jaipur"
+              className="text-[#D09A40] hover:text-[#DCA54A] transition font-semibold flex items-center gap-1.5"
+            >
+              <span>Explore Salons in Jaipur</span>
+              <span className="text-[10px] bg-[#D09A40]/20 text-[#FAF5E5] px-1.5 py-0.5 rounded-full font-bold">
+                Jaipur Flagship
+              </span>
+            </Link>
+            <span className="text-[#D09A40]">•</span>
             <span>{t('navHomeServiceAvailable')}</span>
           </div>
           <div className="flex items-center space-x-5">
@@ -179,6 +189,15 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Desktop Nav Links */}
         <nav className="hidden lg:flex items-center space-x-6">
+          <Link
+            to="/salons?city=Jaipur"
+            className="relative text-sm font-semibold text-[#D09A40] hover:text-[#DCA54A] transition-colors py-1 flex items-center gap-1.5 cursor-pointer"
+          >
+            <span>Salons</span>
+            <span className="text-[10px] bg-[#D09A40]/20 text-[#FAF5E5] px-1.5 py-0.5 rounded-full font-bold">
+              Jaipur
+            </span>
+          </Link>
           {navLinks.map((link) => (
             <button
               key={link.id}
@@ -234,6 +253,16 @@ export const Navbar: React.FC<NavbarProps> = ({
       {mobileMenuOpen && (
         <div className="lg:hidden bg-[#0F172A] border-t border-white/10 px-6 py-5 space-y-4 shadow-2xl">
           <div className="flex flex-col space-y-3">
+            <Link
+              to="/salons?city=Jaipur"
+              onClick={() => setMobileMenuOpen(false)}
+              className="text-left text-base font-semibold text-[#D09A40] py-1.5 border-b border-white/5 transition-colors flex items-center justify-between"
+            >
+              <span>Explore Salons</span>
+              <span className="text-[11px] bg-[#D09A40]/20 text-[#FAF5E5] px-2 py-0.5 rounded-full font-bold">
+                Jaipur Flagship
+              </span>
+            </Link>
             {navLinks.map((link) => (
               <button
                 key={link.id}
