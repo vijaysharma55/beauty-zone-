@@ -24,6 +24,7 @@ import {
 import { LoyaltyCustomer, RewardOffer } from '../types';
 import { WhatsAppIcon } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
+import { api } from '../lib/api';
 
 interface BeautyRewardsSectionProps {
   onBookWithReward?: (voucherCode: string) => void;
@@ -96,13 +97,90 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
     setRecentlyRedeemed(null);
   };
 
-  const handlePhoneLookup = (e: React.FormEvent) => {
+  const handlePhoneLookup = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanPhone = phoneNumberInput.replace(/\D/g, '');
+    if (!cleanPhone) return;
+
+    try {
+      const res = await api.get<{
+        account: {
+          phone: string;
+          name: string;
+          memberId: string;
+          tier: 'silver' | 'gold' | 'platinum';
+          totalPoints: number;
+          lifetimePoints: number;
+          visitsCount: number;
+          joinedDate: string;
+        } | null;
+        activities: Array<{
+          id: string;
+          date: string;
+          serviceTitle: string;
+          billAmount: number;
+          pointsEarned: number;
+          type: 'earn' | 'bonus' | 'redeem';
+          description: string;
+        }>;
+        vouchers: Array<{
+          voucherCode: string;
+          rewardTitle: string;
+          discountAmount: number;
+          pointsCost: number;
+          dateRedeemed: string;
+          validTill: string;
+          used: boolean;
+          status: 'active' | 'used';
+          discountValue: string;
+        }>;
+      }>(`/public/loyalty?phone=${cleanPhone}`);
+
+      if (res && res.account) {
+        const fetchedCustomer: LoyaltyCustomer = {
+          phone: res.account.phone,
+          name: res.account.name || 'Valued Guest',
+          memberId: res.account.memberId,
+          tier: res.account.tier || 'silver',
+          totalPoints: res.account.totalPoints,
+          lifetimePoints: res.account.lifetimePoints,
+          visitsCount: res.account.visitsCount,
+          joinedDate: res.account.joinedDate
+            ? new Date(res.account.joinedDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+            : 'October 2026',
+          activities: (res.activities || []).map((a) => ({
+            id: a.id,
+            date: a.date ? new Date(a.date).toLocaleDateString() : 'Recently',
+            branch: `${brand.cityName} Studio`,
+            serviceTitle: a.serviceTitle,
+            billAmount: a.billAmount,
+            pointsEarned: a.pointsEarned,
+            type: a.type === 'bonus' ? 'bonus' : 'visit',
+          })),
+          redeemedRewards: (res.vouchers || []).map((v) => ({
+            id: v.voucherCode,
+            rewardTitle: v.rewardTitle,
+            voucherCode: v.voucherCode,
+            pointsCost: v.pointsCost,
+            dateRedeemed: v.dateRedeemed ? new Date(v.dateRedeemed).toLocaleDateString() : 'Recently',
+            validTill: v.validTill ? new Date(v.validTill).toLocaleDateString() : 'Active',
+            status: v.used ? 'used' : 'active',
+            discountValue: v.discountValue || `₹${v.discountAmount} Off`,
+          })),
+        };
+        setCustomer(fetchedCustomer);
+        setRecentlyRedeemed(null);
+        return;
+      }
+    } catch (err) {
+      console.warn('[loyalty] Live lookup failed, falling back to local dataset', err);
+    }
+
+    // Fallback logic
     const found = DEMO_CUSTOMERS.find((c) => c.phone.includes(cleanPhone));
     if (found) {
       setCustomer(found);
-    } else if (cleanPhone.length >= 10) {
+    } else if (cleanPhone.length >= 8) {
       const newCust: LoyaltyCustomer = {
         phone: cleanPhone,
         name: 'New Beauty Guest',
@@ -110,7 +188,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
         tier: 'silver',
         totalPoints: 100,
         lifetimePoints: 100,
-        visitsCount: 1,
+        visitsCount: 0,
         joinedDate: 'October 2026',
         activities: [
           {
@@ -129,12 +207,68 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
     }
   };
 
-  const handleRedeemReward = (offer: RewardOffer) => {
+  const handleRedeemReward = async (offer: RewardOffer) => {
     if (customer.totalPoints < offer.pointsCost) {
       alert(`You need ${offer.pointsCost - customer.totalPoints} more points to redeem this reward.`);
       return;
     }
 
+    try {
+      const res = await api.post<{
+        success: boolean;
+        voucherCode: string;
+        discountAmount: number;
+        totalPoints: number;
+        tier: 'silver' | 'gold' | 'platinum';
+        message: string;
+      }>('/public/loyalty/redeem', {
+        phone: customer.phone,
+        offerId: offer.id,
+      });
+
+      if (res && res.success && res.voucherCode) {
+        const now = new Date();
+        const validUntil = new Date(now.setDate(now.getDate() + 60)).toLocaleDateString('en-GB', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        });
+
+        const newRedeemedItem = {
+          id: res.voucherCode,
+          rewardTitle: offer.title,
+          voucherCode: res.voucherCode,
+          pointsCost: offer.pointsCost,
+          dateRedeemed: 'Today',
+          validTill: validUntil,
+          status: 'active' as const,
+          discountValue: offer.discountValue,
+        };
+
+        const updatedCustomer: LoyaltyCustomer = {
+          ...customer,
+          totalPoints: res.totalPoints,
+          tier: res.tier || customer.tier,
+          redeemedRewards: [newRedeemedItem, ...customer.redeemedRewards],
+        };
+
+        setCustomer(updatedCustomer);
+        setRecentlyRedeemed({
+          title: offer.title,
+          code: res.voucherCode,
+          points: offer.pointsCost,
+        });
+        return;
+      }
+    } catch (err: any) {
+      console.warn('[loyalty] Live redeem failed, falling back to local redemption', err);
+      if (err?.message) {
+        alert(err.message);
+        return;
+      }
+    }
+
+    // Fallback local redemption logic
     const prefix = brand.bookingPrefix || 'VIP';
     const uniqueVoucherCode = `${prefix}-${offer.category.slice(0, 4).toUpperCase()}-${Math.floor(
       1000 + Math.random() * 9000

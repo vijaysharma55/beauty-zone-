@@ -6,6 +6,7 @@ export interface ServiceItem {
   category: ServiceCategory;
   price: number;
   duration: string;
+  estimatedDuration?: string;
   description: string;
   highlights: string[];
   popular?: boolean;

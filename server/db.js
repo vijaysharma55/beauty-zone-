@@ -186,6 +186,46 @@ db.exec(`
     ip TEXT,
     created_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS loyalty_accounts (
+    phone TEXT PRIMARY KEY,
+    name TEXT NOT NULL DEFAULT '',
+    member_id TEXT NOT NULL DEFAULT '',
+    tier TEXT NOT NULL DEFAULT 'silver',
+    total_points INTEGER NOT NULL DEFAULT 0,
+    lifetime_points INTEGER NOT NULL DEFAULT 0,
+    visits_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS loyalty_transactions (
+    id TEXT PRIMARY KEY,
+    phone TEXT NOT NULL,
+    booking_id TEXT,
+    salon_id TEXT,
+    service_title TEXT DEFAULT '',
+    bill_amount INTEGER DEFAULT 0,
+    points INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_loyalty_tx_phone ON loyalty_transactions(phone);
+
+  CREATE TABLE IF NOT EXISTS loyalty_vouchers (
+    code TEXT PRIMARY KEY,
+    phone TEXT NOT NULL,
+    offer_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    discount_amount INTEGER NOT NULL DEFAULT 0,
+    points_cost INTEGER NOT NULL DEFAULT 0,
+    used INTEGER NOT NULL DEFAULT 0,
+    used_booking_id TEXT,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_loyalty_vouchers_phone ON loyalty_vouchers(phone);
 `);
 
 export const nowIso = () => new Date().toISOString();

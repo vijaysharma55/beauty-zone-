@@ -131,6 +131,7 @@ const normalizeServiceValues = (
   title: String(values.title || '').trim(),
   category: String(values.category || 'hair') as ServiceCategory,
   duration: String(values.duration || '').trim(),
+  estimatedDuration: String(values.estimatedDuration || values.duration || '').trim(),
   price: Math.max(0, Math.round(Number(values.price) || 0)),
   description: String(values.description || '').trim(),
   highlights: Array.isArray(values.highlights) ? values.highlights : [],
@@ -1191,13 +1192,22 @@ const ServiceCardItem: React.FC<ServiceCardItemProps> = ({
         )}
       </div>
 
-      {/* Card Footer: Price & Quick Book & Compare */}
+      {/* Card Footer: Price & Estimated Duration & Quick Book & Compare */}
       <div className="mt-3 pt-2 border-t border-[#0F172A]/10 flex items-center justify-between gap-1">
         <div>
-          <span className="text-[9px] uppercase tracking-wider text-neutral-400 block leading-none">Starting</span>
-          <span className="text-xs sm:text-sm font-bold font-mono text-[#0F172A]">
-            ₹{service.price.toLocaleString('en-IN')}
-          </span>
+          <span className="text-[9px] uppercase tracking-wider text-neutral-400 block leading-none mb-0.5">Price & Duration</span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs sm:text-sm font-bold font-mono text-[#0F172A]">
+              ₹{service.price.toLocaleString('en-IN')}
+            </span>
+            <span
+              className="inline-flex items-center gap-0.5 bg-[#FAF5E5] px-1.5 py-0.5 rounded-full text-[10px] font-bold text-[#D09A40] border border-[#D09A40]/30 shrink-0"
+              title={`Estimated duration: ${service.estimatedDuration || service.duration}`}
+            >
+              <Clock className="w-2.5 h-2.5 text-[#D09A40]" />
+              <span>{service.estimatedDuration || service.duration}</span>
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-1">

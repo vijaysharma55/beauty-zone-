@@ -23,6 +23,7 @@ import { publicRouter } from './routes/public.js';
 import { adminRouter } from './routes/admin.js';
 import { aiRouter } from './routes/ai.js';
 import { bookingsRouter } from './routes/bookings.js';
+import { loyaltyRouter } from './routes/loyalty.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -88,6 +89,7 @@ app.use('/api/public', publicRouter);
 app.use('/api/ai', aiRouter);
 // /api/public/bookings — visitor appointment requests
 app.use('/api/public', bookingsRouter);
+app.use('/api/public', loyaltyRouter);
 
 // Uploaded images are public assets (they are embedded in public salon websites).
 app.use(

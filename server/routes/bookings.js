@@ -16,6 +16,7 @@ import { asyncHandler } from '../middleware.js';
 import { findLiveSalon } from './public.js';
 import { sendMail } from '../mailer.js';
 import { generateSlots } from '../availability.js';
+import { creditLoyaltyPointsForCompletedBooking } from './loyalty.js';
 
 export const bookingsRouter = Router();
 
@@ -199,6 +200,17 @@ bookingsRouter.post('/bookings', createLimiter, asyncHandler(async (req, res) =>
   const ts = nowIso();
   const id = newId();
 
+  let finalEstimatedTotal = data.estimatedTotal;
+  if (data.promoCode) {
+    const voucher = db
+      .prepare('SELECT * FROM loyalty_vouchers WHERE code = ? AND used = 0')
+      .get(data.promoCode.trim().toUpperCase());
+    if (voucher) {
+      finalEstimatedTotal = Math.max(0, finalEstimatedTotal - voucher.discount_amount);
+      db.prepare('UPDATE loyalty_vouchers SET used = 1, used_booking_id = ? WHERE code = ?').run(id, voucher.code);
+    }
+  }
+
   const conflicts = salon ? conflictingCount(salon.id, data.date, data.time) : 0;
 
   db.prepare(
@@ -226,7 +238,7 @@ bookingsRouter.post('/bookings', createLimiter, asyncHandler(async (req, res) =>
     data.bridalTrial,
     data.notes,
     data.promoCode,
-    data.estimatedTotal,
+    finalEstimatedTotal,
     data.advancePaid,
     data.advanceRef,
     ts,
@@ -315,7 +327,17 @@ ownerBookingsRouter.patch('/:bookingId', (req, res) => {
 
   db.prepare('UPDATE bookings SET status = ?, updated_at = ? WHERE id = ?').run(status, nowIso(), row.id);
   audit(req, 'booking.status_changed', 'booking', row.id, { from: row.status, to: status });
-  return res.json({ booking: serializeBooking(db.prepare('SELECT * FROM bookings WHERE id = ?').get(row.id)) });
+
+  let loyaltyReward = null;
+  if (status === 'completed') {
+    const updatedRow = db.prepare('SELECT * FROM bookings WHERE id = ?').get(row.id);
+    loyaltyReward = creditLoyaltyPointsForCompletedBooking(updatedRow);
+  }
+
+  return res.json({
+    booking: serializeBooking(db.prepare('SELECT * FROM bookings WHERE id = ?').get(row.id)),
+    loyaltyReward,
+  });
 });
 
 export default bookingsRouter;

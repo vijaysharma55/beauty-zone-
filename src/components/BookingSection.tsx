@@ -28,6 +28,10 @@ import {
   Loader2,
   AlertTriangle,
   RefreshCw,
+  ArrowRight,
+  ArrowLeft,
+  ChevronRight,
+  Sliders,
 } from 'lucide-react';
 import { WhatsAppIcon } from './SocialIcons';
 import { BookingSummaryModal } from './BookingSummaryModal';
@@ -171,6 +175,81 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   }>({});
   const [attemptCount, setAttemptCount] = useState(0);
 
+  // Step-by-Step Progress Indicator state
+  const [currentStep, setCurrentStep] = useState<number>(1);
+  const [viewMode, setViewMode] = useState<'wizard' | 'single'>('wizard');
+
+  const BOOKING_STEPS = useMemo(
+    () => [
+      { id: 1, title: 'Service & Location', description: 'Mode, service & venue', icon: Sparkles },
+      { id: 2, title: 'Date & Time', description: 'Schedule appointment', icon: Calendar },
+      { id: 3, title: 'Contact & Voucher', description: 'Guest details & promo', icon: User },
+      { id: 4, title: 'Confirmation', description: 'Review & lock slot', icon: CheckCircle2 },
+    ],
+    []
+  );
+
+  const validateStep1 = (): boolean => {
+    setFieldErrors((prev) => ({ ...prev, homeAddress: undefined }));
+    if (form.locationType === 'home' && form.homeAddress.trim().length < 8) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        homeAddress: 'Please enter your complete doorstep address.',
+      }));
+      return false;
+    }
+    return true;
+  };
+
+  const validateStep2 = (): boolean => {
+    setFieldErrors((prev) => ({ ...prev, appointmentDate: undefined }));
+    if (!form.appointmentDate) {
+      setFieldErrors((prev) => ({ ...prev, appointmentDate: 'Please choose an appointment date.' }));
+      return false;
+    }
+    if (availability.closed) {
+      setFieldErrors((prev) => ({ ...prev, appointmentDate: 'We are closed on this date.' }));
+      return false;
+    }
+    if (form.appointmentDate < todayStr) {
+      setFieldErrors((prev) => ({ ...prev, appointmentDate: 'Please choose today or a future date.' }));
+      return false;
+    }
+    return true;
+  };
+
+  const validateStep3 = (): boolean => {
+    const errors: { fullName?: string; phone?: string } = {};
+    if (!form.fullName.trim()) errors.fullName = 'Please enter your name.';
+    else if (form.fullName.trim().length < 2) errors.fullName = 'Please enter your full name.';
+
+    const digits = form.phone.replace(/\D/g, '');
+    if (!form.phone.trim()) errors.phone = 'Please enter a contact number.';
+    else if (digits.length < 8 || digits.length > 15) errors.phone = 'Enter a valid phone number (8–15 digits).';
+
+    setFieldErrors((prev) => ({ ...prev, ...errors }));
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleGoNextStep = (next: number) => {
+    if (next === 2 && !validateStep1()) return;
+    if (next === 3 && (!validateStep1() || !validateStep2())) return;
+    if (next === 4 && (!validateStep1() || !validateStep2() || !validateStep3())) return;
+    setCurrentStep(next);
+    const formEl = document.getElementById('booking-form');
+    formEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const handleJumpToStep = (targetStep: number) => {
+    if (targetStep <= currentStep) {
+      setCurrentStep(targetStep);
+      return;
+    }
+    if (targetStep === 2 && validateStep1()) setCurrentStep(2);
+    else if (targetStep === 3 && validateStep1() && validateStep2()) setCurrentStep(3);
+    else if (targetStep === 4 && validateStep1() && validateStep2() && validateStep3()) setCurrentStep(4);
+  };
+
   // Keep branch & locality synced when white-label brand changes
   useEffect(() => {
     setForm((prev) => ({
@@ -256,11 +335,39 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     }
   }, [preselectedPromoCode]);
 
-  const validateAndApplyPromo = (codeToTest: string) => {
+  const validateAndApplyPromo = async (codeToTest: string) => {
     const clean = codeToTest.trim().toUpperCase();
     setPromoError(null);
     if (!clean) return;
 
+    try {
+      const res = await api.post<{
+        valid: boolean;
+        voucher: {
+          code: string;
+          title: string;
+          discountAmount: number;
+          phone: string;
+        };
+      }>('/public/loyalty/verify-voucher', { code: clean });
+
+      if (res && res.valid && res.voucher) {
+        setAppliedPromo({
+          code: res.voucher.code,
+          title: res.voucher.title,
+          discountAmount: res.voucher.discountAmount,
+        });
+        return;
+      }
+    } catch (err: any) {
+      console.warn('[booking] Live voucher verify failed or code invalid on server, checking local fallback', err);
+      if (err?.message && !err.message.includes('Fetch error') && !err.message.includes('Failed to fetch')) {
+        setPromoError(err.message);
+        return;
+      }
+    }
+
+    // Local fallback check for voucher
     const storedCustomer = getStoredLoyaltyCustomer();
     const matchedRedeemed = storedCustomer.redeemedRewards.find(
       (r) => r.voucherCode.toUpperCase() === clean
@@ -270,8 +377,6 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
       setAppliedPromo({
         code: clean,
         title: matchedRedeemed.rewardTitle,
-        // Resolve the value from the reward catalogue instead of string-matching
-        // the title, so a renamed or newly added reward still discounts correctly.
         discountAmount: rewardValueFor(matchedRedeemed.rewardTitle),
       });
       return;
@@ -355,6 +460,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
           appointmentDate: dateStr,
         }));
         setVoiceFeedback(`Matched "${matchedService.title}" on ${dateStr}!`);
+        setCurrentStep(3);
       };
 
       recognition.onerror = () => {
@@ -646,6 +752,110 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
 
         {/* Booking Card Container */}
         <div className="bg-white text-[#0F172A] rounded-3xl shadow-2xl border border-[#D09A40]/30 overflow-hidden">
+          {/* Visual Step Progress Indicator Header */}
+          <div className="bg-gradient-to-r from-[#FAF5E5] via-[#FFFDF5] to-[#FAF5E5] border-b border-[#D09A40]/25 p-5 sm:p-7">
+            <div className="max-w-3xl mx-auto">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#0F172A] bg-[#D09A40]/20 px-2.5 py-1 rounded-full border border-[#D09A40]/40">
+                    Step {isSubmitted ? 4 : currentStep} of 4
+                  </span>
+                  <span className="font-serif font-bold text-sm text-[#0F172A]">
+                    {isSubmitted
+                      ? 'Appointment Confirmed!'
+                      : BOOKING_STEPS.find((s) => s.id === currentStep)?.title}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                  <span className="text-xs font-mono font-bold text-[#D09A40]">
+                    {isSubmitted ? '100% Completed' : `${Math.round(((currentStep - 1) / 3) * 100)}% Completed`}
+                  </span>
+
+                  {!isSubmitted && (
+                    <button
+                      type="button"
+                      onClick={() => setViewMode(viewMode === 'wizard' ? 'single' : 'wizard')}
+                      className="text-[11px] font-semibold text-[#0F172A] bg-white border border-[#0F172A]/15 hover:bg-[#FAF5E5] px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                    >
+                      <Sliders className="w-3 h-3 text-[#D09A40]" />
+                      <span>{viewMode === 'wizard' ? 'All Fields View' : 'Step-by-Step Flow'}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Progress Line */}
+              <div className="w-full bg-neutral-200/80 h-2.5 rounded-full overflow-hidden mb-5 relative border border-neutral-300/60 p-0.5">
+                <div
+                  className="h-full bg-gradient-to-r from-[#D09A40] via-amber-400 to-[#DCA54A] transition-all duration-500 rounded-full shadow-xs"
+                  style={{
+                    width: `${isSubmitted ? 100 : Math.max(8, Math.round(((currentStep - 1) / 3) * 100))}%`,
+                  }}
+                />
+              </div>
+
+              {/* Stepper Nodes */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center">
+                {BOOKING_STEPS.map((step) => {
+                  const isCompleted = isSubmitted || step.id < currentStep;
+                  const isActive = !isSubmitted && step.id === currentStep;
+                  const Icon = step.icon;
+
+                  return (
+                    <button
+                      key={step.id}
+                      type="button"
+                      onClick={() => handleJumpToStep(step.id)}
+                      className={`p-2.5 rounded-2xl transition-all cursor-pointer flex flex-col items-center group ${
+                        isActive
+                          ? 'bg-white shadow-md ring-2 ring-[#D09A40]'
+                          : isCompleted
+                          ? 'bg-emerald-50/70 hover:bg-emerald-100/80 border border-emerald-200/80'
+                          : 'bg-white/60 hover:bg-white border border-neutral-200/80'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 sm:flex-col sm:gap-1.5 w-full justify-center">
+                        <div
+                          className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center font-bold text-xs transition-all shrink-0 ${
+                            isCompleted
+                              ? 'bg-emerald-600 text-white shadow-xs'
+                              : isActive
+                              ? 'bg-[#0F172A] text-[#D09A40] shadow-md ring-2 ring-[#D09A40]/40'
+                              : 'bg-neutral-100 text-neutral-400 border border-neutral-200'
+                          }`}
+                        >
+                          {isCompleted ? (
+                            <Check className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                          ) : (
+                            <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
+                          )}
+                        </div>
+
+                        <div className="text-left sm:text-center">
+                          <span
+                            className={`text-xs font-bold block leading-tight ${
+                              isActive
+                                ? 'text-[#0F172A]'
+                                : isCompleted
+                                ? 'text-emerald-900'
+                                : 'text-neutral-500'
+                            }`}
+                          >
+                            {step.title}
+                          </span>
+                          <span className="hidden sm:block text-[10px] text-[#4A4A4A] mt-0.5">
+                            {step.description}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
           {!isSubmitted ? (
             <form id="booking-form" onSubmit={handleSubmit} className="p-6 sm:p-10 space-y-7" noValidate>
               {/* Speak to Book Voice AI Bar */}
@@ -688,593 +898,776 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                 </button>
               </div>
 
-              {/* 1. Choose Location Mode (Salon vs Home Service) */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-3">
-                  {t('bookingWhereQuestion')}
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, locationType: 'salon' })}
-                    className={`flex items-center gap-3.5 p-4 rounded-2xl border-2 text-left transition-all cursor-pointer ${
-                      form.locationType === 'salon'
-                        ? 'border-[#D09A40] bg-[#FAF5E5] shadow-md'
-                        : 'border-[#0F172A]/10 bg-white hover:border-[#0F172A]/30'
-                    }`}
-                  >
-                    <div
-                      className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
-                        form.locationType === 'salon'
-                          ? 'bg-[#0F172A] text-[#D09A40]'
-                          : 'bg-[#FAF5E5] text-[#0F172A]'
-                      }`}
-                    >
-                      <Building2 className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-sm text-[#0F172A]">{t('bookingVisitSalon')}</p>
-                      <p className="text-xs text-[#4A4A4A]">
-                        {branchSummary} • Pay after service
-                      </p>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, locationType: 'home' })}
-                    className={`flex items-center gap-3.5 p-4 rounded-2xl border-2 text-left transition-all cursor-pointer ${
-                      form.locationType === 'home'
-                        ? 'border-[#D09A40] bg-[#FAF5E5] shadow-md'
-                        : 'border-[#0F172A]/10 bg-white hover:border-[#0F172A]/30'
-                    }`}
-                  >
-                    <div
-                      className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
-                        form.locationType === 'home'
-                          ? 'bg-[#0F172A] text-[#D09A40]'
-                          : 'bg-[#FAF5E5] text-[#0F172A]'
-                      }`}
-                    >
-                      <Home className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-sm text-[#0F172A]">
-                        {t('bookingHomeService')}
-                      </p>
-                      <p className="text-xs text-[#4A4A4A]">
-                        Stylist visits your home or venue in {brand.cityName}
-                      </p>
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {/* Conditional Location Input: Branch OR Home Distance Calculator */}
-              {form.locationType === 'salon' ? (
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
-                    Select {brand.cityName} Salon Branch
-                  </label>
-                  <div className="relative">
-                    <MapPin className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
-                    <select
-                      value={form.selectedBranch}
-                      onChange={(e) => setForm({ ...form, selectedBranch: e.target.value })}
-                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
-                    >
-                      {brand.branches.map((b) => (
-                        <option key={b.id} value={b.name}>
-                          {b.name} ({b.locality})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-5 bg-[#FAF5E5] rounded-2xl border border-[#D09A40]/40 space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#0F172A]/10">
-                    <div className="flex items-center gap-2">
-                      <Navigation className="w-4 h-4 text-[#D09A40]" />
-                      <span className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
-                        {brand.cityName} Home Service & Travel Fee Calculator
-                      </span>
-                    </div>
-                    <span className="text-xs font-bold bg-[#0F172A] text-[#D09A40] px-3 py-1 rounded-full">
-                      Travel Fee: {formatPrice(distanceFee)} (~{form.distanceKm} km)
-                    </span>
+              {/* STEP 1: Service & Location Mode */}
+              {(currentStep === 1 || viewMode === 'single') && (
+                <div className="space-y-6 pt-2">
+                  <div className="border-b border-[#0F172A]/10 pb-3 flex items-center justify-between">
+                    <h3 className="font-serif font-bold text-lg text-[#0F172A] flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-[#D09A40]" />
+                      <span>Step 1: Choose Location & Salon Service</span>
+                    </h3>
+                    <span className="text-xs text-[#4A4A4A] font-medium">1 of 4</span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* 1. Choose Location Mode (Salon vs Home Service) */}
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-3">
+                      {t('bookingWhereQuestion')}
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <button
+                        type="button"
+                        onClick={() => setForm({ ...form, locationType: 'salon' })}
+                        className={`flex items-center gap-3.5 p-4 rounded-2xl border-2 text-left transition-all cursor-pointer ${
+                          form.locationType === 'salon'
+                            ? 'border-[#D09A40] bg-[#FAF5E5] shadow-md'
+                            : 'border-[#0F172A]/10 bg-white hover:border-[#0F172A]/30'
+                        }`}
+                      >
+                        <div
+                          className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
+                            form.locationType === 'salon'
+                              ? 'bg-[#0F172A] text-[#D09A40]'
+                              : 'bg-[#FAF5E5] text-[#0F172A]'
+                          }`}
+                        >
+                          <Building2 className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-sm text-[#0F172A]">{t('bookingVisitSalon')}</p>
+                          <p className="text-xs text-[#4A4A4A]">
+                            {branchSummary} • Pay after service
+                          </p>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setForm({ ...form, locationType: 'home' })}
+                        className={`flex items-center gap-3.5 p-4 rounded-2xl border-2 text-left transition-all cursor-pointer ${
+                          form.locationType === 'home'
+                            ? 'border-[#D09A40] bg-[#FAF5E5] shadow-md'
+                            : 'border-[#0F172A]/10 bg-white hover:border-[#0F172A]/30'
+                        }`}
+                      >
+                        <div
+                          className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
+                            form.locationType === 'home'
+                              ? 'bg-[#0F172A] text-[#D09A40]'
+                              : 'bg-[#FAF5E5] text-[#0F172A]'
+                          }`}
+                        >
+                          <Home className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-sm text-[#0F172A]">
+                            {t('bookingHomeService')}
+                          </p>
+                          <p className="text-xs text-[#4A4A4A]">
+                            Stylist visits your home or venue in {brand.cityName}
+                          </p>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Conditional Location Input: Branch OR Home Distance Calculator */}
+                  {form.locationType === 'salon' ? (
                     <div>
-                      <label className="block text-xs font-bold text-[#0F172A] mb-1.5">
-                        Select Your Area in {brand.cityName} *
+                      <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
+                        Select {brand.cityName} Salon Branch
+                      </label>
+                      <div className="relative">
+                        <MapPin className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
+                        <select
+                          value={form.selectedBranch}
+                          onChange={(e) => setForm({ ...form, selectedBranch: e.target.value })}
+                          className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                        >
+                          {brand.branches.map((b) => (
+                            <option key={b.id} value={b.name}>
+                              {b.name} ({b.locality})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-5 bg-[#FAF5E5] rounded-2xl border border-[#D09A40]/40 space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#0F172A]/10">
+                        <div className="flex items-center gap-2">
+                          <Navigation className="w-4 h-4 text-[#D09A40]" />
+                          <span className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
+                            {brand.cityName} Home Service & Travel Fee Calculator
+                          </span>
+                        </div>
+                        <span className="text-xs font-bold bg-[#0F172A] text-[#D09A40] px-3 py-1 rounded-full">
+                          Travel Fee: {formatPrice(distanceFee)} (~{form.distanceKm} km)
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-[#0F172A] mb-1.5">
+                            Select Your Area in {brand.cityName} *
+                          </label>
+                          <select
+                            value={form.locality}
+                            onChange={(e) => handleLocalityChange(e.target.value)}
+                            className="w-full px-3.5 py-3 rounded-xl bg-white border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                          >
+                            {brand.localities.map((loc) => (
+                              <option key={loc.name} value={loc.name}>
+                                {loc.name} (~{loc.distanceKm} km)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label className="text-xs font-bold text-[#0F172A]">
+                              Distance from Nearest Studio
+                            </label>
+                            <span className="text-xs font-bold text-[#D09A40]">
+                              {form.distanceKm} km
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="1"
+                            max="45"
+                            value={form.distanceKm}
+                            onChange={(e) =>
+                              setForm({ ...form, distanceKm: Number(e.target.value) })
+                            }
+                            className="w-full accent-[#D09A40] cursor-pointer mt-2"
+                          />
+                          <p className="text-[11px] text-[#4A4A4A] mt-1">
+                            Base fee {formatPrice(brand.homeServiceBaseFee)} +{' '}
+                            {formatPrice(brand.homeServicePerKmRate)}/km beyond 4 km
+                          </p>
+                        </div>
+                      </div>
+
+                      <div id="booking-homeAddress">
+                        <label className="block text-xs font-bold text-[#0F172A] mb-1.5">
+                          Complete House / Flat / Hotel Address in {brand.cityName} *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder={`House/Flat No., Street, Landmark, ${brand.cityName}`}
+                          value={form.homeAddress}
+                          onChange={(e) => {
+                            setFieldErrors((prev) => ({ ...prev, homeAddress: undefined }));
+                            setForm({ ...form, homeAddress: e.target.value });
+                          }}
+                          className={`w-full px-4 py-3 rounded-xl bg-white border text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40] ${
+                            fieldErrors.homeAddress ? 'border-rose-400' : 'border-[#0F172A]/15'
+                          }`}
+                        />
+                        {fieldErrors.homeAddress && (
+                          <p className="mt-1.5 text-[11px] font-semibold text-rose-600">{fieldErrors.homeAddress}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Select Service & Preferred Specialist */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
+                        {t('bookingSelectService')}
                       </label>
                       <select
-                        value={form.locality}
-                        onChange={(e) => handleLocalityChange(e.target.value)}
-                        className="w-full px-3.5 py-3 rounded-xl bg-white border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                        value={form.selectedService}
+                        onChange={(e) => setForm({ ...form, selectedService: e.target.value })}
+                        className="w-full px-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
                       >
-                        {brand.localities.map((loc) => (
-                          <option key={loc.name} value={loc.name}>
-                            {loc.name} (~{loc.distanceKm} km)
+                        {preselectedServiceTitle &&
+                          !catalogServices.some((s) => s.title === preselectedServiceTitle) && (
+                            <option value={preselectedServiceTitle}>
+                              {preselectedServiceTitle}
+                            </option>
+                          )}
+                        {catalogServices.map((srv) => (
+                          <option key={srv.id} value={srv.title}>
+                            {srv.title} — {formatPrice(srv.price)} ({srv.duration})
                           </option>
                         ))}
                       </select>
                     </div>
 
                     <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <label className="text-xs font-bold text-[#0F172A]">
-                          Distance from Nearest Studio
-                        </label>
-                        <span className="text-xs font-bold text-[#D09A40]">
-                          {form.distanceKm} km
-                        </span>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
+                        {t('bookingSelectStylist')}
+                      </label>
+                      <div className="relative">
+                        <UserCheck className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
+                        <select
+                          value={form.preferredStylist}
+                          onChange={(e) => setForm({ ...form, preferredStylist: e.target.value })}
+                          className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                        >
+                          <option value="Any Senior Specialist">
+                            Any Available Senior Specialist
+                          </option>
+                          {brand.stylists.map((stylist) => (
+                            <option key={stylist.id} value={stylist.name}>
+                              {stylist.name} — {stylist.role} ({stylist.branch.split(' ')[0]})
+                            </option>
+                          ))}
+                        </select>
                       </div>
-                      <input
-                        type="range"
-                        min="1"
-                        max="45"
-                        value={form.distanceKm}
-                        onChange={(e) =>
-                          setForm({ ...form, distanceKm: Number(e.target.value) })
-                        }
-                        className="w-full accent-[#D09A40] cursor-pointer mt-2"
-                      />
-                      <p className="text-[11px] text-[#4A4A4A] mt-1">
-                        Base fee {formatPrice(brand.homeServiceBaseFee)} +{' '}
-                        {formatPrice(brand.homeServicePerKmRate)}/km beyond 4 km
-                      </p>
                     </div>
                   </div>
 
-                  <div id="booking-homeAddress">
-                    <label className="block text-xs font-bold text-[#0F172A] mb-1.5">
-                      Complete House / Flat / Hotel Address in {brand.cityName} *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder={`House/Flat No., Street, Landmark, ${brand.cityName}`}
-                      value={form.homeAddress}
-                      onChange={(e) => {
-                        setFieldErrors((prev) => ({ ...prev, homeAddress: undefined }));
-                        setForm({ ...form, homeAddress: e.target.value });
-                      }}
-                      className={`w-full px-4 py-3 rounded-xl bg-white border text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40] ${
-                        fieldErrors.homeAddress ? 'border-rose-400' : 'border-[#0F172A]/15'
-                      }`}
-                    />
-                    {fieldErrors.homeAddress && (
-                      <p className="mt-1.5 text-[11px] font-semibold text-rose-600">{fieldErrors.homeAddress}</p>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* 2. Personal Contact Info */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div id="booking-fullName">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
-                    {t('bookingFullName')}
-                  </label>
-                  <div className="relative">
-                    <User className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g., Priya Sharma"
-                      value={form.fullName}
-                      onChange={(e) => {
-                        setFieldErrors((prev) => ({ ...prev, fullName: undefined }));
-                        setForm({ ...form, fullName: e.target.value });
-                      }}
-                      className={`w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40] ${
-                        fieldErrors.fullName ? 'border-rose-400' : 'border-[#0F172A]/15'
-                      }`}
-                    />
-                  </div>
-                  {fieldErrors.fullName && (
-                    <p className="mt-1.5 text-[11px] font-semibold text-rose-600">{fieldErrors.fullName}</p>
-                  )}
-                </div>
-
-                <div id="booking-phone">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
-                    {t('bookingPhone')}
-                  </label>
-                  <div className="relative">
-                    <Phone className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="tel"
-                      required
-                      inputMode="tel"
-                      placeholder={brand.phoneDisplay}
-                      value={form.phone}
-                      onChange={(e) => {
-                        setFieldErrors((prev) => ({ ...prev, phone: undefined }));
-                        setForm({ ...form, phone: e.target.value });
-                      }}
-                      className={`w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40] ${
-                        fieldErrors.phone ? 'border-rose-400' : 'border-[#0F172A]/15'
-                      }`}
-                    />
-                  </div>
-                  {fieldErrors.phone && (
-                    <p className="mt-1.5 text-[11px] font-semibold text-rose-600">{fieldErrors.phone}</p>
-                  )}
-                </div>
-              </div>
-
-              {/* 3. Select Service & Preferred Specialist */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
-                    {t('bookingSelectService')}
-                  </label>
-                  <select
-                    value={form.selectedService}
-                    onChange={(e) => setForm({ ...form, selectedService: e.target.value })}
-                    className="w-full px-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
-                  >
-                    {preselectedServiceTitle &&
-                      !catalogServices.some((s) => s.title === preselectedServiceTitle) && (
-                        <option value={preselectedServiceTitle}>
-                          {preselectedServiceTitle}
-                        </option>
-                      )}
-                    {catalogServices.map((srv) => (
-                      <option key={srv.id} value={srv.title}>
-                        {srv.title} — {formatPrice(srv.price)} ({srv.duration})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
-                    {t('bookingSelectStylist')}
-                  </label>
-                  <div className="relative">
-                    <UserCheck className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
-                    <select
-                      value={form.preferredStylist}
-                      onChange={(e) => setForm({ ...form, preferredStylist: e.target.value })}
-                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
-                    >
-                      <option value="Any Senior Specialist">
-                        Any Available Senior Specialist
-                      </option>
-                      {brand.stylists.map((stylist) => (
-                        <option key={stylist.id} value={stylist.name}>
-                          {stylist.name} — {stylist.role} ({stylist.branch.split(' ')[0]})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* 4. Preferred Date & Time */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div id="booking-appointmentDate">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
-                    {t('bookingPreferredDate')}
-                  </label>
-                  <div className="relative">
-                    <Calendar className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="date"
-                      required
-                      min={todayStr}
-                      value={form.appointmentDate}
-                      onChange={(e) => {
-                        setFieldErrors((prev) => ({ ...prev, appointmentDate: undefined }));
-                        setForm({ ...form, appointmentDate: e.target.value });
-                      }}
-                      className={`w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40] ${
-                        fieldErrors.appointmentDate ? 'border-rose-400' : 'border-[#0F172A]/15'
-                      }`}
-                    />
-                  </div>
-                  {fieldErrors.appointmentDate && (
-                    <p className="mt-1.5 text-[11px] font-semibold text-rose-600">{fieldErrors.appointmentDate}</p>
-                  )}
-                  {!fieldErrors.appointmentDate && availability.open && availability.close && (
-                    <p className="mt-1.5 text-[11px] text-[#4A4A4A]">
-                      Open {availability.open} – {availability.close}
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
-                    {t('bookingPreferredTime')}
-                  </label>
-                  <div className="relative">
-                    <Clock className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
-                    <select
-                      value={form.timeSlot}
-                      disabled={availability.status === 'loading' || availability.closed}
-                      onChange={(e) => setForm({ ...form, timeSlot: e.target.value })}
-                      className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40] disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {availability.status === 'loading' ? (
-                        <option value={form.timeSlot}>
-                          {availability.retrying ? 'Retrying…' : 'Checking availability…'}
-                        </option>
-                      ) : availability.closed ? (
-                        <option value="">Closed on this day</option>
-                      ) : timeSlotOptions.length === 0 ? (
-                        <option value="">No slots available</option>
-                      ) : (
-                        timeSlotOptions.map((slot) => (
-                          <option key={slot.value} value={slot.label}>
-                            {slot.label}
-                            {slot.end && slot.start ? ` – ${slot.end}` : ''}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </div>
-
-                  {/* Availability recovery states */}
-                  {availability.status === 'loading' && (
-                    <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-[#4A4A4A]">
-                      <Loader2 className="w-3 h-3 animate-spin text-[#D09A40]" />
-                      {availability.retrying ? 'Still trying to reach the booking service…' : 'Loading available times…'}
-                    </p>
-                  )}
-
-                  {availability.closed && (
-                    <p className="mt-1.5 text-[11px] font-semibold text-amber-700">
-                      We're closed on this day. Please choose another date.
-                    </p>
-                  )}
-
-                  {!availability.closed && availability.status === 'empty' && (
-                    <p className="mt-1.5 text-[11px] font-semibold text-amber-700">
-                      {availability.reason === 'no_slots_left_today'
-                        ? 'No slots left today — please pick another date.'
-                        : 'No slots left on this date. Please choose another day.'}
-                    </p>
-                  )}
-
-                  {availability.usingFallback && (
-                    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
-                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-700" />
-                      <p className="flex-1 text-[11px] leading-snug text-amber-800">
-                        Live availability is unreachable — showing standard times. Confirm your slot on WhatsApp.
-                      </p>
+                  {viewMode === 'wizard' && (
+                    <div className="pt-4 flex justify-end">
                       <button
                         type="button"
-                        onClick={availability.reload}
-                        className="action-base inverted-action action-sm"
+                        onClick={() => handleGoNextStep(2)}
+                        className="px-6 py-3.5 rounded-xl bg-[#0F172A] hover:bg-[#D09A40] text-white hover:text-[#0F172A] font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-md transition-colors"
                       >
-                        <RefreshCw className="w-3 h-3" /> Retry
+                        <span>Continue to Schedule (Step 2)</span>
+                        <ArrowRight className="w-4 h-4" />
                       </button>
                     </div>
                   )}
                 </div>
-              </div>
+              )}
 
-              {/* 5. Special Notes & Bridal Trial Checkbox */}
-              <div className="space-y-4">
-                <label className="flex items-center gap-3 cursor-pointer select-none bg-[#FAF5E5]/70 p-3.5 rounded-xl border border-[#D09A40]/30">
-                  <input
-                    type="checkbox"
-                    checked={form.bridalTrialRequired}
-                    onChange={(e) =>
-                      setForm({ ...form, bridalTrialRequired: e.target.checked })
-                    }
-                    className="w-4 h-4 accent-[#D09A40] rounded"
-                  />
-                  <span className="text-xs sm:text-sm font-medium text-[#0F172A]">
-                    I am booking for a <strong>Bride / Wedding</strong> — include a free 15-minute skin & makeup consultation.
-                  </span>
-                </label>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
-                    Special Requests (Optional)
-                  </label>
-                  <div className="relative">
-                    <MessageSquare className="w-4 h-4 text-[#D09A40] absolute left-4 top-3.5" />
-                    <textarea
-                      rows={2}
-                      placeholder="Mention skin sensitivity, hair length, or number of family members..."
-                      value={form.specialNotes}
-                      onChange={(e) => setForm({ ...form, specialNotes: e.target.value })}
-                      className="w-full pl-11 pr-4 py-3 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
-                    />
+              {/* STEP 2: Preferred Date & Time Slot */}
+              {(currentStep === 2 || viewMode === 'single') && (
+                <div className="space-y-6 pt-2">
+                  <div className="border-b border-[#0F172A]/10 pb-3 flex items-center justify-between">
+                    <h3 className="font-serif font-bold text-lg text-[#0F172A] flex items-center gap-2">
+                      <Calendar className="w-5 h-5 text-[#D09A40]" />
+                      <span>Step 2: Select Date & Preferred Time Slot</span>
+                    </h3>
+                    <span className="text-xs text-[#4A4A4A] font-medium">2 of 4</span>
                   </div>
-                </div>
-              </div>
 
-              {/* 5.5 Loyalty Reward / Gift Card Code Input */}
-              <div className="p-4 rounded-2xl bg-[#FAF5E5] border border-[#D09A40]/35 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold uppercase tracking-wider text-[#0F172A] flex items-center gap-1.5">
-                    <Gift className="w-4 h-4 text-[#D09A40]" />
-                    <span>Have a {brand.loyaltyClubName} or Gift Card Code?</span>
-                  </label>
-                  {appliedPromo && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAppliedPromo(null);
-                        setPromoCodeInput('');
-                      }}
-                      className="text-[11px] text-rose-600 hover:underline font-semibold cursor-pointer"
-                    >
-                      Remove Voucher
-                    </button>
-                  )}
-                </div>
-
-                {!appliedPromo ? (
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <div className="relative flex-1">
-                      <Tag className="w-4 h-4 text-[#D09A40] absolute left-3.5 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        value={promoCodeInput}
-                        onChange={(e) => setPromoCodeInput(e.target.value)}
-                        placeholder={`e.g. ${brand.bookingPrefix}-GLOW-500 or ${brand.giftCardPrefix}-1234`}
-                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-white border border-[#0F172A]/15 text-xs font-mono uppercase text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
-                      />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div id="booking-appointmentDate">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
+                        {t('bookingPreferredDate')}
+                      </label>
+                      <div className="relative">
+                        <Calendar className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="date"
+                          required
+                          min={todayStr}
+                          value={form.appointmentDate}
+                          onChange={(e) => {
+                            setFieldErrors((prev) => ({ ...prev, appointmentDate: undefined }));
+                            setForm({ ...form, appointmentDate: e.target.value });
+                          }}
+                          className={`w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40] ${
+                            fieldErrors.appointmentDate ? 'border-rose-400' : 'border-[#0F172A]/15'
+                          }`}
+                        />
+                      </div>
+                      {fieldErrors.appointmentDate && (
+                        <p className="mt-1.5 text-[11px] font-semibold text-rose-600">{fieldErrors.appointmentDate}</p>
+                      )}
+                      {!fieldErrors.appointmentDate && availability.open && availability.close && (
+                        <p className="mt-1.5 text-[11px] text-[#4A4A4A]">
+                          Open {availability.open} – {availability.close}
+                        </p>
+                      )}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => validateAndApplyPromo(promoCodeInput)}
-                      className="action-base inverted-action action-sm shrink-0"
-                    >
-                      Apply Voucher
-                    </button>
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
+                        {t('bookingPreferredTime')}
+                      </label>
+                      <div className="relative">
+                        <Clock className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
+                        <select
+                          value={form.timeSlot}
+                          disabled={availability.status === 'loading' || availability.closed}
+                          onChange={(e) => setForm({ ...form, timeSlot: e.target.value })}
+                          className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40] disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {availability.status === 'loading' ? (
+                            <option value={form.timeSlot}>
+                              {availability.retrying ? 'Retrying…' : 'Checking availability…'}
+                            </option>
+                          ) : availability.closed ? (
+                            <option value="">Closed on this day</option>
+                          ) : timeSlotOptions.length === 0 ? (
+                            <option value="">No slots available</option>
+                          ) : (
+                            timeSlotOptions.map((slot) => (
+                              <option key={slot.value} value={slot.label}>
+                                {slot.label}
+                                {slot.end && slot.start ? ` – ${slot.end}` : ''}
+                              </option>
+                            ))
+                          )}
+                        </select>
+                      </div>
+
+                      {/* Availability recovery states */}
+                      {availability.status === 'loading' && (
+                        <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-[#4A4A4A]">
+                          <Loader2 className="w-3 h-3 animate-spin text-[#D09A40]" />
+                          {availability.retrying ? 'Still trying to reach the booking service…' : 'Loading available times…'}
+                        </p>
+                      )}
+
+                      {availability.closed && (
+                        <p className="mt-1.5 text-[11px] font-semibold text-amber-700">
+                          We're closed on this day. Please choose another date.
+                        </p>
+                      )}
+
+                      {!availability.closed && availability.status === 'empty' && (
+                        <p className="mt-1.5 text-[11px] font-semibold text-amber-700">
+                          {availability.reason === 'no_slots_left_today'
+                            ? 'No slots left today — please pick another date.'
+                            : 'No slots left on this date. Please choose another day.'}
+                        </p>
+                      )}
+
+                      {availability.usingFallback && (
+                        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-700" />
+                          <p className="flex-1 text-[11px] leading-snug text-amber-800">
+                            Live availability is unreachable — showing standard times. Confirm your slot on WhatsApp.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={availability.reload}
+                            className="action-base inverted-action action-sm"
+                          >
+                            <RefreshCw className="w-3 h-3" /> Retry
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                ) : (
-                  <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2.5 text-xs">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <div>
-                        <span className="font-mono font-bold text-emerald-950">
-                          {appliedPromo.code}
-                        </span>
-                        <span className="text-emerald-700 ml-2">
-                          ({appliedPromo.title})
-                        </span>
+
+                  {/* Special Requests & Bridal Trial Checkbox */}
+                  <div className="space-y-4">
+                    <label className="flex items-center gap-3 cursor-pointer select-none bg-[#FAF5E5]/70 p-3.5 rounded-xl border border-[#D09A40]/30">
+                      <input
+                        type="checkbox"
+                        checked={form.bridalTrialRequired}
+                        onChange={(e) =>
+                          setForm({ ...form, bridalTrialRequired: e.target.checked })
+                        }
+                        className="w-4 h-4 accent-[#D09A40] rounded"
+                      />
+                      <span className="text-xs sm:text-sm font-medium text-[#0F172A]">
+                        I am booking for a <strong>Bride / Wedding</strong> — include a free 15-minute skin & makeup consultation.
+                      </span>
+                    </label>
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
+                        Special Requests (Optional)
+                      </label>
+                      <div className="relative">
+                        <MessageSquare className="w-4 h-4 text-[#D09A40] absolute left-4 top-3.5" />
+                        <textarea
+                          rows={2}
+                          placeholder="Mention skin sensitivity, hair length, or number of family members..."
+                          value={form.specialNotes}
+                          onChange={(e) => setForm({ ...form, specialNotes: e.target.value })}
+                          className="w-full pl-11 pr-4 py-3 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                        />
                       </div>
                     </div>
-                    <span className="font-bold text-emerald-700">
-                      -{formatPrice(appliedPromo.discountAmount)} Saved
-                    </span>
                   </div>
-                )}
 
-                {promoError && (
-                  <p className="text-[11px] text-rose-600 font-medium">{promoError}</p>
-                )}
-              </div>
+                  {viewMode === 'wizard' && (
+                    <div className="pt-4 flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentStep(1)}
+                        className="px-5 py-3.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-[#0F172A] font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-colors"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                        <span>Back</span>
+                      </button>
 
-              {/* 6. Home Service Advance Token Policy Card */}
-              {form.locationType === 'home' && (
-                <div className="p-4 rounded-2xl border bg-amber-50/80 border-amber-200 text-xs text-[#0F172A] space-y-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <ShieldCheck className="w-4 h-4 text-amber-700" />
-                      <span className="font-bold text-amber-900">
-                        Advance Token Deposit for Home Visit
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleGoNextStep(3)}
+                        className="px-6 py-3.5 rounded-xl bg-[#0F172A] hover:bg-[#D09A40] text-white hover:text-[#0F172A] font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-md transition-colors"
+                      >
+                        <span>Continue to Contact Info (Step 3)</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
                     </div>
-                    {form.advancePaymentVerified ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full">
-                        <Check className="w-3.5 h-3.5" />
-                        Token Paid (Ref: {form.advancePaymentRef})
-                      </span>
-                    ) : (
-                      <span className="text-[11px] font-semibold text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full">
-                        Advance Token Required: {formatPrice(advanceRequired)}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-amber-800 text-[11px] leading-relaxed">
-                    To confirm a home visit and reserve your beauty artist, a small token deposit of{' '}
-                    <strong>{formatPrice(advanceRequired)}</strong> is required. The remaining{' '}
-                    <strong>{formatPrice(balanceAtDoorstep)}</strong> is payable after your service.
-                  </p>
-                  {!form.advancePaymentVerified && (
-                    <button
-                      type="button"
-                      onClick={() => setIsPaymentModalOpen(true)}
-                      className="action-base primary-action action-sm mt-1"
-                    >
-                      <CreditCard className="w-3.5 h-3.5" />
-                      <span>Pay Advance Token ({formatPrice(advanceRequired)})</span>
-                    </button>
                   )}
                 </div>
               )}
 
-              {/* Live Price Summary & Submit CTA */}
-              <div className="pt-4 border-t border-[#0F172A]/10 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="text-center sm:text-left">
-                  <div className="flex items-baseline justify-center sm:justify-start gap-2">
-                    <span className="text-xs text-[#4A4A4A]">{t('bookingEstimatedTotal')}</span>
-                    <span className="font-serif text-2xl font-bold text-[#0F172A]">
-                      {formatPrice(totalEstimatedAmount)}
-                    </span>
-                    {form.locationType === 'home' && (
-                      <span className="text-[11px] text-[#4A4A4A]">
-                        (Service {formatPrice(treatmentPrice)} + Travel {formatPrice(distanceFee)}
-                        {promoDiscount > 0 ? ` - Voucher ${formatPrice(promoDiscount)}` : ''})
-                      </span>
+              {/* STEP 3: Personal Contact Info & Loyalty Promo */}
+              {(currentStep === 3 || viewMode === 'single') && (
+                <div className="space-y-6 pt-2">
+                  <div className="border-b border-[#0F172A]/10 pb-3 flex items-center justify-between">
+                    <h3 className="font-serif font-bold text-lg text-[#0F172A] flex items-center gap-2">
+                      <User className="w-5 h-5 text-[#D09A40]" />
+                      <span>Step 3: Enter Guest Details & Voucher Code</span>
+                    </h3>
+                    <span className="text-xs text-[#4A4A4A] font-medium">3 of 4</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div id="booking-fullName">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
+                        {t('bookingFullName')} *
+                      </label>
+                      <div className="relative">
+                        <User className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g., Priya Sharma"
+                          value={form.fullName}
+                          onChange={(e) => {
+                            setFieldErrors((prev) => ({ ...prev, fullName: undefined }));
+                            setForm({ ...form, fullName: e.target.value });
+                          }}
+                          className={`w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40] ${
+                            fieldErrors.fullName ? 'border-rose-400' : 'border-[#0F172A]/15'
+                          }`}
+                        />
+                      </div>
+                      {fieldErrors.fullName && (
+                        <p className="mt-1.5 text-[11px] font-semibold text-rose-600">{fieldErrors.fullName}</p>
+                      )}
+                    </div>
+
+                    <div id="booking-phone">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
+                        {t('bookingPhone')} *
+                      </label>
+                      <div className="relative">
+                        <Phone className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="tel"
+                          required
+                          inputMode="tel"
+                          placeholder={brand.phoneDisplay}
+                          value={form.phone}
+                          onChange={(e) => {
+                            setFieldErrors((prev) => ({ ...prev, phone: undefined }));
+                            setForm({ ...form, phone: e.target.value });
+                          }}
+                          className={`w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40] ${
+                            fieldErrors.phone ? 'border-rose-400' : 'border-[#0F172A]/15'
+                          }`}
+                        />
+                      </div>
+                      {fieldErrors.phone && (
+                        <p className="mt-1.5 text-[11px] font-semibold text-rose-600">{fieldErrors.phone}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Loyalty Reward / Gift Card Code Input */}
+                  <div className="p-4 rounded-2xl bg-[#FAF5E5] border border-[#D09A40]/35 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold uppercase tracking-wider text-[#0F172A] flex items-center gap-1.5">
+                        <Gift className="w-4 h-4 text-[#D09A40]" />
+                        <span>Have a {brand.loyaltyClubName} or Gift Card Code?</span>
+                      </label>
+                      {appliedPromo && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAppliedPromo(null);
+                            setPromoCodeInput('');
+                          }}
+                          className="text-[11px] text-rose-600 hover:underline font-semibold cursor-pointer"
+                        >
+                          Remove Voucher
+                        </button>
+                      )}
+                    </div>
+
+                    {!appliedPromo ? (
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <div className="relative flex-1">
+                          <Tag className="w-4 h-4 text-[#D09A40] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            value={promoCodeInput}
+                            onChange={(e) => setPromoCodeInput(e.target.value)}
+                            placeholder={`e.g. ${brand.bookingPrefix}-GLOW-500 or VIP-500-1234`}
+                            className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-white border border-[#0F172A]/15 text-xs font-mono uppercase text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => validateAndApplyPromo(promoCodeInput)}
+                          className="action-base inverted-action action-sm shrink-0"
+                        >
+                          Apply Voucher
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2.5 text-xs">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <div>
+                            <span className="font-mono font-bold text-emerald-950">
+                              {appliedPromo.code}
+                            </span>
+                            <span className="text-emerald-700 ml-2">
+                              ({appliedPromo.title})
+                            </span>
+                          </div>
+                        </div>
+                        <span className="font-bold text-emerald-700">
+                          -{formatPrice(appliedPromo.discountAmount)} Saved
+                        </span>
+                      </div>
                     )}
-                    {form.locationType === 'salon' && promoDiscount > 0 && (
-                      <span className="text-[11px] text-emerald-700 font-semibold">
-                        (Includes {formatPrice(promoDiscount)} Voucher Off)
-                      </span>
+
+                    {promoError && (
+                      <p className="text-[11px] text-rose-600 font-medium">{promoError}</p>
                     )}
                   </div>
-                  <p className="text-[11px] text-[#10B981] font-semibold mt-0.5">
-                    {form.locationType === 'salon'
-                      ? '✓ Zero advance needed for salon visits — pay after your service'
-                      : form.advancePaymentVerified
-                      ? `✓ Advance ${formatPrice(advanceRequired)} verified • Balance ${formatPrice(balanceAtDoorstep)} after service`
-                      : `Requires ${formatPrice(advanceRequired)} advance token to dispatch artist`}
-                  </p>
-                </div>
 
-                <button
-                  type="submit"
-                  disabled={submitState === 'submitting'}
-                  className="action-base primary-action action-lg w-full sm:w-auto"
-                >
-                  {submitState === 'submitting' ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Confirming…
-                    </>
-                  ) : form.locationType === 'home' && !form.advancePaymentVerified ? (
-                    `Pay ${formatPrice(advanceRequired)} Token & Book`
-                  ) : (
-                    t('bookingConfirmBtn')
+                  {viewMode === 'wizard' && (
+                    <div className="pt-4 flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentStep(2)}
+                        className="px-5 py-3.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-[#0F172A] font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-colors"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                        <span>Back</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleGoNextStep(4)}
+                        className="px-6 py-3.5 rounded-xl bg-[#0F172A] hover:bg-[#D09A40] text-white hover:text-[#0F172A] font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-md transition-colors"
+                      >
+                        <span>Review & Confirm (Step 4)</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
                   )}
-                </button>
-              </div>
+                </div>
+              )}
 
-              {/* Submission error + recovery actions */}
-              {submitState === 'failed' && submitError && (
-                <div className="flex flex-col gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="flex items-start gap-2 text-xs leading-snug text-rose-800">
-                    <AlertTriangle className="mt-0.5 w-4 h-4 shrink-0" />
-                    <span>
-                      {submitError}
-                      {attemptCount > 1 ? ' (We will keep your details — just press retry.)' : ''}
-                    </span>
-                  </p>
-                  <div className="flex shrink-0 flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSubmitState('idle');
-                        setSubmitError(null);
-                        // Re-run the same submit path (attempt counter tracks retries).
-                        const formEl = document.getElementById('booking-form') as HTMLFormElement | null;
-                        formEl?.requestSubmit();
-                      }}
-                      className="action-base danger-action action-sm"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" /> {attemptCount > 1 ? 'Try again' : 'Retry booking'}
-                    </button>
-                    <a
-                      href={buildWhatsAppBookingUrl()}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-[#10B981] px-3.5 py-2 text-xs font-bold text-white transition-colors hover:bg-[#059669]"
-                    >
-                      <WhatsAppIcon className="w-3.5 h-3.5" /> Confirm on WhatsApp
-                    </a>
+              {/* STEP 4: Confirmation Summary & Final Submit */}
+              {(currentStep === 4 || viewMode === 'single') && (
+                <div className="space-y-6 pt-2">
+                  <div className="border-b border-[#0F172A]/10 pb-3 flex items-center justify-between">
+                    <h3 className="font-serif font-bold text-lg text-[#0F172A] flex items-center gap-2">
+                      <CheckCircle2 className="w-5 h-5 text-[#D09A40]" />
+                      <span>Step 4: Review Appointment Summary & Confirm</span>
+                    </h3>
+                    <span className="text-xs text-[#4A4A4A] font-medium">4 of 4</span>
                   </div>
+
+                  {/* Summary Breakdown Card */}
+                  <div className="p-5 rounded-2xl bg-[#FAF5E5] border border-[#D09A40]/40 space-y-3.5 text-xs text-[#0F172A]">
+                    <div className="flex items-center justify-between border-b border-[#0F172A]/10 pb-2.5">
+                      <div>
+                        <span className="text-[11px] text-[#4A4A4A] block uppercase tracking-wider">
+                          Selected Service
+                        </span>
+                        <span className="font-serif font-bold text-sm text-[#0F172A]">
+                          {form.selectedService}
+                        </span>
+                      </div>
+                      <span className="font-bold font-mono text-sm text-[#0F172A]">
+                        {formatPrice(treatmentPrice)}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <span className="text-[11px] font-semibold text-[#4A4A4A] block">
+                          Service Mode & Location:
+                        </span>
+                        <span className="font-medium text-[#0F172A]">
+                          {form.locationType === 'salon'
+                            ? `Salon Visit (${form.selectedBranch})`
+                            : `Home Service in ${form.locality} (~${form.distanceKm} km)`}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-[11px] font-semibold text-[#4A4A4A] block">
+                          Scheduled Date & Time:
+                        </span>
+                        <span className="font-medium text-[#0F172A]">
+                          {form.appointmentDate || 'Not selected'} at {form.timeSlot}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-[11px] font-semibold text-[#4A4A4A] block">
+                          Guest Name & Contact:
+                        </span>
+                        <span className="font-medium text-[#0F172A]">
+                          {form.fullName || 'Guest'} ({form.phone || 'Phone not set'})
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-[11px] font-semibold text-[#4A4A4A] block">
+                          Preferred Artist:
+                        </span>
+                        <span className="font-medium text-[#0F172A]">
+                          {form.preferredStylist}
+                        </span>
+                      </div>
+                    </div>
+
+                    {appliedPromo && (
+                      <div className="flex justify-between items-center bg-emerald-100/70 p-2.5 rounded-xl border border-emerald-300/60 font-semibold text-emerald-900">
+                        <span>Voucher Discount ({appliedPromo.code}):</span>
+                        <span>-{formatPrice(appliedPromo.discountAmount)}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Home Service Advance Token Policy Card */}
+                  {form.locationType === 'home' && (
+                    <div className="p-4 rounded-2xl border bg-amber-50/80 border-amber-200 text-xs text-[#0F172A] space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 text-amber-700" />
+                          <span className="font-bold text-amber-900">
+                            Advance Token Deposit for Home Visit
+                          </span>
+                        </div>
+                        {form.advancePaymentVerified ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full">
+                            <Check className="w-3.5 h-3.5" />
+                            Token Paid (Ref: {form.advancePaymentRef})
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-semibold text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full">
+                            Advance Token Required: {formatPrice(advanceRequired)}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-amber-800 text-[11px] leading-relaxed">
+                        To confirm a home visit and reserve your beauty artist, a small token deposit of{' '}
+                        <strong>{formatPrice(advanceRequired)}</strong> is required. The remaining{' '}
+                        <strong>{formatPrice(balanceAtDoorstep)}</strong> is payable after your service.
+                      </p>
+                      {!form.advancePaymentVerified && (
+                        <button
+                          type="button"
+                          onClick={() => setIsPaymentModalOpen(true)}
+                          className="action-base primary-action action-sm mt-1 cursor-pointer"
+                        >
+                          <CreditCard className="w-3.5 h-3.5" />
+                          <span>Pay Advance Token ({formatPrice(advanceRequired)})</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Live Price Summary & Submit CTA */}
+                  <div className="pt-4 border-t border-[#0F172A]/10 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="text-center sm:text-left">
+                      <div className="flex items-baseline justify-center sm:justify-start gap-2">
+                        <span className="text-xs text-[#4A4A4A]">{t('bookingEstimatedTotal')}</span>
+                        <span className="font-serif text-2xl font-bold text-[#0F172A]">
+                          {formatPrice(totalEstimatedAmount)}
+                        </span>
+                        {form.locationType === 'home' && (
+                          <span className="text-[11px] text-[#4A4A4A]">
+                            (Service {formatPrice(treatmentPrice)} + Travel {formatPrice(distanceFee)}
+                            {promoDiscount > 0 ? ` - Voucher ${formatPrice(promoDiscount)}` : ''})
+                          </span>
+                        )}
+                        {form.locationType === 'salon' && promoDiscount > 0 && (
+                          <span className="text-[11px] text-emerald-700 font-semibold">
+                            (Includes {formatPrice(promoDiscount)} Voucher Off)
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-[#10B981] font-semibold mt-0.5">
+                        {form.locationType === 'salon'
+                          ? '✓ Zero advance needed for salon visits — pay after your service'
+                          : form.advancePaymentVerified
+                          ? `✓ Advance ${formatPrice(advanceRequired)} verified • Balance ${formatPrice(balanceAtDoorstep)} after service`
+                          : `Requires ${formatPrice(advanceRequired)} advance token to dispatch artist`}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3 w-full sm:w-auto">
+                      {viewMode === 'wizard' && (
+                        <button
+                          type="button"
+                          onClick={() => setCurrentStep(3)}
+                          className="px-4 py-3.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-[#0F172A] font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors shrink-0"
+                        >
+                          <ArrowLeft className="w-4 h-4" />
+                          <span>Modify</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="submit"
+                        disabled={submitState === 'submitting'}
+                        className="action-base primary-action action-lg w-full sm:w-auto flex-1 sm:flex-none justify-center"
+                      >
+                        {submitState === 'submitting' ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" /> Confirming…
+                          </>
+                        ) : form.locationType === 'home' && !form.advancePaymentVerified ? (
+                          `Pay ${formatPrice(advanceRequired)} Token & Reserve`
+                        ) : (
+                          t('bookingConfirmBtn')
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Submission error + recovery actions */}
+                  {submitState === 'failed' && submitError && (
+                    <div className="flex flex-col gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="flex items-start gap-2 text-xs leading-snug text-rose-800">
+                        <AlertTriangle className="mt-0.5 w-4 h-4 shrink-0" />
+                        <span>
+                          {submitError}
+                          {attemptCount > 1 ? ' (We will keep your details — just press retry.)' : ''}
+                        </span>
+                      </p>
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSubmitState('idle');
+                            setSubmitError(null);
+                            const formEl = document.getElementById('booking-form') as HTMLFormElement | null;
+                            formEl?.requestSubmit();
+                          }}
+                          className="action-base danger-action action-sm cursor-pointer"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" /> {attemptCount > 1 ? 'Try again' : 'Retry booking'}
+                        </button>
+                        <a
+                          href={buildWhatsAppBookingUrl()}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-[#10B981] px-3.5 py-2 text-xs font-bold text-white transition-colors hover:bg-[#059669]"
+                        >
+                          <WhatsAppIcon className="w-3.5 h-3.5" /> Confirm on WhatsApp
+                        </a>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </form>
