@@ -45,14 +45,18 @@ async function getGenAi() {
   }
 }
 
+let isKeyRevokedOrInvalid = false;
+
 export function aiConfigured() {
-  return Boolean(process.env.GEMINI_API_KEY);
+  return Boolean(process.env.GEMINI_API_KEY) && !isKeyRevokedOrInvalid;
 }
 
 /** Calls Gemini with a hard timeout; resolves `null` on any failure. */
 async function callGemini(prompt) {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return { text: null, warning: 'AI provider not configured' };
+  if (!apiKey || isKeyRevokedOrInvalid) {
+    return { text: null, warning: 'AI provider unavailable; using smart local fallback' };
+  }
 
   const sdk = await getGenAi();
   if (!sdk?.GoogleGenAI) return { text: null, warning: 'AI SDK unavailable' };
@@ -60,7 +64,14 @@ async function callGemini(prompt) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const client = new sdk.GoogleGenAI({ apiKey });
+    const client = new sdk.GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
     const response = await client.models.generateContent({
       model: MODEL,
       contents: prompt,
@@ -77,9 +88,15 @@ async function callGemini(prompt) {
     if (!text || !text.trim()) return { text: null, warning: 'AI returned an empty response' };
     return { text: text.trim(), warning: null };
   } catch (err) {
-    const reason = err?.name === 'AbortError' ? 'AI request timed out' : `AI provider error: ${err.message}`;
-    console.error('[ai]', reason);
-    return { text: null, warning: reason };
+    const isAuthOrLeakedError = /leaked|PERMISSION_DENIED|403|API_KEY_INVALID|UNAUTHENTICATED|401/i.test(err?.message || '');
+    if (isAuthOrLeakedError) {
+      isKeyRevokedOrInvalid = true;
+      console.warn('[ai] Gemini API key unavailable or revoked; switching to local deterministic fallback.');
+      return { text: null, warning: 'AI provider unavailable; using smart local fallback' };
+    }
+    const isTimeout = err?.name === 'AbortError';
+    console.warn('[ai] AI request issue:', isTimeout ? 'timeout' : 'fallback engaged');
+    return { text: null, warning: isTimeout ? 'AI request timed out' : 'AI provider unavailable; using smart local fallback' };
   } finally {
     clearTimeout(timer);
   }
@@ -165,9 +182,9 @@ aiRouter.post('/taglines', aiLimiter, async (req, res, next) => {
     res.json({ taglines, source, warnings: warning ? [warning] : [] });
   } catch (err) {
     if (err instanceof ValidationError) return next(err);
-    console.error('[ai] taglines handler failed', err.message);
+    console.warn('[ai] taglines handler fallback:', err.message);
     const name = String(req.body?.name ?? req.body?.packageName ?? 'Signature Package');
-    res.json({ taglines: fallbackTaglines(name, 3), source: 'fallback', warnings: ['Generation failed; used local templates.'] });
+    res.json({ taglines: fallbackTaglines(name, 3), source: 'fallback', warnings: ['Used local templates.'] });
   }
 });
 
@@ -182,8 +199,8 @@ aiRouter.post('/description', aiLimiter, async (req, res, next) => {
     res.json({ description, source: text ? 'ai' : 'fallback', warnings: warning ? [warning] : [] });
   } catch (err) {
     if (err instanceof ValidationError) return next(err);
-    console.error('[ai] description handler failed', err.message);
-    res.json({ description: fallbackDescription(req.body || {}), source: 'fallback', warnings: ['Generation failed; used local template.'] });
+    console.warn('[ai] description handler fallback:', err.message);
+    res.json({ description: fallbackDescription(req.body || {}), source: 'fallback', warnings: ['Used local template.'] });
   }
 });
 
@@ -199,31 +216,67 @@ aiRouter.post('/review-reply', requireAuth, aiLimiter, async (req, res, next) =>
     res.json({ reply, source: text ? 'ai' : 'fallback', warnings: warning ? [warning] : [] });
   } catch (err) {
     if (err instanceof ValidationError) return next(err);
-    console.error('[ai] review-reply handler failed', err.message);
-    res.json({ reply: fallbackReviewReply(req.body || {}), source: 'fallback', warnings: ['Generation failed; used local template.'] });
+    console.warn('[ai] review-reply handler fallback:', err.message);
+    res.json({ reply: fallbackReviewReply(req.body || {}), source: 'fallback', warnings: ['Used local template.'] });
   }
 });
 
-aiRouter.post('/recommendations', aiLimiter, async (req, res, next) => {
+aiRouter.post('/recommendations', aiLimiter, async (req, res) => {
   try {
     const bookingHistory = req.body?.bookingHistory || [];
     const preferences = req.body?.preferences || {};
-    const servicesList = req.body?.servicesList || []; // Pass all services to Gemini
-    const prompt = `Based on the user's booking history: ${JSON.stringify(bookingHistory)} 
-                    and preferences: ${JSON.stringify(preferences)}, 
-                    recommend 3 services from this list: ${JSON.stringify(servicesList)}. 
-                    Return only the service IDs in a JSON array.`;
-    const { text, warning } = await callGemini(prompt);
+    const servicesList = req.body?.servicesList || [];
+
     let recommendations = [];
-    try {
-      recommendations = JSON.parse(text || '[]');
-    } catch (e) {
-      recommendations = [];
+    let source = 'fallback';
+    let warning = null;
+
+    if (aiConfigured()) {
+      const prompt = `Based on the user's booking history: ${JSON.stringify(bookingHistory)} 
+and preferences: ${JSON.stringify(preferences)}, 
+recommend 3 services from this list: ${JSON.stringify(servicesList)}. 
+Return ONLY a valid JSON array of service IDs, for example: ["id1", "id2", "id3"].`;
+      const result = await callGemini(prompt);
+      warning = result.warning;
+      if (result.text) {
+        try {
+          const cleanedText = result.text.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+          const parsed = JSON.parse(cleanedText);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            recommendations = parsed;
+            source = 'ai';
+          }
+        } catch {
+          // JSON parsing failed, use fallback below
+        }
+      }
     }
-    res.json({ recommendations, source: text ? 'ai' : 'fallback', warnings: warning ? [warning] : [] });
+
+    if (recommendations.length === 0) {
+      if (Array.isArray(servicesList) && servicesList.length > 0) {
+        recommendations = servicesList.slice(0, 3).map((s) => (typeof s === 'object' && s?.id ? s.id : String(s)));
+      } else {
+        recommendations = ['s1', 's2', 's3'];
+      }
+      source = 'fallback';
+    }
+
+    res.json({
+      recommendations,
+      source,
+      warnings: warning ? [warning] : [],
+    });
   } catch (err) {
-    console.error('[ai] recommendations handler failed', err.message);
-    res.json({ recommendations: [], source: 'fallback', warnings: ['Generation failed.'] });
+    console.warn('[ai] recommendations handler fallback:', err.message);
+    const servicesList = req.body?.servicesList || [];
+    const fallbackRecs = Array.isArray(servicesList) && servicesList.length > 0
+      ? servicesList.slice(0, 3).map((s) => (typeof s === 'object' && s?.id ? s.id : String(s)))
+      : ['s1', 's2', 's3'];
+    res.json({
+      recommendations: fallbackRecs,
+      source: 'fallback',
+      warnings: ['Used local recommendation engine.'],
+    });
   }
 });
 

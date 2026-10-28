@@ -183,25 +183,30 @@ backfillTimings(DEFAULT_TIMINGS);
 backfillApprovedVersions();
 backfillJaipurSalons();
 
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n  BeautyZone running on http://0.0.0.0:${PORT}`);
-  console.log(`  Environment: ${isProd ? 'production' : 'development'}`);
-  console.log(`  Data directory: ${DATA_PATH}`);
-  if (seeded) {
-    console.log('\n  Seeded demo accounts:');
-    console.log(`    Super admin : ${process.env.SEED_ADMIN_EMAIL || 'admin@beautyzone.app'} / ${process.env.SEED_ADMIN_PASSWORD || 'Admin@12345'}`);
-    console.log(`    Salon owner : ${process.env.SEED_OWNER_EMAIL || 'owner@luminaluxe.in'} / ${process.env.SEED_OWNER_PASSWORD || 'Owner@12345'}`);
-    console.log('  Change these passwords after your first login.\n');
-  }
-});
+let server = null;
+if (!process.env.VERCEL) {
+  server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n  BeautyZone running on http://0.0.0.0:${PORT}`);
+    console.log(`  Environment: ${isProd ? 'production' : 'development'}`);
+    console.log(`  Data directory: ${DATA_PATH}`);
+    if (seeded) {
+      console.log('\n  Seeded demo accounts:');
+      console.log(`    Super admin : ${process.env.SEED_ADMIN_EMAIL || 'admin@beautyzone.app'} / ${process.env.SEED_ADMIN_PASSWORD || 'Admin@12345'}`);
+      console.log(`    Salon owner : ${process.env.SEED_OWNER_EMAIL || 'owner@luminaluxe.in'} / ${process.env.SEED_OWNER_PASSWORD || 'Owner@12345'}`);
+      console.log('  Change these passwords after your first login.\n');
+    }
+  });
 
-server.on('error', (err) => {
-  console.error('[server error]', err);
-  if (err.code === 'EADDRINUSE') {
-    console.error(`Port ${PORT} is already in use. Exiting process so supervisor can restart cleanly.`);
-    process.exit(1);
-  }
-});
+  server.on('error', (err) => {
+    console.error('[server error]', err);
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use. Exiting process so supervisor can restart cleanly.`);
+      process.exit(1);
+    }
+  });
+}
+
+export { app, server };
 
 function shutdown(signal) {
   console.log(`\n[server] ${signal} received, shutting down.`);

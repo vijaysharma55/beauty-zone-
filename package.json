@@ -3,6 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "tsx server/index.js",
     "build": "vite build",
@@ -38,5 +41,13 @@
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2"
+  },
+  "allowScripts": {
+    "@google/genai": true,
+    "@google/genai@2.31.0": true,
+    "protobufjs": true,
+    "protobufjs@7.6.6": true,
+    "esbuild": true,
+    "esbuild@0.28.2": true
   }
 }

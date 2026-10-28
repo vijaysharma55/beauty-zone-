@@ -40,15 +40,25 @@ export const RecommendedServicesSection: React.FC<Props> = ({ services, onSelect
   if (loading || recommended.length === 0) return null;
 
   return (
-    <section className="py-16 bg-[#FAF5E5]">
-      <div className="container mx-auto px-6">
-        <h2 className="font-serif text-3xl font-bold text-slate-900 mb-8">Recommended for You</h2>
+    <section className="py-16 bg-[#FAF5E5] w-full border-t border-[#E8DFC8]/60">
+      <div className="w-full px-4 sm:px-6 md:px-10">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs font-semibold tracking-wider text-[#A2722A] uppercase bg-[#A2722A]/10 px-2.5 py-0.5 rounded-full">
+            Curated For You
+          </span>
+        </div>
+        <h2 className="font-serif text-3xl font-bold text-slate-900 mb-8">Recommended Services</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {recommended.map(service => (
-            <div key={service.id} className="border border-slate-200 p-6 rounded-lg bg-white shadow-sm">
-              <h3 className="font-semibold text-lg">{service.title}</h3>
-              <p className="text-sm text-slate-600 mt-2">{service.description}</p>
-              <Button className="mt-4" onClick={() => onSelectService(service)}>Book Now</Button>
+            <div key={service.id} className="border border-[#E8DFC8] p-6 rounded-xl bg-white shadow-sm flex flex-col justify-between hover:shadow-md transition">
+              <div>
+                <h3 className="font-serif font-semibold text-xl text-slate-900">{service.title}</h3>
+                <p className="text-sm text-slate-600 mt-2 line-clamp-3">{service.description}</p>
+              </div>
+              <div className="mt-6 flex items-center justify-between pt-4 border-t border-slate-100">
+                <span className="text-sm font-medium text-slate-500">{service.duration || '45 mins'}</span>
+                <Button size="sm" onClick={() => onSelectService(service)}>Book Now</Button>
+              </div>
             </div>
           ))}
         </div>
