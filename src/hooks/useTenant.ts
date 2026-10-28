@@ -20,7 +20,14 @@ function extractSlugFromHost(hostname: string): string | null {
     const host = hostname.toLowerCase().trim();
     if (!host || host === 'localhost' || host === '127.0.0.1' || /^\d+\.\d+\.\d+\.\d+$/.test(host)) return null;
     // e2b preview / vercel preview → never treat as tenant
-    if (host.endsWith('.e2b.app') || host.endsWith('.onrender.com') || host.endsWith('.netlify.app')) return null;
+    if (
+      host.endsWith('.e2b.app') ||
+      host.endsWith('.onrender.com') ||
+      host.endsWith('.netlify.app') ||
+      host.endsWith('.vercel.app') ||
+      host.endsWith('.pages.dev') ||
+      host.endsWith('.github.io')
+    ) return null;
     const parts = host.split('.');
     if (parts.length < 3) return null;
     const candidate = parts[0];
@@ -63,7 +70,8 @@ export function useTenant(): TenantState {
 
   if (serverTenant) return serverTenant;
 
-  if (clientSlug) {
+  // Server lookup fail ho to spinner par mat atko, normal path routing par jao
+  if (clientSlug && !error) {
     return {
       mode: 'subdomain',
       slug: clientSlug,
