@@ -1,5 +1,6 @@
 {
   "name": "White-Label Luxury Salon, Bridal Studio & Spa Platform",
   "description": "100% customizable white-label salon, bridal makeup studio, spa, and beauty academy web platform with live brand presets, theme engine, combo packages, and booking calculator.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

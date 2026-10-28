@@ -26,7 +26,7 @@ export const aiRouter = Router();
 
 const aiLimiter = rateLimit({ windowMs: 60_000, max: 30, key: 'ai' });
 
-const MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+const MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 const TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS || 12_000);
 
 /** Lazily loads the SDK so a missing/optional dependency never breaks boot. */
@@ -201,6 +201,29 @@ aiRouter.post('/review-reply', requireAuth, aiLimiter, async (req, res, next) =>
     if (err instanceof ValidationError) return next(err);
     console.error('[ai] review-reply handler failed', err.message);
     res.json({ reply: fallbackReviewReply(req.body || {}), source: 'fallback', warnings: ['Generation failed; used local template.'] });
+  }
+});
+
+aiRouter.post('/recommendations', aiLimiter, async (req, res, next) => {
+  try {
+    const bookingHistory = req.body?.bookingHistory || [];
+    const preferences = req.body?.preferences || {};
+    const servicesList = req.body?.servicesList || []; // Pass all services to Gemini
+    const prompt = `Based on the user's booking history: ${JSON.stringify(bookingHistory)} 
+                    and preferences: ${JSON.stringify(preferences)}, 
+                    recommend 3 services from this list: ${JSON.stringify(servicesList)}. 
+                    Return only the service IDs in a JSON array.`;
+    const { text, warning } = await callGemini(prompt);
+    let recommendations = [];
+    try {
+      recommendations = JSON.parse(text || '[]');
+    } catch (e) {
+      recommendations = [];
+    }
+    res.json({ recommendations, source: text ? 'ai' : 'fallback', warnings: warning ? [warning] : [] });
+  } catch (err) {
+    console.error('[ai] recommendations handler failed', err.message);
+    res.json({ recommendations: [], source: 'fallback', warnings: ['Generation failed.'] });
   }
 });
 

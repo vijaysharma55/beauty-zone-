@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { SmartImage } from './SmartImage';
 import { optimizeImageFile } from '../../lib/imageUtils';
+import { ImageUploadComponent } from '../ImageUploadComponent';
 
 export type EditorFieldType =
   | 'text'
@@ -87,103 +88,26 @@ const ImageField: React.FC<{
   highlighted?: boolean;
   onChange: (value: string) => void;
 }> = ({ field, value, error, highlighted, onChange }) => {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState('');
-
-  const handleFile = async (file: File | undefined) => {
-    if (!file) return;
-    setUploadError('');
-    setUploading(true);
-    try {
-      const dataUrl = await optimizeImageFile(file);
-      onChange(dataUrl);
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : 'Could not read that image.');
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = '';
-    }
-  };
-
   return (
     <div
       id={fieldId(field.key)}
-      className={`sm:col-span-2 rounded-2xl border bg-[#FAF5E5]/45 p-3.5 transition-all ${
+      className={`sm:col-span-2 rounded-2xl border transition-all ${
         highlighted ? 'border-[#D09A40] ring-2 ring-[#D09A40]/35' : 'border-[#0F172A]/10'
       }`}
     >
-      <p className={labelClass}>{field.label}</p>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-        <div
-          className={`relative w-full shrink-0 overflow-hidden rounded-xl border border-[#0F172A]/10 bg-neutral-100 sm:w-40 ${
-            field.aspect || 'aspect-video'
-          }`}
-        >
-          <SmartImage src={value || undefined} alt={`${field.label} preview`} />
-        </div>
-
-        <div className="min-w-0 flex-1 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
-              className="hidden"
-              onChange={(event) => handleFile(event.target.files?.[0])}
-            />
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              disabled={uploading}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-[#0F172A]/15 bg-white px-3 py-2 text-[11px] font-bold text-[#0F172A] transition-colors hover:border-[#D09A40] hover:bg-[#FAF5E5] disabled:opacity-60 cursor-pointer"
-            >
-              {uploading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <ImagePlus className="h-3.5 w-3.5 text-[#D09A40]" />
-              )}
-              {uploading ? 'Optimising…' : value ? 'Replace image' : 'Upload image'}
-            </button>
-
-            {value && (
-              <button
-                type="button"
-                onClick={() => onChange('')}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-white px-2.5 py-2 text-[11px] font-bold text-red-700 transition-colors hover:bg-red-50 cursor-pointer"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Remove
-              </button>
-            )}
-
-            <span className="inline-flex items-center gap-1 text-[10px] font-mono text-neutral-400">
-              <Link2 className="h-3 w-3" />
-              or paste a URL below
-            </span>
-          </div>
-
-          <input
-            type="url"
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            placeholder="https://images.example.com/photo.jpg"
-            className={`${inputClass} font-mono text-[11px]`}
-          />
-
-          <p className="text-[10px] leading-relaxed text-neutral-500">
-            {field.help ||
-              'Images are cropped with object-fit: cover inside a fixed frame, so any aspect ratio stays sharp and never stretches the card.'}
-          </p>
-
-          {(uploadError || error) && (
-            <p className="flex items-center gap-1 text-[10px] font-semibold text-red-600">
-              <AlertCircle className="h-3 w-3 shrink-0" />
-              {uploadError || error}
-            </p>
-          )}
-        </div>
-      </div>
+      <ImageUploadComponent
+        value={value}
+        onChange={onChange}
+        label={field.label}
+        help={field.help}
+        aspect={field.aspect || 'aspect-video'}
+      />
+      {error && (
+        <p className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-red-600 px-4 pb-2">
+          <AlertCircle className="h-3 w-3 shrink-0" />
+          {error}
+        </p>
+      )}
     </div>
   );
 };

@@ -1,16 +1,16 @@
 import React, { useRef, useState } from 'react';
-import { ImagePlus, Loader2, Link2, Trash2 } from 'lucide-react';
-import { api, errorMessage } from '../../lib/api';
+import { ImagePlus, Loader2, Link2, Trash2, AlertCircle } from 'lucide-react';
+import { optimizeImageFile } from '../../lib/imageUtils';
 import { Button, Input } from '../ui';
 
 export const ImageUploader: React.FC<{
   label: string;
   value: string;
-  kind: 'logo' | 'cover' | 'gallery' | 'staff';
+  kind?: 'logo' | 'cover' | 'gallery' | 'staff' | 'service';
   onChange: (url: string) => void;
   hint?: string;
   previewClassName?: string;
-}> = ({ label, value, kind, onChange, hint, previewClassName = 'h-24 w-24 rounded-xl' }) => {
+}> = ({ label, value, onChange, hint, previewClassName = 'h-24 w-24 rounded-xl' }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
@@ -22,10 +22,11 @@ export const ImageUploader: React.FC<{
     setError('');
     setUploading(true);
     try {
-      const result = await api.upload(file, kind);
-      onChange(result.url);
+      // FileReader API via optimizeImageFile for local preview & optimization
+      const dataUrl = await optimizeImageFile(file);
+      onChange(dataUrl);
     } catch (err) {
-      setError(errorMessage(err));
+      setError(err instanceof Error ? err.message : 'Could not read image file.');
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = '';
@@ -62,7 +63,7 @@ export const ImageUploader: React.FC<{
             onClick={() => inputRef.current?.click()}
           >
             {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
-            {value ? 'Replace' : 'Upload image'}
+            {value ? 'Replace Image' : 'Upload Image (FileReader)'}
           </Button>
           <Button type="button" variant="ghost" size="sm" onClick={() => setShowUrl((v) => !v)}>
             <Link2 className="h-3.5 w-3.5" /> Use URL
@@ -97,7 +98,12 @@ export const ImageUploader: React.FC<{
         </div>
       )}
       {hint && <p className="mt-1.5 text-xs text-slate-500">{hint}</p>}
-      {error && <p className="mt-1.5 text-xs text-red-600">{error}</p>}
+      {error && (
+        <p className="mt-1.5 flex items-center gap-1 text-xs font-semibold text-red-600">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          {error}
+        </p>
+      )}
     </div>
   );
 };

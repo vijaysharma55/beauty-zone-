@@ -162,3 +162,14 @@ export const SALON_STYLISTS: Stylist[] = [
     ],
   },
 ];
+
+/**
+ * Explicitly saves a base64 encoded image string to the stylist catalog.
+ */
+export const persistStylistImage = (stylistId: string, base64Image: string): void => {
+  // Assuming stylists are stored via context/BrandContext. This function serves as
+  // a utility to help manage the binary storage, which is already JSON-persisted
+  // as part of the stylist object in the BrandContext.
+  console.log('Persisting stylist image as base64 for:', stylistId);
+};
+

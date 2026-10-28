@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
-import { CheckCircle2, KeyRound, LogOut, ShieldCheck } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { CheckCircle2, KeyRound, LogOut, ShieldCheck, Download, Upload } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api, errorMessage } from '../../lib/api';
 import { Alert, Badge, Button, Card, CardHeader, Field, Input, PageHeader, formatDate } from '../ui';
+import { useBrand } from '../../context/BrandContext';
 
 export const AccountPage: React.FC = () => {
   const { user, logoutAll } = useAuth();
+  const { exportConfigJson, importConfigJson } = useBrand();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -53,12 +56,40 @@ export const AccountPage: React.FC = () => {
     }
   };
 
+  const handleExportData = () => {
+    const data = exportConfigJson();
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `salon-data-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportData = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError('');
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const json = event.target?.result as string;
+      const result = importConfigJson(json);
+      if (result.success) {
+        setNotice('Data restored successfully!');
+      } else {
+        setError(result.error || 'Failed to restore data.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Account"
         title="Account & security"
-        description="Manage your sign-in credentials and active sessions."
+        description="Manage your sign-in credentials, active sessions, and data."
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -85,54 +116,69 @@ export const AccountPage: React.FC = () => {
         </Card>
 
         <Card>
-          <CardHeader
-            title={user?.authProvider === 'google' && !currentPassword ? 'Set a password' : 'Change password'}
-            description="Use at least 8 characters with a letter and a number."
-          />
-          <form onSubmit={handlePassword} className="space-y-4 p-5">
-            {error && <Alert tone="error">{error}</Alert>}
-            {notice && (
-              <Alert tone="success">
-                <span className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4" /> {notice}
-                </span>
-              </Alert>
-            )}
-            <Field label="Current password" htmlFor="current-password">
-              <Input
-                id="current-password"
-                type="password"
-                autoComplete="current-password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                placeholder="Enter current password"
-              />
-            </Field>
-            <Field label="New password" htmlFor="new-password">
-              <Input
-                id="new-password"
-                type="password"
-                autoComplete="new-password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-              />
-            </Field>
-            <Field label="Confirm new password" htmlFor="confirm-password">
-              <Input
-                id="confirm-password"
-                type="password"
-                autoComplete="new-password"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-              />
-            </Field>
-            <Button type="submit" variant="gold" loading={saving}>
-              <KeyRound className="h-4 w-4" /> Update password
+          <CardHeader title="Data Management" description="Export or restore your salon configuration." />
+          <div className="space-y-4 p-5">
+            <Button variant="secondary" onClick={handleExportData} className="w-full">
+              <Download className="h-4 w-4 mr-2" /> Export salon data (JSON)
             </Button>
-          </form>
+            <Button variant="secondary" onClick={() => fileInputRef.current?.click()} className="w-full">
+              <Upload className="h-4 w-4 mr-2" /> Restore data from JSON
+            </Button>
+            <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleImportData} />
+            {error && <Alert tone="error">{error}</Alert>}
+            {notice && <Alert tone="success">{notice}</Alert>}
+          </div>
         </Card>
       </div>
 
+      <Card>
+        <CardHeader
+          title={user?.authProvider === 'google' && !currentPassword ? 'Set a password' : 'Change password'}
+          description="Use at least 8 characters with a letter and a number."
+        />
+        <form onSubmit={handlePassword} className="space-y-4 p-5">
+          {error && !notice && <Alert tone="error">{error}</Alert>}
+          {notice && (
+            <Alert tone="success">
+              <span className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4" /> {notice}
+              </span>
+            </Alert>
+          )}
+          <Field label="Current password" htmlFor="current-password">
+            <Input
+              id="current-password"
+              type="password"
+              autoComplete="current-password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="Enter current password"
+            />
+          </Field>
+          <Field label="New password" htmlFor="new-password">
+            <Input
+              id="new-password"
+              type="password"
+              autoComplete="new-password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+          </Field>
+          <Field label="Confirm new password" htmlFor="confirm-password">
+            <Input
+              id="confirm-password"
+              type="password"
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+            />
+          </Field>
+          <Button type="submit" variant="gold" loading={saving}>
+            <KeyRound className="h-4 w-4" /> Update password
+          </Button>
+        </form>
+      </Card>
+      
       <Card>
         <CardHeader title="Sessions" description="Sign out of every browser and device where you're logged in." />
         <div className="flex flex-wrap items-center justify-between gap-3 p-5">
@@ -153,3 +199,4 @@ export const AccountPage: React.FC = () => {
     </div>
   );
 };
+

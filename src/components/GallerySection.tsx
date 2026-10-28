@@ -286,17 +286,65 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
             {/* View Switcher: Photo Gallery vs Videos & Instagram Reels */}
             <div className="flex flex-wrap items-center gap-2">
               {(onUpdateGallery || onUpdateVideos) && (
-                <ManageControls
-                  isManaging={isManaging}
-                  onToggle={toggleManaging}
-                  onAdd={
-                    mainView === 'photos'
-                      ? () => galleryManager.openCreate()
-                      : () => videoManager.openCreate()
-                  }
-                  addLabel={mainView === 'photos' ? 'Add Photo' : 'Add Reel'}
-                />
+                <div className="flex items-center gap-2">
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    className="hidden"
+                    id="batch-gallery-upload"
+                    onChange={async (e) => {
+                      if (!e.target.files) return;
+                      const files = Array.from(e.target.files);
+                      const newGalleryItems = [...galleryItems];
+                      
+                      for (const file of files) {
+                        try {
+                          const optimizedUrl = await import('../lib/imageUtils').then(m => m.optimizeImageFile(file));
+                          newGalleryItems.unshift({
+                            id: `gal-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                            type: 'photo',
+                            title: file.name.split('.')[0],
+                            description: '',
+                            category: GALLERY_CATEGORIES[0],
+                            service: GALLERY_SERVICES[0],
+                            image: optimizedUrl,
+                            sort_order: 1,
+                            featured: false,
+                            active: true,
+                            created_at: new Date().toISOString().slice(0, 10),
+                          });
+                        } catch (err) {
+                          console.error('Failed to process image:', err);
+                        }
+                      }
+                      onUpdateGallery?.(newGalleryItems);
+                      galleryManager.notify(`Added ${files.length} photos.`);
+                      e.target.value = '';
+                    }}
+                  />
+                  {isManaging && mainView === 'photos' && (
+                    <label
+                      htmlFor="batch-gallery-upload"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-[#D09A40]/40 bg-[#FAF5E5] px-3.5 py-2 text-xs font-bold text-[#0F172A] transition-colors hover:bg-[#D09A40]/20 cursor-pointer shadow-sm"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Batch Upload
+                    </label>
+                  )}
+                  <ManageControls
+                    isManaging={isManaging}
+                    onToggle={toggleManaging}
+                    onAdd={
+                      mainView === 'photos'
+                        ? () => galleryManager.openCreate()
+                        : () => videoManager.openCreate()
+                    }
+                    addLabel={mainView === 'photos' ? 'Add Photo' : 'Add Reel'}
+                  />
+                </div>
               )}
+
 
               <div className="bg-white p-1.5 rounded-2xl border border-[#0F172A]/15 shadow-xs flex items-center gap-1">
                 <button

@@ -83,10 +83,14 @@ export function extractSubdomainSlug(hostHeader) {
 
   // Verify that the suffix (remaining domain) is a known root domain
   const suffix = parts.slice(1).join('.');
-  // Check e2b preview hosts: port-sandboxId.e2b.app — treat as root, no tenant
+  // Check preview infra domains — treat as platform root, no tenant
   if (suffix.endsWith('e2b.app')) return null;
   if (suffix.endsWith('onrender.com')) return null;
   if (suffix.endsWith('netlify.app')) return null;
+  if (suffix.endsWith('run.app')) return null;
+  if (suffix.endsWith('aistudio.google')) return null;
+  if (suffix.endsWith('googleusercontent.com')) return null;
+  if (suffix.endsWith('cloudshell.dev')) return null;
 
   // Allow wildcard root pattern: any *.vercel.app → treat first label as tenant only if platform domain matches
   // For custom domains, allow any 3+ label host to be a subdomain of its parent

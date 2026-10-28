@@ -337,20 +337,11 @@ export const SalonSite: React.FC<{
                   style={{ borderColor: `${primary}12`, backgroundColor: background }}
                 >
                   <div className="flex items-center gap-3">
-                    {member.photoUrl ? (
-                      <img
-                        src={member.photoUrl}
-                        alt={member.name}
-                        className="h-12 w-12 rounded-full object-cover"
-                      />
-                    ) : (
-                      <span
-                        className="flex h-12 w-12 items-center justify-center rounded-full font-serif text-lg font-bold"
-                        style={{ backgroundColor: `${accent}26`, color: accent }}
-                      >
-                        {initials(member.name)}
-                      </span>
-                    )}
+                    <img
+                      src={member.photoUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80'}
+                      alt={member.name}
+                      className="h-12 w-12 rounded-full object-cover border border-[#D09A40]/30"
+                    />
                     <div className="min-w-0">
                       <h3 className="truncate font-semibold">{member.name}</h3>
                       {member.roleTitle && (

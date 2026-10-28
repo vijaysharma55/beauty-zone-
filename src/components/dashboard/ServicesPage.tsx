@@ -17,6 +17,7 @@ import {
   Toggle,
   formatCurrency,
 } from '../ui';
+import { ImageUploader } from './ImageUploader';
 
 const CATEGORIES = ['bridal', 'hair', 'skin', 'nails', 'spa', 'academy', 'makeup', 'other'];
 
@@ -26,6 +27,7 @@ interface Draft {
   description: string;
   price: string;
   durationMinutes: string;
+  imageUrl: string;
   active: boolean;
 }
 
@@ -35,6 +37,7 @@ const emptyDraft: Draft = {
   description: '',
   price: '',
   durationMinutes: '60',
+  imageUrl: '',
   active: true,
 };
 
@@ -89,6 +92,7 @@ export const ServicesPage: React.FC = () => {
       description: service.description,
       price: (service.pricePaise / 100).toString(),
       durationMinutes: String(service.durationMinutes),
+      imageUrl: service.imageUrl || '',
       active: service.active,
     });
     setError('');
@@ -113,6 +117,7 @@ export const ServicesPage: React.FC = () => {
         description: draft.description.trim(),
         pricePaise: Math.round(priceNumber * 100),
         durationMinutes: duration,
+        imageUrl: draft.imageUrl,
         active: draft.active,
       };
       if (editing) {
@@ -178,95 +183,98 @@ export const ServicesPage: React.FC = () => {
       {error && !modalOpen && <Alert tone="error">{error}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}
 
-      <Card>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <Scissors className="h-4 w-4 text-[#D09A40]" />
-            {services.length} service{services.length === 1 ? '' : 's'} ·{' '}
-            {services.filter((s) => s.active).length} active
-          </div>
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search services…"
-            className="max-w-xs"
-            aria-label="Search services"
-          />
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search services…"
+          className="max-w-xs"
+        />
+        <p className="text-xs text-slate-500">
+          Showing <strong className="text-slate-900">{filtered.length}</strong> of {services.length} services
+        </p>
+      </div>
 
-        {loading ? (
-          <p className="px-5 py-10 text-center text-sm text-slate-500">Loading services…</p>
-        ) : filtered.length === 0 ? (
-          <EmptyState
-            icon={<Scissors className="h-6 w-6" />}
-            title={services.length === 0 ? 'No services yet' : 'No matches'}
-            description={
-              services.length === 0
-                ? 'Add your first service with a price and duration — it will appear on your website immediately.'
-                : 'Try a different search term.'
-            }
-            action={
-              services.length === 0 ? (
-                <Button variant="gold" onClick={openCreate}>
-                  <Plus className="h-4 w-4" /> Add your first service
-                </Button>
-              ) : undefined
-            }
-          />
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {filtered.map((service) => (
-              <div key={service.id} className="flex flex-wrap items-center gap-3 px-5 py-4">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-medium text-slate-900">{service.name}</p>
-                    <Badge tone="slate">{service.category}</Badge>
-                    {!service.active && <Badge tone="amber">Hidden</Badge>}
+      {loading ? (
+        <Card className="p-12 text-center">
+          <p className="text-sm text-slate-500">Loading services…</p>
+        </Card>
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={<Scissors className="h-6 w-6" />}
+          title="No services found"
+          description={query ? 'Try a different search term.' : 'Add your first salon treatment to get started.'}
+          action={
+            <Button variant="gold" onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Add service
+            </Button>
+          }
+        />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((service) => (
+            <Card key={service.id} className="flex flex-col justify-between p-5">
+              <div className="space-y-3">
+                {service.imageUrl && (
+                  <div className="relative h-36 w-full overflow-hidden rounded-xl bg-slate-100">
+                    <img src={service.imageUrl} alt={service.name} className="h-full w-full object-cover" />
                   </div>
-                  {service.description && (
-                    <p className="mt-0.5 line-clamp-1 text-xs text-slate-500">{service.description}</p>
-                  )}
-                  <p className="mt-1 text-xs text-slate-500">{service.durationMinutes} minutes</p>
+                )}
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                      {service.category}
+                    </span>
+                    <h3 className="font-serif text-lg font-bold text-slate-900">{service.name}</h3>
+                  </div>
+                  <Badge tone={service.active ? 'green' : 'slate'}>
+                    {service.active ? 'Active' : 'Hidden'}
+                  </Badge>
                 </div>
-                <div className="text-right">
-                  <p className="font-semibold text-slate-900">{formatCurrency(service.pricePaise)}</p>
+                {service.description && (
+                  <p className="text-xs text-slate-600 line-clamp-2">{service.description}</p>
+                )}
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700 pt-2 border-t border-slate-100">
+                  <span className="font-mono text-sm text-slate-900">{formatCurrency(service.price)}</span>
+                  <span>{service.durationMinutes} mins</span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <Toggle
-                    checked={service.active}
-                    onChange={() => toggleActive(service)}
-                    label={`${service.active ? 'Hide' : 'Show'} ${service.name} on the website`}
-                    hideLabel
-                  />
-                  <Button variant="ghost" size="sm" onClick={() => openEdit(service)} aria-label={`Edit ${service.name}`}>
-                    <Pencil className="h-4 w-4" />
+              </div>
+
+              <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                <Toggle
+                  checked={service.active}
+                  onChange={() => toggleActive(service)}
+                  label="Visible"
+                />
+                <div className="flex gap-1.5">
+                  <Button variant="secondary" size="sm" onClick={() => openEdit(service)}>
+                    <Pencil className="h-3.5 w-3.5" /> Edit
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="text-red-600 hover:bg-red-50 hover:text-red-700"
                     onClick={() => setDeleteTarget(service)}
-                    aria-label={`Delete ${service.name}`}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-3.5 w-3.5" /> Remove
                   </Button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </Card>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editing ? 'Edit service' : 'Add service'}
+        title={editing ? 'Edit service' : 'Add new service'}
         footer={
           <>
             <Button variant="ghost" onClick={() => setModalOpen(false)}>
               Cancel
             </Button>
-            <Button variant="gold" onClick={save} loading={saving}>
+            <Button variant="gold" onClick={(e: any) => save(e)} loading={saving}>
               {editing ? 'Save changes' : 'Add service'}
             </Button>
           </>
@@ -279,20 +287,20 @@ export const ServicesPage: React.FC = () => {
               id="service-name"
               value={draft.name}
               onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-              placeholder="HD Airbrush Bridal Makeover"
+              placeholder="Royal HD Bridal Makeover"
               required
             />
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Category" htmlFor="service-category">
+            <Field label="Category" htmlFor="service-category" required>
               <Select
                 id="service-category"
                 value={draft.category}
                 onChange={(e) => setDraft({ ...draft, category: e.target.value })}
               >
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c.charAt(0).toUpperCase() + c.slice(1)}
+                {CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat.charAt(0).toUpperCase() + cat.slice(1)}
                   </option>
                 ))}
               </Select>
@@ -308,26 +316,34 @@ export const ServicesPage: React.FC = () => {
                 required
               />
             </Field>
-            <Field label="Price (₹)" htmlFor="service-price" required hint="Enter the full price in rupees.">
-              <Input
-                id="service-price"
-                type="number"
-                min={0}
-                step="1"
-                value={draft.price}
-                onChange={(e) => setDraft({ ...draft, price: e.target.value })}
-                placeholder="4999"
-                required
-              />
-            </Field>
-            <div className="flex items-end pb-1">
-              <Toggle
-                checked={draft.active}
-                onChange={(v) => setDraft({ ...draft, active: v })}
-                label="Visible on website"
-                description="Hidden services remain in your catalogue."
-              />
-            </div>
+          </div>
+          <Field label="Price (₹)" htmlFor="service-price" required hint="Enter the full price in rupees.">
+            <Input
+              id="service-price"
+              type="number"
+              min={0}
+              step="1"
+              value={draft.price}
+              onChange={(e) => setDraft({ ...draft, price: e.target.value })}
+              placeholder="4999"
+              required
+            />
+          </Field>
+          <ImageUploader
+            label="Service Image"
+            kind="service"
+            value={draft.imageUrl}
+            onChange={(url) => setDraft({ ...draft, imageUrl: url })}
+            hint="Upload a photo for this service using FileReader preview."
+            previewClassName="h-24 w-32 rounded-xl"
+          />
+          <div className="flex items-end pb-1">
+            <Toggle
+              checked={draft.active}
+              onChange={(v) => setDraft({ ...draft, active: v })}
+              label="Visible on website"
+              description="Hidden services remain in your catalogue."
+            />
           </div>
           <Field label="Description" htmlFor="service-description">
             <Textarea

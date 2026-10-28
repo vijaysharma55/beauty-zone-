@@ -13,6 +13,7 @@ import { BeautyRewardsSection } from './components/BeautyRewardsSection';
 import { DigitalGiftCardSection } from './components/DigitalGiftCardSection';
 import { TestimonialsSection } from './components/TestimonialsSection';
 import { StylistsSection } from './components/StylistsSection';
+import { RecommendedServicesSection } from './components/RecommendedServicesSection';
 import { FoundersNote } from './components/FoundersNote';
 import { SalonsLocations } from './components/SalonsLocations';
 import { FAQSection } from './components/FAQSection';
@@ -40,6 +41,7 @@ import { ServicesPage } from './components/dashboard/ServicesPage';
 import { StaffPage } from './components/dashboard/StaffPage';
 import { BillingPage } from './components/dashboard/BillingPage';
 import { BookingsPage } from './components/dashboard/BookingsPage';
+import { AnalyticsPage } from './components/dashboard/AnalyticsPage';
 import { AccountPage } from './components/dashboard/AccountPage';
 import { PreviewPage } from './components/dashboard/PreviewPage';
 import { AdminLayout } from './components/admin/AdminLayout';
@@ -178,7 +180,7 @@ function MarketingSite() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#FAF5E5] text-[#0F172A] selection:bg-[#D09A40] selection:text-[#0F172A] pb-16 lg:pb-0">
+    <div className="min-h-screen w-full flex flex-col bg-[#FAF5E5] text-[#0F172A] selection:bg-[#D09A40] selection:text-[#0F172A] pb-16 lg:pb-0">
       {/* Sticky Navigation Header */}
       <Navbar
         onNavigate={scrollToSection}
@@ -187,7 +189,7 @@ function MarketingSite() {
       />
 
       {/* Main Content */}
-      <main className="flex-grow">
+      <main className="w-full flex-grow">
         {/* 1. Full Viewport Hero Section */}
         <Hero
           onBookClick={handleHeroBookClick}
@@ -230,6 +232,12 @@ function MarketingSite() {
             onUpdateServices={handleUpdateServices}
           />
         )}
+
+        {/* AI-Powered Recommendations */}
+        <RecommendedServicesSection
+          services={services}
+          onSelectService={handleSelectServiceFromList}
+        />
 
         {/* 4. Bridal Studio Spotlight Banner */}
         {brand.sections.showBridalSpotlight && (
@@ -392,6 +400,7 @@ export function App() {
         <Route path="approval" element={<ApprovalPage />} />
         <Route path="preview" element={<PreviewPage />} />
         <Route path="bookings" element={<BookingsPage />} />
+        <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="billing" element={<BillingPage />} />
         <Route path="account" element={<AccountPage />} />
       </Route>

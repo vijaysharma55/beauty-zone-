@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { Image as ImageIcon } from 'lucide-react';
 
 interface SmartImageProps {
   src?: string;
@@ -9,10 +8,11 @@ interface SmartImageProps {
   referrerPolicy?: React.HTMLAttributeReferrerPolicy;
 }
 
+const DEFAULT_SALON_IMAGE = 'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=1200&q=80';
+
 /**
- * An <img> that always fills its parent and gracefully swaps to a neutral
- * placeholder when a URL breaks. Parents are expected to own the fixed
- * height / aspect ratio so a broken image can never shift the layout.
+ * An <img> that always fills its parent and gracefully swaps to a professional
+ * default salon photo when a URL breaks or is missing.
  */
 export const SmartImage: React.FC<SmartImageProps> = ({
   src,
@@ -21,30 +21,17 @@ export const SmartImage: React.FC<SmartImageProps> = ({
   fallbackClassName = '',
   referrerPolicy = 'no-referrer',
 }) => {
-  const [failed, setFailed] = useState(!src);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    setFailed(!src);
+    setFailed(false);
   }, [src]);
 
-  if (failed || !src) {
-    return (
-      <div
-        role="img"
-        aria-label={alt}
-        className={`flex h-full w-full flex-col items-center justify-center gap-1 bg-gradient-to-br from-[#FAF5E5] to-neutral-200 text-[#D09A40] ${fallbackClassName}`}
-      >
-        <ImageIcon className="h-6 w-6 opacity-70" aria-hidden="true" />
-        <span className="px-2 text-center text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
-          Image unavailable
-        </span>
-      </div>
-    );
-  }
+  const imageSrc = !failed && src && src.trim() !== '' ? src : DEFAULT_SALON_IMAGE;
 
   return (
     <img
-      src={src}
+      src={imageSrc}
       alt={alt}
       loading="lazy"
       decoding="async"

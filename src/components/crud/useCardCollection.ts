@@ -91,5 +91,6 @@ export function useCardCollection<T extends { id: string }>(
     saveItem,
     removeItem,
     notice,
+    notify: setNotice,
   };
 }

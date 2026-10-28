@@ -82,7 +82,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     >
       {/* Top Info Strip - Desktop Only */}
       <div className="hidden lg:block border-b border-white/10 pb-2 mb-3">
-        <div className="max-w-7xl mx-auto px-6 flex items-center justify-between text-xs text-[#FAF5E5]/80">
+        <div className="w-full px-4 flex items-center justify-between text-xs text-[#FAF5E5]/80">
           <div className="flex items-center space-x-6">
             <span className="flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-[#D09A40]" />
@@ -157,7 +157,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       </div>
 
       {/* Main Nav Bar */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between">
+      <div className="w-full px-4 flex items-center justify-between">
         {/* Brand Emblem */}
         <button
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}

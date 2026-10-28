@@ -612,16 +612,16 @@ export function seedIfEmpty(hashPassword) {
   services.forEach((s, i) => seedService(salonId, s, i));
 
   const staffMembers = [
-    { name: 'Ananya Rathore', role_title: 'Creative Director — Bridal', bio: 'Celebrity bridal artist with 12+ years of editorial and wedding experience.', specialties: ['HD Bridal', 'Airbrush', 'Draping'] },
-    { name: 'Vikram Singh', role_title: 'Master Hair Stylist', bio: 'Balayage and precision-cut specialist trained in London and Milan.', specialties: ['Balayage', 'Keratin', 'Precision Cuts'] },
-    { name: 'Meera Nair', role_title: 'Senior Skin Therapist', bio: 'Clinical aesthetician focused on evidence-led glow and acne care.', specialties: ['HydraFacial', 'Peels', 'Acne Care'] },
-    { name: 'Zoya Khan', role_title: 'Nail Couture Artist', bio: 'Russian manicure and sculpted gel extension specialist.', specialties: ['Gel Extensions', 'Nail Art', 'Spa Manicure'] },
+    { name: 'Ananya Rathore', role_title: 'Creative Director — Bridal', bio: 'Celebrity bridal artist with 12+ years of editorial and wedding experience.', photo_url: '/images/stylist_bridal_ananya_1790677391838.jpg', specialties: ['HD Bridal', 'Airbrush', 'Draping'] },
+    { name: 'Vikram Singh', role_title: 'Master Hair Stylist', bio: 'Balayage and precision-cut specialist trained in London and Milan.', photo_url: '/images/stylist_hair_vikram_1790677441310.jpg', specialties: ['Balayage', 'Keratin', 'Precision Cuts'] },
+    { name: 'Meera Nair', role_title: 'Senior Skin Therapist', bio: 'Clinical aesthetician focused on evidence-led glow and acne care.', photo_url: '/images/stylist_skin_meera_1790677415028.jpg', specialties: ['HydraFacial', 'Peels', 'Acne Care'] },
+    { name: 'Zoya Khan', role_title: 'Nail Couture Artist', bio: 'Russian manicure and sculpted gel extension specialist.', photo_url: '/images/stylist_nail_zoya_1790677427488.jpg', specialties: ['Gel Extensions', 'Nail Art', 'Spa Manicure'] },
   ];
   staffMembers.forEach((m, i) => {
     db.prepare(
       `INSERT INTO staff (id, salon_id, name, role_title, bio, photo_url, specialties_json, active, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, '', ?, 1, ?, ?, ?)`
-    ).run(newId(), salonId, m.name, m.role_title, m.bio, JSON.stringify(m.specialties), i, ts, ts);
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`
+    ).run(newId(), salonId, m.name, m.role_title, m.bio, m.photo_url, JSON.stringify(m.specialties), i, ts, ts);
   });
 
   const periodEnd = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
@@ -630,5 +630,40 @@ export function seedIfEmpty(hashPassword) {
      VALUES (?, ?, 'elite', 'active', ?, ?, ?)`
   ).run(newId(), salonId, periodEnd, ts, ts);
 
+  seedJaipurSalons(ownerId, hashPassword, ts);
+
   return { seeded: true, adminEmail, ownerEmail };
+}
+
+function seedJaipurSalons(ownerId, hashPassword, ts) {
+  const landmarks = [
+    { name: 'Rambagh Palace Luxe', slug: 'rambagh-palace-luxe', addr: 'Rambagh Palace Road' },
+    { name: 'City Palace Beauty Studio', slug: 'city-palace-beauty', addr: 'City Palace Complex' },
+    { name: 'Jal Mahal Spa Retreat', slug: 'jal-mahal-spa', addr: 'Jal Mahal Road' },
+    { name: 'Amer Fort Elegance', slug: 'amer-fort-elegance', addr: 'Amer Road' },
+    { name: 'Civil Lines Premier', slug: 'civil-lines-premier', addr: 'Civil Lines' },
+    { name: 'C-Scheme Chic Salon', slug: 'c-scheme-chic', addr: 'C-Scheme' },
+    { name: 'Malviya Nagar Glow', slug: 'malviya-nagar-glow', addr: 'Malviya Nagar' },
+    { name: 'Raja Park Style Bar', slug: 'raja-park-style', addr: 'Raja Park' },
+    { name: 'Vaishali Nagar Luxe', slug: 'vaishali-nagar-luxe', addr: 'Vaishali Nagar' },
+    { name: 'Tonk Road Aesthetics', slug: 'tonk-road-aesthetics', addr: 'Tonk Road' },
+  ];
+
+  landmarks.forEach((l) => {
+    const salonId = newId();
+    db.prepare(
+      `INSERT INTO salons (id, owner_id, name, slug, tagline, description, city, state, country, status, website_published, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'Rajasthan', 'India', 'approved', 1, ?, ?)`
+    ).run(
+      salonId,
+      ownerId,
+      l.name,
+      l.slug,
+      'Premium Salon & Spa',
+      `Exquisite beauty services at ${l.addr}, Jaipur.`,
+      'Jaipur',
+      ts,
+      ts
+    );
+  });
 }

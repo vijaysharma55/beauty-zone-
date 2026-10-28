@@ -36,7 +36,7 @@ export const Footer: React.FC<FooterProps> = ({
 
   return (
     <footer className="bg-[#0F172A] text-[#FAF5E5] pt-16 pb-8 border-t border-[#D09A40]/20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6">
+      <div className="w-full px-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-10 pb-12 border-b border-white/10">
           {/* Column 1: Brand Identity */}
           <div className="lg:col-span-4 space-y-4">

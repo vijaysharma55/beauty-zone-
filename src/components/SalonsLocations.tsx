@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   MapPin,
@@ -13,20 +13,240 @@ import {
   ExternalLink,
   Copy,
   Check,
+  MessageSquare,
+  X,
+  Sparkles,
 } from 'lucide-react';
 import { WhatsAppIcon } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
+import { SalonBranch } from '../types';
+
+export interface BranchReview {
+  id: string;
+  branchId: string;
+  clientName: string;
+  rating: number; // 1-5
+  comment: string;
+  date: string;
+}
+
+const INITIAL_BRANCH_REVIEWS: BranchReview[] = [
+  {
+    id: 'rev-1',
+    branchId: 'flagship-central',
+    clientName: 'Priya Sharma',
+    rating: 5,
+    comment: 'Exceptional bridal service and luxurious ambiance at the central flagship! The staff is extremely professional.',
+    date: '2026-02-15',
+  },
+  {
+    id: 'rev-2',
+    branchId: 'studio-academy',
+    clientName: 'Neha Verma',
+    rating: 5,
+    comment: 'Got my Hydra-Facial done here. Skin is glowing! Highly recommend South Avenue branch.',
+    date: '2026-02-10',
+  },
+  {
+    id: 'rev-3',
+    branchId: 'westside-luxe',
+    clientName: 'Ananya Gupta',
+    rating: 5,
+    comment: 'Fantastic nail art and hair smoothing. Very clean and hygienic salon suites.',
+    date: '2026-01-28',
+  },
+];
 
 interface SalonsLocationsProps {
   onSelectBranchForBooking: (branchName: string) => void;
 }
 
+interface BranchReviewModalProps {
+  branch: SalonBranch;
+  reviews: BranchReview[];
+  onClose: () => void;
+  onSubmitReview: (review: Omit<BranchReview, 'id' | 'date'>) => void;
+}
+
+const BranchReviewModal: React.FC<BranchReviewModalProps> = ({
+  branch,
+  reviews,
+  onClose,
+  onSubmitReview,
+}) => {
+  const [rating, setRating] = useState<number>(5);
+  const [clientName, setClientName] = useState<string>('');
+  const [comment, setComment] = useState<string>('');
+  const [submitted, setSubmitted] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const branchReviews = reviews.filter((r) => r.branchId === branch.id);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clientName.trim()) {
+      setError('Please enter your name.');
+      return;
+    }
+    if (!comment.trim()) {
+      setError('Please write your feedback comment.');
+      return;
+    }
+    setError(null);
+    onSubmitReview({
+      branchId: branch.id,
+      clientName: clientName.trim(),
+      rating,
+      comment: comment.trim(),
+    });
+    setSubmitted(true);
+    setClientName('');
+    setComment('');
+    setTimeout(() => setSubmitted(false), 3000);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/70 p-4 backdrop-blur-sm"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-[#D09A40]/40 bg-white shadow-2xl">
+        {/* Header */}
+        <div className="flex shrink-0 items-center justify-between border-b border-[#0F172A]/10 bg-[#0F172A] px-6 py-4 text-white">
+          <div>
+            <h3 className="font-serif text-lg font-bold">{branch.name} Reviews & Ratings</h3>
+            <p className="text-xs text-white/70">Average Rating: {branch.googleRating} / 5 ({branch.reviewCount} reviews)</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 cursor-pointer"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {submitted && (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-center text-xs font-semibold text-emerald-800">
+              Thank you! Your feedback and rating have been successfully submitted and stored.
+            </div>
+          )}
+
+          {/* New Review Form */}
+          <form onSubmit={handleSubmit} className="rounded-2xl border border-[#0F172A]/10 bg-[#FAF5E5]/60 p-4 space-y-4">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">Leave Your Feedback & Rating</h4>
+            
+            <div>
+              <label className="block text-[11px] font-bold text-neutral-600 mb-1">Select Star Rating</label>
+              <div className="flex items-center gap-2">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setRating(star)}
+                    className="p-1 cursor-pointer transition-transform hover:scale-110"
+                  >
+                    <Star
+                      className={`w-6 h-6 ${
+                        star <= rating ? 'fill-[#D09A40] text-[#D09A40]' : 'text-neutral-300'
+                      }`}
+                    />
+                  </button>
+                ))}
+                <span className="text-xs font-bold text-[#0F172A] ml-2">{rating}.0 Stars</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-neutral-600 mb-1">Your Full Name</label>
+                <input
+                  type="text"
+                  value={clientName}
+                  onChange={(e) => setClientName(e.target.value)}
+                  placeholder="e.g. Ritu Singhal"
+                  className="w-full rounded-xl border border-[#0F172A]/15 bg-white px-3 py-2 text-xs text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-neutral-600 mb-1">Your Review / Feedback</label>
+              <textarea
+                rows={3}
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Share your experience with the stylists, ambience, and treatment..."
+                className="w-full rounded-xl border border-[#0F172A]/15 bg-white px-3 py-2 text-xs text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+              />
+            </div>
+
+            {error && <p className="text-xs font-semibold text-rose-600">{error}</p>}
+
+            <button
+              type="submit"
+              className="w-full py-2.5 rounded-xl bg-[#0F172A] hover:bg-[#D09A40] text-white hover:text-[#0F172A] font-bold text-xs transition-colors cursor-pointer shadow-sm"
+            >
+              Submit Rating & Feedback
+            </button>
+          </form>
+
+          {/* Existing Reviews List */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">Customer Feedback History ({branchReviews.length})</h4>
+            {branchReviews.length === 0 ? (
+              <p className="text-xs text-neutral-500 py-4 text-center">No reviews yet for this branch. Be the first to leave feedback!</p>
+            ) : (
+              branchReviews.map((rev) => (
+                <div key={rev.id} className="rounded-2xl border border-[#0F172A]/10 bg-white p-4 space-y-2 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-[#0F172A]">{rev.clientName}</span>
+                    <div className="flex items-center gap-1">
+                      <div className="flex items-center">
+                        {[1, 2, 3, 4, 5].map((s) => (
+                          <Star
+                            key={s}
+                            className={`w-3 h-3 ${s <= rev.rating ? 'fill-[#D09A40] text-[#D09A40]' : 'text-neutral-200'}`}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-[10px] text-neutral-400 font-mono ml-1">{rev.date}</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-[#4A4A4A] leading-relaxed">{rev.comment}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const SalonsLocations: React.FC<SalonsLocationsProps> = ({ onSelectBranchForBooking }) => {
-  const { brand, t } = useBrand();
+  const { brand, t, updateBrand } = useBrand();
   const [activeBranchId, setActiveBranchId] = useState<string>(
-    brand.branches[0]?.id || 'c-scheme'
+    brand.branches[0]?.id || 'flagship-central'
   );
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Reviews state stored in local storage
+  const [reviews, setReviews] = useState<BranchReview[]>(() => {
+    try {
+      const stored = localStorage.getItem('bz_branch_reviews');
+      if (stored) return JSON.parse(stored);
+    } catch (e) {
+      console.error(e);
+    }
+    return INITIAL_BRANCH_REVIEWS;
+  });
+
+  const [reviewModalBranch, setReviewModalBranch] = useState<SalonBranch | null>(null);
 
   const activeBranch =
     brand.branches.find((b) => b.id === activeBranchId) || brand.branches[0];
@@ -43,6 +263,41 @@ export const SalonsLocations: React.FC<SalonsLocationsProps> = ({ onSelectBranch
     navigator.clipboard.writeText(address);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 3000);
+  };
+
+  const handleSaveReview = (newReviewData: Omit<BranchReview, 'id' | 'date'>) => {
+    const createdReview: BranchReview = {
+      ...newReviewData,
+      id: `rev-${Date.now()}`,
+      date: new Date().toISOString().slice(0, 10),
+    };
+
+    const nextReviews = [createdReview, ...reviews];
+    setReviews(nextReviews);
+    try {
+      localStorage.setItem('bz_branch_reviews', JSON.stringify(nextReviews));
+    } catch (e) {
+      console.error(e);
+    }
+
+    // Recalculate average rating for this branch
+    const targetBranchId = newReviewData.branchId;
+    const branchReviews = nextReviews.filter((r) => r.branchId === targetBranchId);
+    const totalPoints = branchReviews.reduce((sum, r) => sum + r.rating, 0);
+    const newRating = branchReviews.length > 0 ? Math.round((totalPoints / branchReviews.length) * 10) / 10 : 5.0;
+
+    const updatedBranches = brand.branches.map((b) => {
+      if (b.id === targetBranchId) {
+        return {
+          ...b,
+          googleRating: newRating,
+          reviewCount: branchReviews.length,
+        };
+      }
+      return b;
+    });
+
+    updateBrand({ branches: updatedBranches });
   };
 
   // Google Maps directions URL targeting the specific branch address
@@ -119,11 +374,15 @@ export const SalonsLocations: React.FC<SalonsLocationsProps> = ({ onSelectBranch
                   <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full bg-[#D09A40] text-[#0F172A]">
                     {activeBranch?.isFlagship ? 'Main Flagship Studio' : activeBranch?.locality}
                   </span>
-                  <div className="flex items-center gap-1 text-xs font-bold text-[#FAF5E5]">
+                  <button
+                    onClick={() => setReviewModalBranch(activeBranch)}
+                    className="flex items-center gap-1 text-xs font-bold text-[#FAF5E5] bg-white/10 hover:bg-white/20 px-2.5 py-1 rounded-lg transition cursor-pointer"
+                    title="View & leave ratings"
+                  >
                     <Star className="w-3.5 h-3.5 fill-[#D09A40] text-[#D09A40]" />
                     <span>{activeBranch?.googleRating}</span>
                     <span className="text-white/60">({activeBranch?.reviewCount} reviews)</span>
-                  </div>
+                  </button>
                 </div>
 
                 <div>
@@ -234,7 +493,7 @@ export const SalonsLocations: React.FC<SalonsLocationsProps> = ({ onSelectBranch
                 }`}
               >
                 <div className="space-y-5">
-                  {/* Top Badge & Rating */}
+                  {/* Top Badge & Star Rating System */}
                   <div className="flex items-center justify-between gap-2">
                     <span
                       className={`text-[11px] uppercase tracking-wider font-bold px-3 py-1 rounded-full ${
@@ -245,17 +504,22 @@ export const SalonsLocations: React.FC<SalonsLocationsProps> = ({ onSelectBranch
                     >
                       {branch.isFlagship ? 'Main Flagship Salon' : branch.locality}
                     </span>
-                    <div className="flex items-center gap-1 text-xs font-bold">
-                      <Star className="w-4 h-4 fill-[#D09A40] text-[#D09A40]" />
+                    <button
+                      type="button"
+                      onClick={() => setReviewModalBranch(branch)}
+                      className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-xl transition cursor-pointer ${
+                        branch.isFlagship
+                          ? 'bg-white/10 hover:bg-white/20 text-[#FAF5E5]'
+                          : 'bg-[#FAF5E5] hover:bg-[#F2E8CD] text-[#0F172A] border border-[#D09A40]/30'
+                      }`}
+                      title="View average rating and leave feedback"
+                    >
+                      <Star className="w-3.5 h-3.5 fill-[#D09A40] text-[#D09A40]" />
                       <span>{branch.googleRating}</span>
-                      <span
-                        className={
-                          branch.isFlagship ? 'text-[#FAF5E5]/60' : 'text-[#4A4A4A]'
-                        }
-                      >
+                      <span className={branch.isFlagship ? 'text-[#FAF5E5]/60' : 'text-[#4A4A4A]'}>
                         ({branch.reviewCount})
                       </span>
-                    </div>
+                    </button>
                   </div>
 
                   {/* Branch Name & Address */}
@@ -321,20 +585,35 @@ export const SalonsLocations: React.FC<SalonsLocationsProps> = ({ onSelectBranch
 
                 {/* Action Buttons */}
                 <div className="mt-7 pt-4 border-t border-current/10 space-y-2.5">
-                  <button
-                    onClick={() => {
-                      setActiveBranchId(branch.id);
-                      onSelectBranchForBooking(branch.name);
-                    }}
-                    className={`w-full py-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                      branch.isFlagship
-                        ? 'bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A]'
-                        : 'bg-[#0F172A] hover:bg-[#D09A40] text-[#FAF5E5] hover:text-[#0F172A]'
-                    }`}
-                  >
-                    <Calendar className="w-4 h-4" />
-                    <span>Book at {branch.name.split(' ')[0]}</span>
-                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setReviewModalBranch(branch)}
+                      className={`py-2.5 px-3 rounded-xl font-semibold text-xs flex items-center justify-center gap-1.5 border transition-colors cursor-pointer ${
+                        branch.isFlagship
+                          ? 'border-white/20 bg-white/10 hover:bg-white/20 text-white'
+                          : 'border-[#D09A40]/40 bg-[#FAF5E5] hover:bg-[#F2E8CD] text-[#0F172A]'
+                      }`}
+                      title="Rate & Review this salon branch"
+                    >
+                      <Star className="w-3.5 h-3.5 fill-[#D09A40] text-[#D09A40]" />
+                      <span>Rate Salon</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setActiveBranchId(branch.id);
+                        onSelectBranchForBooking(branch.name);
+                      }}
+                      className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                        branch.isFlagship
+                          ? 'bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A]'
+                          : 'bg-[#0F172A] hover:bg-[#D09A40] text-[#FAF5E5] hover:text-[#0F172A]'
+                      }`}
+                    >
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span>Book Studio</span>
+                    </button>
+                  </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <a
@@ -395,6 +674,16 @@ export const SalonsLocations: React.FC<SalonsLocationsProps> = ({ onSelectBranch
           </button>
         </div>
       </div>
+
+      {/* Branch Review Modal */}
+      {reviewModalBranch && (
+        <BranchReviewModal
+          branch={reviewModalBranch}
+          reviews={reviews}
+          onClose={() => setReviewModalBranch(null)}
+          onSubmitReview={handleSaveReview}
+        />
+      )}
     </section>
   );
 };

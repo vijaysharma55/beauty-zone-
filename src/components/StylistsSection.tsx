@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { Stylist } from '../types';
-import { Award, Star, MapPin, Calendar, Sparkles, CheckCircle2, X, Eye, Plus } from 'lucide-react';
+import { Award, Star, MapPin, Calendar, Sparkles, CheckCircle2, X, Eye, Plus, Camera, ImagePlus, Loader2, Trash2 } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
 import { SmartImage } from './crud/SmartImage';
 import { ItemActions } from './crud/ItemActions';
 import { CardEditorModal, type EditorField } from './crud/CardEditorModal';
 import { CrudToast, ManageControls, ManageHint } from './crud/ManageControls';
 import { useCardCollection } from './crud/useCardCollection';
+import { optimizeImageFile } from '../lib/imageUtils';
 
 interface StylistsSectionProps {
   onBookWithStylist: (stylistName: string, branchName: string) => void;
@@ -142,6 +143,56 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
       ? brand.stylists
       : brand.stylists.filter((s) => s.category === activeFilter);
 
+  const [uploadingStylistId, setUploadingStylistId] = useState<string | null>(null);
+  const [addingPortfolio, setAddingPortfolio] = useState(false);
+
+  const handleQuickImageUpload = async (
+    stylistId: string,
+    file: File | undefined
+  ) => {
+    if (!file) return;
+    setUploadingStylistId(stylistId);
+    try {
+      const dataUrl = await optimizeImageFile(file);
+      const updatedStylists = brand.stylists.map((s) =>
+        s.id === stylistId ? { ...s, avatar: dataUrl } : s
+      );
+      updateBrand({ stylists: updatedStylists });
+      if (selectedStylist && selectedStylist.id === stylistId) {
+        setSelectedStylist((current) => (current ? { ...current, avatar: dataUrl } : null));
+      }
+      manager.notify('Stylist profile photo updated!');
+    } catch (err) {
+      console.error('[stylist photo upload]', err);
+    } finally {
+      setUploadingStylistId(null);
+    }
+  };
+
+  const handleAddPortfolioImage = async (file: File | undefined) => {
+    if (!file || !selectedStylist) return;
+    setAddingPortfolio(true);
+    try {
+      const dataUrl = await optimizeImageFile(file);
+      const newPortfolioItem = {
+        image: dataUrl,
+        title: 'Transformation Look',
+        description: 'Client makeover transformation photo',
+      };
+      const updatedPortfolio = [...(selectedStylist.portfolio || []), newPortfolioItem];
+      const updatedStylists = brand.stylists.map((s) =>
+        s.id === selectedStylist.id ? { ...s, portfolio: updatedPortfolio } : s
+      );
+      updateBrand({ stylists: updatedStylists });
+      setSelectedStylist({ ...selectedStylist, portfolio: updatedPortfolio });
+      manager.notify('Added transformation photo to portfolio!');
+    } catch (err) {
+      console.error('[portfolio photo upload]', err);
+    } finally {
+      setAddingPortfolio(false);
+    }
+  };
+
   const removeStylist = (id: string) => {
     setSelectedStylist((current) => (current?.id === id ? null : current));
     manager.removeItem(id);
@@ -229,10 +280,33 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
                     <span>{stylist.experience} Exp</span>
                   </div>
 
-                  {/* Rating Pill */}
-                  <div className="absolute top-3.5 right-12 bg-white/95 backdrop-blur-md text-[#0F172A] text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow-md">
-                    <Star className="w-3.5 h-3.5 fill-[#D09A40] text-[#D09A40]" />
-                    <span>{stylist.rating.toFixed(1)}</span>
+                  {/* Quick Photo Upload Button */}
+                  <div className="absolute top-3.5 right-3 z-10">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      id={`card-upload-stylist-${stylist.id}`}
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleQuickImageUpload(stylist.id, file);
+                        e.target.value = '';
+                      }}
+                    />
+                    <label
+                      htmlFor={`card-upload-stylist-${stylist.id}`}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/95 hover:bg-white text-[#0F172A] text-[11px] font-bold border border-[#D09A40]/40 shadow-md transition-all cursor-pointer hover:scale-105"
+                      title="Upload / Change Photo for this specialist"
+                    >
+                      {uploadingStylistId === stylist.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-[#D09A40]" />
+                      ) : (
+                        <Camera className="w-3.5 h-3.5 text-[#D09A40]" />
+                      )}
+                      <span className="hidden sm:inline">
+                        {uploadingStylistId === stylist.id ? 'Uploading…' : 'Photo'}
+                      </span>
+                    </label>
                   </div>
 
                   {/* Name & Title Overlay */}
@@ -339,11 +413,31 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
                 <X className="w-5 h-5" />
               </button>
 
-              <img
-                src={selectedStylist.avatar}
-                alt={selectedStylist.name}
-                className="w-24 h-24 rounded-2xl object-cover border-2 border-[#D09A40] shrink-0"
-              />
+              <div className="relative group shrink-0">
+                <img
+                  src={selectedStylist.avatar}
+                  alt={selectedStylist.name}
+                  className="w-24 h-24 rounded-2xl object-cover border-2 border-[#D09A40]"
+                />
+                <input
+                  type="file"
+                  accept="image/*"
+                  id={`modal-upload-stylist-${selectedStylist.id}`}
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleQuickImageUpload(selectedStylist.id, file);
+                    e.target.value = '';
+                  }}
+                />
+                <label
+                  htmlFor={`modal-upload-stylist-${selectedStylist.id}`}
+                  className="absolute inset-0 bg-black/60 rounded-2xl opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-[10px] font-bold transition-opacity cursor-pointer p-1 text-center"
+                >
+                  <Camera className="w-4 h-4 text-[#D09A40] mb-0.5" />
+                  <span>{uploadingStylistId === selectedStylist.id ? 'Uploading...' : 'Change Photo'}</span>
+                </label>
+              </div>
 
               <div className="space-y-1.5">
                 <div className="flex flex-wrap items-center gap-2">
@@ -411,9 +505,36 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
               </div>
 
               <div>
-                <h4 className="text-xs uppercase tracking-wider font-bold text-[#4A4A4A] mb-3">
-                  Recent Client Transformations by {selectedStylist.name.split(' ')[0]}
-                </h4>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3">
+                  <h4 className="text-xs uppercase tracking-wider font-bold text-[#4A4A4A]">
+                    Recent Client Transformations by {selectedStylist.name.split(' ')[0]}
+                  </h4>
+                  <div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      id={`upload-portfolio-${selectedStylist.id}`}
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleAddPortfolioImage(file);
+                        e.target.value = '';
+                      }}
+                    />
+                    <label
+                      htmlFor={`upload-portfolio-${selectedStylist.id}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0F172A] hover:bg-[#D09A40] text-white hover:text-[#0F172A] text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                    >
+                      {addingPortfolio ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <ImagePlus className="w-3.5 h-3.5 text-[#D09A40]" />
+                      )}
+                      <span>{addingPortfolio ? 'Uploading...' : '+ Add Photo'}</span>
+                    </label>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {selectedStylist.portfolio.map((item, idx) => (
                     <div

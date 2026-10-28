@@ -27,3 +27,13 @@ export const saveStoredServices = (services: ServiceItem[]): void => {
     console.error('Failed to save services to localStorage', e);
   }
 };
+
+/**
+ * Explicitly saves a base64 encoded image string to the service catalog.
+ */
+export const persistServiceImage = (serviceId: string, base64Image: string): void => {
+  const services = getStoredServices();
+  const updated = services.map((s) => (s.id === serviceId ? { ...s, image: base64Image } : s));
+  saveStoredServices(updated);
+};
+

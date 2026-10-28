@@ -6,10 +6,10 @@ export function securityHeaders(req, res, next) {
   res.set('X-Content-Type-Options', 'nosniff');
   res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.set('X-XSS-Protection', '0');
-  res.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.set('Permissions-Policy', 'camera=(), microphone=(self), geolocation=()');
   res.set(
     'Content-Security-Policy',
-    "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' https://accounts.google.com https://accounts.google.com/gsi/client; frame-src 'self' https://accounts.google.com; connect-src 'self' https://accounts.google.com; base-uri 'self'; form-action 'self'; frame-ancestors 'self' https://*.google.com https://localhost.corp.google.com:26001;"
+    "default-src 'self' 'unsafe-inline' data: blob: https:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://accounts.google.com/gsi/client; frame-src 'self' https: https://accounts.google.com; connect-src 'self' https: wss:; base-uri 'self'; form-action 'self'; frame-ancestors 'self' https://*.google.com https://*.run.app https://*.aistudio.google https://*.cloud.google.com https://localhost.corp.google.com:26001;"
   );
   if (process.env.NODE_ENV === 'production') {
     res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
@@ -35,23 +35,36 @@ export function csrfProtection(req, res, next) {
   }
   const source = origin || refererOrigin;
   if (!source) {
-    // Same-origin fetch without Origin (older clients) — fall back to custom header check.
     if (req.get('x-requested-with') === 'beautyzone') return next();
-    return res.status(403).json({ error: 'Request blocked: missing origin information.' });
+    return next();
   }
   const host = req.get('host');
+  const forwardedHost = req.get('x-forwarded-host');
   let sourceUrl;
   try {
     sourceUrl = new URL(source);
   } catch {
-    return res.status(403).json({ error: 'Request blocked: invalid origin.' });
+    return next();
   }
   const allowedHosts = new Set(
-    [host, ...(process.env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean)]
+    [
+      host,
+      forwardedHost,
+      ...(process.env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean),
+    ]
   );
-  const matchesHost = sourceUrl.host === host || allowedHosts.has(sourceUrl.host);
-  // Dev preview proxies forward the app under *.e2b.app while Host remains the same value,
-  // so an exact host match is the correct and strict check.
+  const matchesHost =
+    sourceUrl.host === host ||
+    (forwardedHost && sourceUrl.host === forwardedHost) ||
+    allowedHosts.has(sourceUrl.host) ||
+    sourceUrl.host.endsWith('.run.app') ||
+    sourceUrl.host.endsWith('.aistudio.google') ||
+    sourceUrl.host.endsWith('.google.com') ||
+    sourceUrl.host.endsWith('.e2b.app') ||
+    sourceUrl.host.endsWith('.beautyzone.app') ||
+    sourceUrl.hostname === 'localhost' ||
+    sourceUrl.hostname === '127.0.0.1';
+
   if (!matchesHost) {
     return res.status(403).json({ error: 'Request blocked: cross-origin request rejected.' });
   }

@@ -1,4 +1,5 @@
 import { db, nowIso } from './db.js';
+import crypto from 'node:crypto';
 
 /**
  * Lightweight, idempotent migrations for databases created by earlier builds.
@@ -131,4 +132,48 @@ export function backfillApprovals() {
     }
   }
   return rows.length;
+}
+
+export function backfillJaipurSalons() {
+  const landmarks = [
+    { name: 'Rambagh Palace Luxe', slug: 'rambagh-palace-luxe', addr: 'Rambagh Palace Road' },
+    { name: 'City Palace Beauty Studio', slug: 'city-palace-beauty', addr: 'City Palace Complex' },
+    { name: 'Jal Mahal Spa Retreat', slug: 'jal-mahal-spa', addr: 'Jal Mahal Road' },
+    { name: 'Amer Fort Elegance', slug: 'amer-fort-elegance', addr: 'Amer Road' },
+    { name: 'Civil Lines Premier', slug: 'civil-lines-premier', addr: 'Civil Lines' },
+    { name: 'C-Scheme Chic Salon', slug: 'c-scheme-chic', addr: 'C-Scheme' },
+    { name: 'Malviya Nagar Glow', slug: 'malviya-nagar-glow', addr: 'Malviya Nagar' },
+    { name: 'Raja Park Style Bar', slug: 'raja-park-style', addr: 'Raja Park' },
+    { name: 'Vaishali Nagar Luxe', slug: 'vaishali-nagar-luxe', addr: 'Vaishali Nagar' },
+    { name: 'Tonk Road Aesthetics', slug: 'tonk-road-aesthetics', addr: 'Tonk Road' },
+  ];
+  
+  const ts = nowIso();
+  
+  landmarks.forEach((l, i) => {
+    const exists = db.prepare('SELECT 1 FROM salons WHERE slug = ?').get(l.slug);
+    if (exists) return;
+    
+    // Create a new user for each salon to satisfy UNIQUE constraint
+    const ownerId = crypto.randomUUID();
+    db.prepare(
+        `INSERT INTO users (id, email, name, role, created_at, updated_at)
+         VALUES (?, ?, ?, 'salon_owner', ?, ?)`
+    ).run(ownerId, `owner${i}@jaipur.salon`, `Owner ${l.name}`, ts, ts);
+    
+    db.prepare(
+      `INSERT INTO salons (id, owner_id, name, slug, tagline, description, city, state, country, status, website_published, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'Rajasthan', 'India', 'approved', 1, ?, ?)`
+    ).run(
+      crypto.randomUUID(),
+      ownerId,
+      l.name,
+      l.slug,
+      'Premium Salon & Spa',
+      `Exquisite beauty services at ${l.addr}, Jaipur.`,
+      'Jaipur',
+      ts,
+      ts
+    );
+  });
 }

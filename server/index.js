@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import './migrations.js';
 import { seedIfEmpty, UPLOAD_DIR, DATA_PATH, DEFAULT_TIMINGS } from './db.js';
-import { backfillApprovals, backfillTimings } from './migrations.js';
+import { backfillApprovals, backfillTimings, backfillJaipurSalons } from './migrations.js';
 import { backfillApprovedVersions } from './workflow.js';
 import {
   securityHeaders,
@@ -181,6 +181,7 @@ const { seeded } = seedIfEmpty(hashPasswordSync);
 backfillApprovals();
 backfillTimings(DEFAULT_TIMINGS);
 backfillApprovedVersions();
+backfillJaipurSalons();
 
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n  BeautyZone running on http://0.0.0.0:${PORT}`);

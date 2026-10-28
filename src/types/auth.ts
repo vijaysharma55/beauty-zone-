@@ -135,6 +135,7 @@ export interface SalonService {
   pricePaise: number;
   price: number;
   durationMinutes: number;
+  imageUrl?: string;
   active: boolean;
   sortOrder: number;
   createdAt: string;
