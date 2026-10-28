@@ -40,6 +40,12 @@ function extractSlugFromHost(hostname: string): string | null {
   }
 }
 
+function isPlatformHost(): boolean {
+  if (typeof window === 'undefined') return false;
+  const h = window.location.hostname.toLowerCase();
+  return h.endsWith('.vercel.app') || h.endsWith('.pages.dev') || h.endsWith('.github.io');
+}
+
 export function useTenant(): TenantState {
   const [serverTenant, setServerTenant] = useState<TenantState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +74,7 @@ export function useTenant(): TenantState {
     };
   }, []);
 
-  if (serverTenant) return serverTenant;
+  if (serverTenant && !(serverTenant.mode === 'subdomain' && isPlatformHost())) return serverTenant;
 
   // Server lookup fail ho to spinner par mat atko, normal path routing par jao
   if (clientSlug && !error) {

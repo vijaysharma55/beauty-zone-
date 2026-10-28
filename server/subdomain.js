@@ -91,6 +91,7 @@ export function extractSubdomainSlug(hostHeader) {
   if (suffix.endsWith('aistudio.google')) return null;
   if (suffix.endsWith('googleusercontent.com')) return null;
   if (suffix.endsWith('cloudshell.dev')) return null;
+  if (suffix === 'vercel.app' || suffix === 'pages.dev' || suffix === 'github.io') return null;
 
   // Allow wildcard root pattern: any *.vercel.app → treat first label as tenant only if platform domain matches
   // For custom domains, allow any 3+ label host to be a subdomain of its parent
