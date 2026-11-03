@@ -514,49 +514,52 @@ supabaseOperationsRouter.get('/public/availability',asyncRoute(async(req,res)=>{
   res.json({date:result.date,day:result.day,open:result.open||null,close:result.close||null,closed:Boolean(result.closed),slots:result.slots||[],reason:result.reason||null,source,salonName,degraded:source==='default'});
 }));
 supabaseOperationsRouter.post('/public/bookings',asyncRoute(async(req,res)=>{
-  const b=req.body||{},name=s(b.fullName,120,true),phone=s(b.phone,40,true),service=s(b.service,160,true),date=s(b.date,10,true),time=time24(b.time);
-  if(phone.replace(/\D/g,'').length<8)fail(400,'Phone must contain at least 8 digits.');
-  if(!isoDate(date)||date<new Date().toISOString().slice(0,10))fail(400,'Please choose today or a future date.');
-  const slug=s(b.slug,60),live=slug?await rest(req.sb,'salons','slug=eq.'+slug+'&website_published=eq.true&status=eq.approved&suspended=eq.false&select=id,name,phone,slug,timings&limit=1'):[];
-  if(slug&&!live[0])fail(404,'Salon not found.');
+  const b=req.body||{};
+  const name=s(b.fullName,120,true),phone=s(b.phone,40,true);
+  const service=s(b.service,160,true),date=s(b.date,10,true),time=time24(b.time);
+  if(phone.replace(/\D/g,'').length<8) fail(400,'Phone must contain at least 8 digits.');
+  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata'}).format(new Date());
+  if(!isoDate(date)||date<today) fail(400,'Please choose today or a future date.');
+  const slug=s(b.slug,60);
+  const live=slug?await rest(req.sb,'salons','slug=eq.'+encodeURIComponent(slug)+'&website_published=eq.true&status=eq.approved&suspended=eq.false&select=id,name,phone,slug,timings&limit=1'):[];
+  if(slug&&!live[0]) fail(404,'Salon not found.');
   const salon=live[0]||null;
-  const id=uuid(),ts=isoNow(),ref='BZ-'+Date.now().toString(36).toUpperCase()+'-'+id.slice(0,5).toUpperCase();
-  const locationType=b.locationType==='home'?'home':'salon';
   const payload={
-    id,salon_id:salon?.id||null,reference:ref,full_name:name,phone,email:s(b.email,254)||null,
-    service,service_id:b.serviceId||null,category:s(b.category,80),stylist:s(b.stylist,120),
-    staff_id:b.staffId||null,date,time,location_type:locationType,branch:s(b.branch,120),
-    address:s(b.address,300),locality:s(b.locality,150),distance_km:b.distanceKm===undefined?null:Number(b.distanceKm),
-    bridal_trial:bool(b.bridalTrial),notes:s(b.notes,2000),promo_code:s(b.promoCode,100)||null,
-    estimated_total:num(b.estimatedTotal,0,100000000,0),
-  };
-  const result=await rpc(req.sb,'create_public_booking',{p_booking:payload});
-  const booking=result.booking||result;
-  await audit(req.sb,'booking.created','booking',booking?.id,{salonId:salon?.id||null,date,time,discountApplied:result.discountApplied||0});
-  res.status(201).json({booking:mapBooking(booking),salon:salon?{name:salon.name,slug:salon.slug,phone:salon.phone}:null,warning:null});
-    id,salon_id:salon?.id||null,reference:ref,full_name:name,phone,email:s(b.email,254)||null,
-    service,service_id:b.serviceId||null,category:s(b.category,80),stylist:s(b.stylist,120),
-    staff_id:b.staffId||null,date,time,booking_date:date,booking_time:time,location_type:locationType,
-    branch:s(b.branch,120),address:s(b.address,300),locality:s(b.locality,150),
+    id:uuid(),
+    reference:'BZ-'+Date.now().toString(36).toUpperCase()+'-'+uuid().slice(0,5).toUpperCase(),
+    salon_id:salon?.id||null,
+    full_name:name,
+    phone,
+    email:s(b.email,254)||null,
+    service,
+    service_id:b.serviceId||null,
+    category:s(b.category,80),
+    stylist:s(b.stylist,120),
+    staff_id:b.staffId||null,
+    date,
+    time,
+    location_type:b.locationType==='home'?'home':'salon',
+    branch:s(b.branch,120),
+    address:s(b.address,300),
+    locality:s(b.locality,150),
     distance_km:b.distanceKm===undefined?null:Number(b.distanceKm),
-    bridal_trial:bool(b.bridalTrial),notes:s(b.notes,2000),promo_code:s(b.promoCode,100)||null,
-    estimated_total:num(b.estimatedTotal,0,100000000,0),advance_paid:0,advance_ref:null,
-    status:'requested',source:'public',created_by:req.sb?.id||null,created_at:ts,updated_at:ts,
-  };
-  const id=uuid(),ts=isoNow(),ref='BZ-'+Date.now().toString(36).toUpperCase()+'-'+id.slice(0,5).toUpperCase();
-  const locationType=b.locationType==='home'?'home':'salon';
-  const payload={
-    id,salon_id:salon?.id||null,reference:ref,full_name:name,phone,email:s(b.email,254)||null,
-    service,service_id:b.serviceId||null,category:s(b.category,80),stylist:s(b.stylist,120),
-    staff_id:b.staffId||null,date,time,location_type:locationType,branch:s(b.branch,120),
-    address:s(b.address,300),locality:s(b.locality,150),distance_km:b.distanceKm===undefined?null:Number(b.distanceKm),
-    bridal_trial:bool(b.bridalTrial),notes:s(b.notes,2000),promo_code:s(b.promoCode,100)||null,
+    bridal_trial:bool(b.bridalTrial),
+    notes:s(b.notes,2000),
+    promo_code:s(b.promoCode,100)||null,
     estimated_total:num(b.estimatedTotal,0,100000000,0),
   };
+  if(payload.service_id&&!/^[0-9a-f-]{36}$/i.test(payload.service_id)) fail(400,'Invalid service.');
+  if(payload.staff_id&&!/^[0-9a-f-]{36}$/i.test(payload.staff_id)) fail(400,'Invalid specialist.');
   const result=await rpc(req.sb,'create_public_booking',{p_booking:payload});
   const booking=result.booking||result;
-  await audit(req.sb,'booking.created','booking',booking?.id,{salonId:salon?.id||null,date,time,discountApplied:result.discountApplied||0});
-  res.status(201).json({booking:mapBooking(booking),salon:salon?{name:salon.name,slug:salon.slug,phone:salon.phone}:null,warning:null});
+  await audit(req.sb,'booking.created','booking',booking?.id,{
+    salonId:salon?.id||null,date,time,discountApplied:result.discountApplied||0,
+  });
+  res.status(201).json({
+    booking:mapBooking(booking),
+    salon:salon?{name:salon.name,slug:salon.slug,phone:salon.phone}:null,
+    warning:null,
+  });
 }));
 supabaseOperationsRouter.post('/public/waitlist',asyncRoute(async(req,res)=>{
   const b=req.body||{},slug=s(b.slug,60),live=slug?await rest(req.sb,'salons','slug=eq.'+slug+'&website_published=eq.true&status=eq.approved&suspended=eq.false&select=id&limit=1'):[];
