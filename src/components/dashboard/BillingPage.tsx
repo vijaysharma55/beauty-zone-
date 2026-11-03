@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Check, CreditCard, Mail, ShieldCheck, Clock3, AlertCircle } from 'lucide-react';
+import { Check, CreditCard, Mail, ShieldCheck, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api, errorMessage } from '../../lib/api';
 import { Badge, Button, Card, CardHeader, PageHeader, formatDate, formatCurrency } from '../ui';
