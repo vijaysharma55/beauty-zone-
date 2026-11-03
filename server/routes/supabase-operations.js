@@ -51,6 +51,15 @@ const ownSalonOrFail = async (ctx) => {
 };
 const audit = (ctx, action, targetType=null, targetId=null, metadata=null) => writeAudit(ctx,action,targetType,targetId,metadata);
 const settingsDefaults = {platformName:'BeautyZone',supportEmail:'support@beautyzone.app',allowRegistrations:true,trialDays:14,maintenanceMessage:'',defaultPlan:'starter'};
+const redirectUrl = (req, path) => {
+  const configured = String(process.env.APP_URL || '').trim();
+  let base = configured;
+  if (!base) {
+    const candidate = req.get('origin') || (req.get('referer') ? new URL(req.get('referer')).origin : null);
+    base = candidate || (req.protocol + '://' + req.get('host'));
+  }
+  return new URL(path, base.replace(/\/+$/, '') + '/').toString();
+};
 const getSettings = async (ctx) => {
   const rows=await rest(ctx,'platform_settings','select=key,value');
   return {...settingsDefaults,...Object.fromEntries(rows.map(x=>[x.key,x.value]))};
@@ -122,7 +131,7 @@ supabaseOperationsRouter.post('/auth/resend-verification', asyncRoute(async(req,
   if(req.sb.emailVerified) return res.json({ok:true,message:'Your email is already verified.'});
   await requestSupabase('/auth/v1/resend',null,{
     method:'POST',
-    body:{type:'signup',email:req.sb.email,options:{emailRedirectTo:(process.env.APP_URL||'https://beauty-zone.vercel.app').replace(/\/+$/,'')+'/verify-email'}},
+    body:{type:'signup',email:req.sb.email,options:{emailRedirectTo:redirectUrl(req,'/verify-email')}},
   });
   res.json({ok:true,message:'A confirmation email was requested. Check your inbox.'});
 }));
@@ -155,7 +164,12 @@ supabaseOperationsRouter.patch('/salon', asyncRoute(async(req,res)=>{
       patch[column]=value;
     }else patch[column]=s(value,key==='description'?3000:key==='logoUrl'||key==='coverImage'?2000000:500);
   }
-  if(patch.slug!==undefined) fail(400,'Use a unique slug through onboarding support.');
+  if(req.body?.slug!==undefined){
+    const nextSlug=s(req.body.slug,60).toLowerCase();
+    const available=nextSlug===salon.slug?true:await rpc(req.sb,'is_salon_slug_available',{p_slug:nextSlug});
+    if(!available) fail(409,'That salon website address is already taken.');
+    patch.slug=nextSlug;
+  }
   const rows=await update(req.sb,'salons','id=eq.'+encodeURIComponent(salon.id),patch);
   const next=rows[0]||await getSalonForOwner(req.sb);
   await audit(req.sb,'salon.updated','salon',salon.id,{fields:Object.keys(patch)});
@@ -382,7 +396,7 @@ supabaseOperationsRouter.post('/admin/users/:userId/reset-password', asyncRoute(
   admin(req.sb);
   const profile=await one(req.sb,'profiles','id=eq.'+encodeURIComponent(req.params.userId)+'&select=email&limit=1');
   if(!profile) fail(404,'User not found.');
-  await requestSupabase('/auth/v1/recover?redirect_to='+encodeURIComponent((process.env.APP_URL||'https://beauty-zone.vercel.app').replace(/\/+$/,'')+'/reset-password'),null,{method:'POST',body:{email:profile.email}});
+  await requestSupabase('/auth/v1/recover?redirect_to='+encodeURIComponent(redirectUrl(req,'/reset-password')),null,{method:'POST',body:{email:profile.email}});
   await audit(req.sb,'admin.password_reset_email_sent','user',req.params.userId);
   res.json({ok:true,message:'Password recovery email requested.'});
 }));
@@ -449,9 +463,8 @@ supabaseOperationsRouter.get('/admin/approvals', asyncRoute(async(req,res)=>{
     rest(req.sb,'salon_versions','select=id&status=eq.pending'),
   ]);
   const approvals=await Promise.all(versions.map(async v=>{
-    const [salon,profile]=await Promise.all([
-      getSalonById(req.sb,v.salon_id),one(req.sb,'profiles','id=eq.'+(await getSalonById(req.sb,v.salon_id))?.owner_id+'&select=name,email,email_verified&limit=1'),
-    ]);
+    const salon=await getSalonById(req.sb,v.salon_id);
+    const profile=salon?await one(req.sb,'profiles','id=eq.'+salon.owner_id+'&select=name,email,email_verified&limit=1'):null;
     return {...mapVersion(v),snapshot:v.snapshot,salon:salon?{id:salon.id,name:salon.name,slug:salon.slug,city:salon.city,published:salon.website_published,suspended:salon.suspended,status:salon.status}:null,owner:profile?{name:profile.name,email:profile.email,emailVerified:profile.email_verified}:null};
   }));
   res.json({pendingCount:pendingRows.length,approvals});
@@ -624,7 +637,10 @@ supabaseOperationsRouter.post('/public/bookings',asyncRoute(async(req,res)=>{
 supabaseOperationsRouter.post('/public/stylist-inquiry',asyncRoute(async(req,res)=>{
   const b=req.body||{};
   const requestedSalon=s(b.salonId,80,true);
-  const salon=await one(req.sb,'salons','select=id,slug&'+( /^[0-9a-f-]{36}$/i.test(requestedSalon)?'id=eq.':'slug=eq.')+encodeURIComponent(requestedSalon)+'&website_published=eq.true&status=eq.approved&suspended=eq.false&limit=1');
+  const live=/^[0-9a-f-]{36}$/i.test(requestedSalon)
+    ? null
+    : await getLiveSalon(req.sb,requestedSalon);
+  const salon=live?.salon||await one(req.sb,'salons','id=eq.'+encodeURIComponent(requestedSalon)+'&website_published=eq.true&status=in.(approved,pending)&suspended=eq.false&select=id,slug&limit=1');
   if(!salon) fail(404,'Salon not found.');
   const stylistId=s(b.stylistId,80,true);
   const stylist=await one(req.sb,'staff','id=eq.'+encodeURIComponent(stylistId)+'&salon_id=eq.'+encodeURIComponent(salon.id)+'&active=eq.true&select=id,name&limit=1');
