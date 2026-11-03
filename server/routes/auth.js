@@ -173,9 +173,9 @@ authRouter.post(
       throw new HttpError(409, 'Your BeautyZone profile is still being created. Please try again in a moment.');
     }
 
-    // Never accept roles from user metadata or the browser. Only public.profiles.role is trusted.
-    const role = profile.role === 'super_admin' ? 'super_admin' : profile.role === 'salon_owner' ? 'salon_owner' : null;
-    if (!role) throw new HttpError(403, 'Your account does not have an approved application role.');
+    // Never accept roles from user metadata or the browser. Only the Supabase profile
+    // and an existing, previously provisioned local super-admin role are trusted.
+    const profileRole = profile.role === 'super_admin' ? 'super_admin' : profile.role === 'salon_owner' ? 'salon_owner' : null;
     const provider = identity.app_metadata?.provider === 'google' ? 'google' : 'password';
     const providerId = Array.isArray(identity.identities)
       ? identity.identities.find((item) => item.provider === 'google')?.id || null
@@ -185,6 +185,11 @@ authRouter.post(
     const verified = Boolean(identity.email_confirmed_at || identity.confirmed_at);
     let localUser = db.prepare('SELECT * FROM users WHERE supabase_uid = ?').get(identity.id);
     if (!localUser) localUser = findUserByEmail(email);
+
+    // Preserve a trusted local super-admin when linking a seeded/legacy account.
+    // Promote the matching Supabase profiles row separately before using database RLS as admin.
+    const role = profileRole === 'super_admin' || localUser?.role === 'super_admin' ? 'super_admin' : profileRole;
+    if (!role) throw new HttpError(403, 'Your account does not have an approved application role.');
 
     if (localUser) {
       if (localUser.supabase_uid && localUser.supabase_uid !== identity.id) {
