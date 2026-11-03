@@ -153,6 +153,7 @@ export const AdminUsers: React.FC = () => {
               <option value="all">All roles</option>
               <option value="salon_owner">Salon owners</option>
               <option value="super_admin">Super admins</option>
+              <option value="customer">Customers</option>
             </Select>
           </div>
         </div>
@@ -185,7 +186,7 @@ export const AdminUsers: React.FC = () => {
                         </p>
                         <p className="text-xs text-slate-500">{user.email}</p>
                         <p className="mt-0.5 text-[11px] text-slate-400">
-                          {user.authProvider === 'google' ? 'Google sign-in' : 'Email & password'}
+                          {user.authProvider === 'google' ? 'Google sign-in' : user.authProvider === 'phone' ? 'Phone OTP' : 'Email & password'}
                         </p>
                       </td>
                       <td className="px-5 py-3">
@@ -198,6 +199,7 @@ export const AdminUsers: React.FC = () => {
                         >
                           <option value="salon_owner">Salon owner</option>
                           <option value="super_admin">Super admin</option>
+                          <option value="customer">Customer</option>
                         </Select>
                       </td>
                       <td className="px-5 py-3">
@@ -318,6 +320,7 @@ export const AdminUsers: React.FC = () => {
               >
                 <option value="salon_owner">Salon owner</option>
                 <option value="super_admin">Super admin</option>
+                <option value="customer">Customer</option>
               </Select>
             </Field>
           </div>
