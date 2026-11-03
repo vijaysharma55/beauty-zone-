@@ -362,6 +362,22 @@ or dashboard CRUD path has moved to Supabase. Do not deploy this as a
 Supabase-only persistent backend on a platform where the /tmp SQLite volume
 is ephemeral until the remaining route migration and data backfill are complete.
 
+### First super-admin setup
+
+After the first administrator registers and confirms the email, promote that
+profile from the trusted Supabase SQL Editor (replace the email with the
+administrator address):
+
+```sql
+update public.profiles
+set role = 'super_admin'
+where email = 'your-admin-email@example.com';
+```
+
+Do not add a browser-side role editor or accept role values from registration
+metadata. Existing local SQLite super-admin role is preserved during identity
+linking, but Supabase RLS admin access requires this profile promotion.
+
 ### Required deployment settings
 
 Set the following values in the frontend build and server environment:
