@@ -41,7 +41,7 @@ export const FloatingActions: React.FC<FloatingActionsProps> = ({ onOpenBranding
       )}
 
       <a
-        href={\`https://wa.me/\${brand.whatsappNumber}?text=\${encodeURIComponent(\`Namaste \${brand.brandName} (\${brand.cityName}), I want to inquire about salon services or bridal packages.\`)}\`}
+        href={"https://wa.me/" + brand.whatsappNumber + "?text=" + encodeURIComponent("Namaste " + brand.brandName + " (" + brand.cityName + "), I want to inquire about salon services or bridal packages.")}
         target="_blank"
         rel="noopener noreferrer"
         className="group flex items-center gap-2.5 rounded-full bg-[#10B981] px-4 py-3 text-xs font-bold text-white shadow-xl transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#059669] hover:shadow-[#10B981]/30 sm:text-sm"
