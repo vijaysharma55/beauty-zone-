@@ -6,7 +6,7 @@ import { Button, Field, Input } from '../ui';
 import { supabase } from '../../lib/supabase';
 import { errorMessage } from '../../lib/api';
 
-const SPECIAL_CHAR_REGEX = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~\`]/;
+const SPECIAL_CHAR_REGEX = /[^A-Za-z0-9]/;
 
 export const ResetPasswordPage: React.FC = () => {
   const navigate = useNavigate();
