@@ -1,7 +1,8 @@
-import React from 'react';
-import { Check, CreditCard, Mail, ShieldCheck } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Check, CreditCard, Mail, ShieldCheck, Clock3, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { Badge, Button, Card, CardHeader, PageHeader, formatDate } from '../ui';
+import { api, errorMessage } from '../../lib/api';
+import { Badge, Button, Card, CardHeader, PageHeader, formatDate, formatCurrency } from '../ui';
 
 const PLAN_FEATURES: Record<string, string[]> = {
   trial: ['1 salon website', 'Up to 10 services', 'Gallery & team pages', 'Publish / unpublish'],
@@ -9,29 +10,84 @@ const PLAN_FEATURES: Record<string, string[]> = {
   pro: ['Everything in Starter', 'Unlimited services', 'Custom brand colours', 'Priority support'],
   elite: ['Everything in Pro', 'Multiple staff profiles', 'Advanced gallery captions', 'Dedicated onboarding'],
 };
-
 const PLAN_PRICES: Record<string, string> = {
   trial: 'Free trial',
   starter: '₹1,499 / month',
   pro: '₹2,999 / month',
   elite: '₹5,999 / month',
 };
+const PLAN_PRICE_PAISE: Record<string, number> = { starter: 149900, pro: 299900, elite: 599900 };
+type PaymentRecord = {
+  id: string; provider: string; provider_reference: string | null; amount_paise: number;
+  status: 'pending' | 'verified' | 'failed' | 'refunded'; plan: string; created_at: string;
+};
 
 export const BillingPage: React.FC = () => {
   const { subscription, salon } = useAuth();
   const plan = subscription?.plan || 'trial';
   const features = PLAN_FEATURES[plan] || PLAN_FEATURES.starter;
+  const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(true);
+  const [targetPlan, setTargetPlan] = useState<'starter' | 'pro' | 'elite'>(plan === 'pro' || plan === 'elite' ? plan : 'starter');
+  const [provider, setProvider] = useState<'upi' | 'manual'>('upi');
+  const [reference, setReference] = useState('');
+  const [requesting, setRequesting] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
-  const statusTone =
-    subscription?.status === 'active' ? 'green' : subscription?.status === 'trialing' ? 'gold' : subscription?.status === 'past_due' ? 'amber' : 'red';
+  const loadPayments = useCallback(async () => {
+    try {
+      const result = await api.get<{ payments: PaymentRecord[] }>('/salon/subscription/payments');
+      setPayments(result.payments || []);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setPaymentsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void loadPayments(); }, [loadPayments]);
+
+  const submitPaymentReference = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setNotice('');
+    if (!reference.trim()) {
+      setError('Enter the UPI or bank transaction reference before submitting.');
+      return;
+    }
+    setRequesting(true);
+    try {
+      await api.post('/salon/subscription/payments', {
+        provider,
+        providerReference: reference.trim(),
+        plan: targetPlan,
+        amountPaise: PLAN_PRICE_PAISE[targetPlan],
+        metadata: { submissionSource: 'salon_billing_page' },
+      });
+      setReference('');
+      setNotice('Payment reference submitted. Your plan will update after BeautyZone verifies the transaction.');
+      setPaymentsLoading(true);
+      await loadPayments();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  const statusTone = subscription?.status === 'active' ? 'green' : subscription?.status === 'trialing' ? 'gold' : subscription?.status === 'past_due' ? 'amber' : 'red';
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Billing"
         title="Subscription & plan"
-        description="Your plan controls how much you can publish. BeautyZone support handles upgrades and invoices."
+        description="View your current plan and submit a payment reference for manual verification."
       />
+
+      {error && <div role="alert" className="flex gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"><AlertCircle className="h-4 w-4 shrink-0" />{error}</div>}
+      {notice && <div role="status" className="flex gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"><Check className="h-4 w-4 shrink-0" />{notice}</div>}
 
       <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
         <Card>
@@ -57,8 +113,7 @@ export const BillingPage: React.FC = () => {
             <ul className="mt-6 grid gap-2 sm:grid-cols-2">
               {features.map((feature) => (
                 <li key={feature} className="flex items-start gap-2 text-sm text-slate-600">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                  {feature}
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />{feature}
                 </li>
               ))}
             </ul>
@@ -66,14 +121,11 @@ export const BillingPage: React.FC = () => {
             <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-sm font-medium text-slate-800">Need to upgrade or change plan?</p>
               <p className="mt-1 text-xs text-slate-500">
-                Contact BeautyZone support and our team will update your subscription. Plan changes are applied by a
-                platform administrator and take effect immediately.
+                Contact support for the current UPI or bank payment instructions. This page records a payment reference only; it does not collect money or activate your plan automatically.
               </p>
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-3">
                 <a href="mailto:support@beautyzone.app?subject=Salon%20plan%20change">
-                  <Button variant="secondary" size="sm">
-                    <Mail className="h-3.5 w-3.5" /> Email support
-                  </Button>
+                  <Button variant="secondary" size="sm"><Mail className="h-3.5 w-3.5" /> Email support</Button>
                 </a>
               </div>
             </div>
@@ -82,36 +134,70 @@ export const BillingPage: React.FC = () => {
 
         <div className="space-y-4">
           <Card className="p-5">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-              <CreditCard className="h-4 w-4 text-[#D09A40]" /> Billing account
-            </div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900"><CreditCard className="h-4 w-4 text-[#D09A40]" /> Billing account</div>
             <dl className="mt-3 space-y-2 text-sm">
-              <div className="flex justify-between gap-3">
-                <dt className="text-slate-500">Salon</dt>
-                <dd className="font-medium text-slate-800">{salon?.name || '—'}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-slate-500">Website</dt>
-                <dd className="font-medium text-slate-800">{salon?.published ? 'Live' : 'Draft'}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-slate-500">Billing cycle</dt>
-                <dd className="font-medium text-slate-800">Monthly</dd>
-              </div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">Salon</dt><dd className="font-medium text-slate-800">{salon?.name || '—'}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">Website</dt><dd className="font-medium text-slate-800">{salon?.published ? 'Live' : 'Draft'}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">Billing cycle</dt><dd className="font-medium text-slate-800">Monthly</dd></div>
             </dl>
           </Card>
-
           <Card className="p-5">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-              <ShieldCheck className="h-4 w-4 text-emerald-600" /> Data ownership
-            </div>
-            <p className="mt-2 text-xs leading-relaxed text-slate-500">
-              Your salon website, services and staff records are stored against your account only. Platform
-              administrators can review and moderate content, but other salon owners can never access your data.
-            </p>
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900"><ShieldCheck className="h-4 w-4 text-emerald-600" /> Data ownership</div>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">Your salon website, services and staff records are stored against your account only. Platform administrators can review and moderate content, but other salon owners cannot access your data.</p>
           </Card>
         </div>
       </div>
+
+      <Card>
+        <CardHeader title="Submit payment reference" description="Use after making a payment with details supplied by BeautyZone support." />
+        <form onSubmit={submitPaymentReference} className="grid gap-4 p-5 md:grid-cols-2">
+          <label className="text-sm font-medium text-slate-700">
+            Requested plan
+            <select value={targetPlan} onChange={e=>setTargetPlan(e.target.value as 'starter'|'pro'|'elite')} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5">
+              <option value="starter">Starter — ₹1,499 / month</option>
+              <option value="pro">Pro — ₹2,999 / month</option>
+              <option value="elite">Elite — ₹5,999 / month</option>
+            </select>
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            Payment method
+            <select value={provider} onChange={e=>setProvider(e.target.value as 'upi'|'manual')} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5">
+              <option value="upi">UPI / bank transfer</option>
+              <option value="manual">Other offline payment</option>
+            </select>
+          </label>
+          <label className="text-sm font-medium text-slate-700 md:col-span-2">
+            UPI / bank transaction reference
+            <input value={reference} onChange={e=>setReference(e.target.value)} required maxLength={150} placeholder="Enter transaction ID / UTR after payment" className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5" />
+          </label>
+          <div className="flex flex-wrap items-center justify-between gap-3 md:col-span-2">
+            <p className="text-xs text-slate-500">Amount to be checked: {formatCurrency(PLAN_PRICE_PAISE[targetPlan])}. Activation requires admin verification.</p>
+            <Button type="submit" variant="gold" loading={requesting}>Submit payment reference</Button>
+          </div>
+        </form>
+      </Card>
+
+      <Card>
+        <CardHeader title="Payment history" description="Payment references remain pending until the BeautyZone team verifies them." />
+        {paymentsLoading ? <p className="p-5 text-sm text-slate-500">Loading payment history…</p> : payments.length===0 ? (
+          <p className="p-5 text-sm text-slate-500">No payment references submitted yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[650px] text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Plan</th><th className="px-5 py-3">Reference</th><th className="px-5 py-3">Amount</th><th className="px-5 py-3">Status</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {payments.map(p=><tr key={p.id}>
+                  <td className="px-5 py-3 text-xs text-slate-500">{formatDate(p.created_at)}</td>
+                  <td className="px-5 py-3 capitalize">{p.plan}</td>
+                  <td className="px-5 py-3 font-mono text-xs">{p.provider_reference||'—'}</td>
+                  <td className="px-5 py-3">{formatCurrency(Number(p.amount_paise))}</td>
+                  <td className="px-5 py-3"><Badge tone={p.status==='verified'?'green':p.status==='pending'?'amber':'red'}>{p.status}</Badge></td>
+                </tr>)}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
     </div>
   );
 };
