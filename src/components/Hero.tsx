@@ -7,7 +7,6 @@ import {
   ShieldCheck,
   Home,
   Tag,
-  Palette,
 } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
 
@@ -22,7 +21,7 @@ export const Hero: React.FC<HeroProps> = ({
   onExploreServices,
   onExplorePackages,
 }) => {
-  const { brand, setIsCustomizerOpen, t } = useBrand();
+  const { brand, t } = useBrand();
 
   const branchLocalityList =
     brand.branches.length > 0
@@ -49,14 +48,6 @@ export const Hero: React.FC<HeroProps> = ({
                 <Sparkles className="w-4 h-4 shrink-0" />
                 <span>{brand.heroBadgeText}</span>
               </div>
-              <button
-                onClick={() => setIsCustomizerOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900/5 hover:bg-slate-900/10 border border-slate-900/10 text-[#0F172A] text-xs font-semibold transition-all cursor-pointer"
-                title="Customize Brand"
-              >
-                <Palette className="w-3.5 h-3.5 text-[#D09A40]" />
-                <span>Customize</span>
-              </button>
             </div>
 
             <h1 className="font-serif text-4xl sm:text-5xl xl:text-[56px] font-bold text-[#0F172A] leading-[1.12] tracking-tight">

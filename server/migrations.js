@@ -21,6 +21,10 @@ function addColumn(table, column, definition) {
   return true;
 }
 
+/* Supabase identity bridge: preserve existing local user IDs and salon foreign keys. */
+addColumn('users', 'supabase_uid', 'TEXT');
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_supabase_uid ON users(supabase_uid) WHERE supabase_uid IS NOT NULL');
+
 /* Users: email verification & password reset */
 const addedVerification = addColumn('users', 'email_verified', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('users', 'email_verified_at', 'TEXT');

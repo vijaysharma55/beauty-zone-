@@ -152,44 +152,6 @@ export const LoginPage: React.FC = () => {
 
       <GoogleSignInButton onCredential={handleGoogle} />
 
-      <div className="mt-6 rounded-xl border border-slate-200 bg-white/70 p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Demo accounts (Click to fill)</p>
-        <div className="mt-2 space-y-2 text-xs">
-          <button
-            type="button"
-            onClick={() => {
-              setError('');
-              setEmail('owner@luminaluxe.in');
-              setPassword('Owner@12345');
-            }}
-            className="w-full text-left p-2 rounded-lg bg-amber-50/70 hover:bg-amber-100/70 border border-amber-200/60 transition-colors flex items-center justify-between cursor-pointer"
-          >
-            <div>
-              <span className="font-semibold text-slate-800">Salon owner:</span>{' '}
-              <span className="font-mono text-slate-600">owner@luminaluxe.in</span>
-            </div>
-            <span className="text-[11px] text-amber-800 font-medium underline">Fill</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setError('');
-              setEmail('admin@beautyzone.app');
-              setPassword('Admin@12345');
-            }}
-            className="w-full text-left p-2 rounded-lg bg-slate-100/80 hover:bg-slate-200/80 border border-slate-200 transition-colors flex items-center justify-between cursor-pointer"
-          >
-            <div>
-              <span className="font-semibold text-slate-800">Super admin:</span>{' '}
-              <span className="font-mono text-slate-600">admin@beautyzone.app</span>
-            </div>
-            <span className="text-[11px] text-slate-700 font-medium underline">Fill</span>
-          </button>
-        </div>
-        <p className="mt-2 text-[11px] text-slate-400">
-          Seeded demo credentials — click to auto-fill or type manually.
-        </p>
-      </div>
     </AuthLayout>
   );
 };
