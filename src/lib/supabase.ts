@@ -129,6 +129,16 @@ export const supabase = {
       if (session) persistSession(session, 'SIGNED_IN');
       return { user: result?.user || session?.user || null, session };
     },
+    signInWithOtp: async (phone: string): Promise<void> => {
+      await authRequest('/otp', { phone, create_user: true });
+    },
+    verifyPhoneOtp: async (phone: string, token: string): Promise<AuthResult> => {
+      const result = await authRequest<any>('/verify', { type: 'sms', phone, token });
+      const session = normalizedSession(result);
+      if (!session?.access_token) throw new Error('Phone OTP did not create a valid session. Check the code and try again.');
+      persistSession(session, 'SIGNED_IN');
+      return { user: session.user, session };
+    },
     signInWithPassword: async (email: string, password: string): Promise<AuthResult> => {
       const result = await authRequest<any>('/token?grant_type=password', { email, password });
       const session = normalizedSession(result);
