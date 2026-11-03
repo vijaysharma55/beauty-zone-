@@ -17,6 +17,14 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const PORT = 4100 + Math.floor(Math.random() * 500);
 const BASE = `http://127.0.0.1:${PORT}`;
 const ORIGIN = BASE;
+
+function nextMondayDate() {
+  const date = new Date();
+  const daysUntilMonday = ((1 - date.getDay() + 7) % 7) || 7;
+  date.setDate(date.getDate() + daysUntilMonday);
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
 const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'beautyzone-test-'));
 
 let child;
@@ -772,7 +780,7 @@ test('visitor can book a live salon and the owner sees it', async () => {
     fullName: 'Test Client',
     phone: '+91 90000 11111',
     service: 'HD Airbrush Bridal Makeover',
-    date: '2026-11-02',
+    date: nextMondayDate(),
     time: '02:30 PM',
     locationType: 'salon',
     estimatedTotal: 24999,
@@ -807,13 +815,13 @@ test('booking rejects closed days, past dates and unknown salons', async () => {
   const past = await anon.post('/api/public/bookings', { ...base, date: '2020-01-01', time: '10:00' });
   assert.equal(past.status, 400);
 
-  const outOfHours = await anon.post('/api/public/bookings', { ...base, date: '2026-11-02', time: '03:00 AM' });
+  const outOfHours = await anon.post('/api/public/bookings', { ...base, date: nextMondayDate(), time: '03:00 AM' });
   assert.equal(outOfHours.status, 409);
 
   const unknown = await anon.post('/api/public/bookings', {
     ...base,
     slug: 'no-such-salon-xyz',
-    date: '2026-11-02',
+    date: nextMondayDate(),
     time: '10:00',
   });
   assert.equal(unknown.status, 404);
@@ -823,7 +831,7 @@ test('booking rejects closed days, past dates and unknown salons', async () => {
     fullName: '',
     phone: '9000011111',
     service: 'HD Makeup',
-    date: '2026-11-02',
+    date: nextMondayDate(),
     time: '10:00',
   });
   assert.equal(noName.status, 400);
