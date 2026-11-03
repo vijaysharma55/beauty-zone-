@@ -101,11 +101,13 @@ const mapBooking=(r)=>({
 
 // Attach the authenticated Supabase identity only to requests that carry a Supabase JWT.
 // Requests without a bearer token continue through the legacy middleware/routes during migration.
-supabaseOperationsRouter.use(asyncRoute(async(req,res,next)=>{
+supabaseOperationsRouter.use((req,res,next)=>{
+  // Public website endpoints use the publishable key when no customer session exists.
+  // Non-public requests without a Supabase bearer should continue to the legacy cookie-auth router.
+  if(!hasBearer(req) && !req.path.startsWith('/public/')) return next('router');
   if(!hasBearer(req)) return next();
-  req.sb=await getSupabaseContext(req);
-  return next();
-}));
+  getSupabaseContext(req).then((ctx)=>{req.sb=ctx;next();}).catch(next);
+});
 
 // Auth bridge: the browser already signed in with Supabase; return the profile + salon from Postgres.
 // No SQLite user/session is created for Supabase-authenticated users.
