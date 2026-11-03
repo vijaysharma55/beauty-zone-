@@ -245,6 +245,19 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_waitlist_salon ON waitlist(salon_id, date);
+
+  CREATE TABLE IF NOT EXISTS stylist_inquiries (
+    id TEXT PRIMARY KEY,
+    salon_id TEXT REFERENCES salons(id) ON DELETE CASCADE,
+    stylist_id TEXT NOT NULL,
+    stylist_name TEXT NOT NULL,
+    user_name TEXT NOT NULL,
+    user_phone TEXT NOT NULL,
+    message TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'responded', 'archived')),
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_stylist_inquiries_salon ON stylist_inquiries(salon_id);
 `);
 
 export const nowIso = () => new Date().toISOString();

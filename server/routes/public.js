@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { db, findSalonBySlug, serializeSalon } from '../db.js';
+import { db, findSalonBySlug, serializeSalon, newId, nowIso } from '../db.js';
 import { getLiveContent, hasLiveApproval } from '../workflow.js';
 import { rateLimit } from '../security.js';
 import { tenantInfoFromReq } from '../subdomain.js';
@@ -353,3 +353,34 @@ export function isSalonLive(row) {
   if (!row) return false;
   return !!row.website_published && row.status === 'approved' && !row.suspended;
 }
+
+publicRouter.post(
+  '/stylist-inquiry',
+  rateLimit({ windowMs: 60_000, max: 10, key: 'stylist-inquiry' }),
+  (req, res) => {
+    const { salonId, stylistId, stylistName, userName, userPhone, message } = req.body;
+
+    if (!salonId || !stylistId || !stylistName || !userName || !userPhone || !message) {
+      return res.status(400).json({ error: 'All fields are required.' });
+    }
+
+    try {
+      // Resolve slug to ID if needed (salonId might be a slug from frontend)
+      let actualSalonId = salonId;
+      if (salonId.length < 30) { // Slugs are usually short, IDs are UUIDs
+        const salon = db.prepare('SELECT id FROM salons WHERE slug = ? COLLATE NOCASE').get(salonId);
+        if (salon) actualSalonId = salon.id;
+      }
+
+      db.prepare(
+        `INSERT INTO stylist_inquiries (id, salon_id, stylist_id, stylist_name, user_name, user_phone, message, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(newId(), actualSalonId, stylistId, stylistName, userName, userPhone, message, nowIso());
+
+      res.status(201).json({ success: true, message: 'Inquiry sent successfully.' });
+    } catch (err) {
+      console.error('[stylist-inquiry] failed', err.message);
+      res.status(500).json({ error: 'Failed to send inquiry. Please try again.' });
+    }
+  }
+);

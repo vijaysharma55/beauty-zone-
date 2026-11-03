@@ -290,6 +290,8 @@ function MarketingSite() {
         {brand.sections.showStylists && (
           <StylistsSection
             onBookWithStylist={handleSelectStylistForBooking}
+            galleryItems={galleryItems}
+            onUpdateGallery={handleUpdateGallery}
           />
         )}
 
