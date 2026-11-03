@@ -85,6 +85,15 @@ function MarketingSite() {
         if (cloudPackages) { setPackages(cloudPackages); saveStoredPackages(cloudPackages); }
         if (cloudGallery) { setGalleryItems(cloudGallery); saveStoredGallery(cloudGallery); }
         if (cloudVideos) { setVideos(cloudVideos); saveStoredVideos(cloudVideos); }
+        // First signed-in visit: copy the existing local cache into that owner's cloud section.
+        if (user?.id) {
+          const firstSyncs: Promise<void>[] = [];
+          if (!cloudServices) firstSyncs.push(saveSiteSection('services', services));
+          if (!cloudPackages) firstSyncs.push(saveSiteSection('packages', packages));
+          if (!cloudGallery) firstSyncs.push(saveSiteSection('gallery', galleryItems));
+          if (!cloudVideos) firstSyncs.push(saveSiteSection('videos', videos));
+          await Promise.all(firstSyncs);
+        }
       } catch (error) {
         console.error('[site-content] Supabase read failed; using cached content:', error);
       }
