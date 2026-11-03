@@ -184,6 +184,28 @@ supabaseOperationsRouter.get('/salon/subscription', asyncRoute(async(req,res)=>{
   const salon=await ownSalonOrFail(req.sb);
   res.json({subscription:await getSubscription(req.sb,salon.id)});
 }));
+
+supabaseOperationsRouter.post('/salon/uploads', asyncRoute(async(req,res)=>{
+  const salon=await ownSalonOrFail(req.sb);
+  const kind=s(req.query.kind,20)||'image';
+  if(!['logo','cover','gallery','staff'].includes(kind)) fail(400,'Unsupported upload type.');
+  const mime=String(req.get('content-type')||'').split(';')[0].trim().toLowerCase();
+  const extensions={'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif'};
+  const ext=extensions[mime];
+  const data=Buffer.isBuffer(req.body)?req.body:Buffer.alloc(0);
+  if(!ext||data.length<12||data.length>5*1024*1024) fail(400,'Choose a valid PNG, JPEG, WEBP or GIF image under 5 MB.');
+  const valid=(mime==='image/png'&&data[0]===0x89&&data[1]===0x50&&data[2]===0x4e&&data[3]===0x47)
+    ||(mime==='image/jpeg'&&data[0]===0xff&&data[1]===0xd8&&data[2]===0xff)
+    ||(mime==='image/gif'&&data.subarray(0,3).toString('ascii')==='GIF')
+    ||(mime==='image/webp'&&data.subarray(0,4).toString('ascii')==='RIFF'&&data.subarray(8,12).toString('ascii')==='WEBP');
+  if(!valid) fail(415,'The uploaded file content does not match its image type.');
+  const key=req.sb.id+'/'+kind+'/'+uuid()+'.'+ext;
+  await requestSupabase('/storage/v1/object/beautyzone-assets/'+key,req.sb.token,{
+    method:'POST',headers:{'Content-Type':mime,'x-upsert':'true'},body:data,
+  });
+  await audit(req.sb,'salon.image_uploaded','salon',salon.id,{kind,size:data.length});
+  res.status(201).json({url:'https://botkjeikjzhnbxnowdkl.supabase.co/storage/v1/object/public/beautyzone-assets/'+key});
+}));
 supabaseOperationsRouter.get('/salon/services', asyncRoute(async(req,res)=>{
   const salon=await ownSalonOrFail(req.sb); res.json({services:await getServices(req.sb,salon.id)});
 }));
@@ -268,6 +290,12 @@ supabaseOperationsRouter.patch('/salon/bookings/:bookingId', asyncRoute(async(re
   const salon=await ownSalonOrFail(req.sb);
   const status=s(req.body?.status,20,true);
   if(!['requested','confirmed','declined','completed','cancelled'].includes(status)) fail(400,'Invalid booking status.');
+  if(status==='completed'){
+    const result=await rpc(req.sb,'complete_salon_booking',{p_booking_id:req.params.bookingId});
+    await audit(req.sb,'booking.status_changed','booking',req.params.bookingId,{status,loyaltyReward:result.loyaltyReward||null});
+    res.json({booking:mapBooking(result.booking),loyaltyReward:result.loyaltyReward||null});
+    return;
+  }
   const rows=await update(req.sb,'bookings','id=eq.'+encodeURIComponent(req.params.bookingId)+'&salon_id=eq.'+encodeURIComponent(salon.id),{status,updated_at:isoNow()});
   if(!rows[0]) fail(404,'Booking not found.');
   await audit(req.sb,'booking.status_changed','booking',rows[0].id,{status});
@@ -463,8 +491,8 @@ supabaseOperationsRouter.get('/public/tenant',asyncRoute(async(req,res)=>{
 supabaseOperationsRouter.get('/public/slug-available',asyncRoute(async(req,res)=>{
   const slug=s(req.query.slug,60).toLowerCase();
   if(!/^[a-z0-9](?:[a-z0-9-]{1,58}[a-z0-9])$/.test(slug)||slug.includes('--'))return res.json({available:false,reason:'Use 3–60 letters, numbers or hyphens.'});
-  const found=await one(req.sb,'salons','slug=eq.'+slug+'&select=id&limit=1');
-  res.json({available:!found,reason:found?'Already taken':null,url:'/salon/'+slug,suggestedSubdomain:slug+'.beautyzone.app'});
+  const available=await rpc(req.sb,'is_salon_slug_available',{p_slug:slug});
+  res.json({available,reason:available?null:'Already taken',url:'/salon/'+slug,suggestedSubdomain:slug+'.beautyzone.app'});
 }));
 supabaseOperationsRouter.get('/public/templates',(req,res)=>res.json({templates:[
   {id:'luxe',name:'Luxe Gold',description:'Rich navy + gold editorial layout with image-led hero.',premium:false},
@@ -497,6 +525,17 @@ supabaseOperationsRouter.post('/public/bookings',asyncRoute(async(req,res)=>{
   const payload={
     id,salon_id:salon?.id||null,reference:ref,full_name:name,phone,email:s(b.email,254)||null,
     service,service_id:b.serviceId||null,category:s(b.category,80),stylist:s(b.stylist,120),
+    staff_id:b.staffId||null,date,time,location_type:locationType,branch:s(b.branch,120),
+    address:s(b.address,300),locality:s(b.locality,150),distance_km:b.distanceKm===undefined?null:Number(b.distanceKm),
+    bridal_trial:bool(b.bridalTrial),notes:s(b.notes,2000),promo_code:s(b.promoCode,100)||null,
+    estimated_total:num(b.estimatedTotal,0,100000000,0),
+  };
+  const result=await rpc(req.sb,'create_public_booking',{p_booking:payload});
+  const booking=result.booking||result;
+  await audit(req.sb,'booking.created','booking',booking?.id,{salonId:salon?.id||null,date,time,discountApplied:result.discountApplied||0});
+  res.status(201).json({booking:mapBooking(booking),salon:salon?{name:salon.name,slug:salon.slug,phone:salon.phone}:null,warning:null});
+    id,salon_id:salon?.id||null,reference:ref,full_name:name,phone,email:s(b.email,254)||null,
+    service,service_id:b.serviceId||null,category:s(b.category,80),stylist:s(b.stylist,120),
     staff_id:b.staffId||null,date,time,booking_date:date,booking_time:time,location_type:locationType,
     branch:s(b.branch,120),address:s(b.address,300),locality:s(b.locality,150),
     distance_km:b.distanceKm===undefined?null:Number(b.distanceKm),
@@ -504,9 +543,20 @@ supabaseOperationsRouter.post('/public/bookings',asyncRoute(async(req,res)=>{
     estimated_total:num(b.estimatedTotal,0,100000000,0),advance_paid:0,advance_ref:null,
     status:'requested',source:'public',created_by:req.sb?.id||null,created_at:ts,updated_at:ts,
   };
-  const result=await write(req.sb,'bookings',payload);
-  await audit(req.sb,'booking.created','booking',result[0]?.id,{salonId:salon?.id||null,date,time});
-  res.status(201).json({booking:mapBooking(result[0]),salon:salon?{name:salon.name,slug:salon.slug,phone:salon.phone}:null,warning:null});
+  const id=uuid(),ts=isoNow(),ref='BZ-'+Date.now().toString(36).toUpperCase()+'-'+id.slice(0,5).toUpperCase();
+  const locationType=b.locationType==='home'?'home':'salon';
+  const payload={
+    id,salon_id:salon?.id||null,reference:ref,full_name:name,phone,email:s(b.email,254)||null,
+    service,service_id:b.serviceId||null,category:s(b.category,80),stylist:s(b.stylist,120),
+    staff_id:b.staffId||null,date,time,location_type:locationType,branch:s(b.branch,120),
+    address:s(b.address,300),locality:s(b.locality,150),distance_km:b.distanceKm===undefined?null:Number(b.distanceKm),
+    bridal_trial:bool(b.bridalTrial),notes:s(b.notes,2000),promo_code:s(b.promoCode,100)||null,
+    estimated_total:num(b.estimatedTotal,0,100000000,0),
+  };
+  const result=await rpc(req.sb,'create_public_booking',{p_booking:payload});
+  const booking=result.booking||result;
+  await audit(req.sb,'booking.created','booking',booking?.id,{salonId:salon?.id||null,date,time,discountApplied:result.discountApplied||0});
+  res.status(201).json({booking:mapBooking(booking),salon:salon?{name:salon.name,slug:salon.slug,phone:salon.phone}:null,warning:null});
 }));
 supabaseOperationsRouter.post('/public/waitlist',asyncRoute(async(req,res)=>{
   const b=req.body||{},slug=s(b.slug,60),live=slug?await rest(req.sb,'salons','slug=eq.'+slug+'&website_published=eq.true&status=eq.approved&suspended=eq.false&select=id&limit=1'):[];
@@ -546,10 +596,10 @@ supabaseOperationsRouter.post('/public/loyalty/redeem',asyncRoute(async(req,res)
   res.json(result);
 }));
 supabaseOperationsRouter.post('/public/loyalty/verify-voucher',asyncRoute(async(req,res)=>{
+  if(!req.sb) fail(401,'Sign in and verify your mobile number before checking a loyalty voucher.');
   const code=s(req.body?.code,60,true).toUpperCase();
-  const rows=await rest(req.sb,'loyalty_vouchers','code=eq.'+encodeURIComponent(code)+'&select=code,title,discount_amount,expires_at,used&limit=1');
-  const v=rows[0];if(!v||v.used||new Date(v.expires_at).getTime()<Date.now())fail(400,'Invalid, used or expired voucher.');
-  res.json({valid:true,voucher:{code:v.code,title:v.title,discountAmount:v.discount_amount}});
+  const result=await rpc(req.sb,'verify_customer_loyalty_voucher',{p_code:code});
+  res.json(result);
 }));
 
 // If a Supabase bearer token was supplied, never silently fall through to legacy SQLite for an unported route.
