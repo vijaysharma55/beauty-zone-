@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   WhiteLabelConfig,
   WhiteLabelTheme,
@@ -16,6 +16,8 @@ import {
   WHITE_LABEL_STORAGE_KEY,
 } from '../data/whiteLabelConfig';
 import { DEFAULT_TRANSLATIONS, SUPPORTED_LANGUAGES } from '../data/i18nData';
+import { useAuth } from './AuthContext';
+import { loadSiteSection, saveSiteSection } from '../lib/sectionStore';
 
 interface BrandContextValue {
   brand: WhiteLabelConfig;
@@ -84,8 +86,38 @@ function upsertLinkTag(rel: string, href: string) {
 
 export const BrandProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [brand, setBrand] = useState<WhiteLabelConfig>(() => loadWhiteLabelConfig());
+  const { user } = useAuth();
+  const cloudBrandOwner = useRef<string | null | undefined>(undefined);
   const [isCustomizerOpen, setIsCustomizerOpen] = useState(false);
   const [customizerInitialTab, setCustomizerInitialTab] = useState<string | null>(null);
+
+  // Load the owner's saved brand configuration from Supabase after auth is known.
+  useEffect(() => {
+    let cancelled = false;
+    const ownerId = user?.id || null;
+    cloudBrandOwner.current = undefined;
+    const hydrate = async () => {
+      try {
+        const cloudBrand = await loadSiteSection<Partial<WhiteLabelConfig>>('brand');
+        if (cancelled) return;
+        if (cloudBrand) setBrand((current) => ({ ...current, ...cloudBrand }));
+      } catch (error) {
+        console.error('[brand] Supabase load failed; retaining local configuration:', error);
+      } finally {
+        if (!cancelled) cloudBrandOwner.current = ownerId;
+      }
+    };
+    void hydrate();
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  // Persist subsequent customizer changes to the owner-scoped Supabase section.
+  useEffect(() => {
+    if (!user?.id || cloudBrandOwner.current !== user.id) return;
+    void saveSiteSection('brand', brand).catch((error) => {
+      console.error('[brand] Supabase save failed; local configuration remains available:', error);
+    });
+  }, [brand, user?.id]);
 
   const language: SupportedLanguage =
     brand.localization?.activeLanguage || brand.localization?.defaultLanguage || 'en';
