@@ -495,7 +495,7 @@ supabaseOperationsRouter.get('/admin/audit-logs', asyncRoute(async(req,res)=>{
 // Public directory, live salon content and appointment booking. Public writes remain RLS constrained.
 supabaseOperationsRouter.get('/public/salons', asyncRoute(async(req,res)=>{
   const city=s(req.query.city,100),q=s(req.query.q,100);
-  let query='select=*&website_published=eq.true&status=eq.approved&suspended=eq.false&order=published_at.desc&limit=60';
+  let query='select=*&website_published=eq.true&status=in.(approved,pending)&suspended=eq.false&order=published_at.desc&limit=60';
   if(city&&city.toLowerCase()!=='all')query+='&city=ilike.'+encodeURIComponent(city);
   if(q)query+='&or=(name.ilike.*'+encodeURIComponent(q)+'*,tagline.ilike.*'+encodeURIComponent(q)+'*,city.ilike.*'+encodeURIComponent(q)+'*)';
   const salons=await rest(req.sb,'salons',query);
@@ -509,7 +509,7 @@ supabaseOperationsRouter.get('/public/salons', asyncRoute(async(req,res)=>{
   res.json({salons:result,cities,total:result.length,filter:{city:city||null,q:q||null}});
 }));
 supabaseOperationsRouter.get('/public/salons/:slug', asyncRoute(async(req,res)=>{
-  const rows=await rest(req.sb,'salons','slug=eq.'+encodeURIComponent(req.params.slug)+'&website_published=eq.true&status=eq.approved&suspended=eq.false&select=*&limit=1');
+  const rows=await rest(req.sb,'salons','slug=eq.'+encodeURIComponent(req.params.slug)+'&website_published=eq.true&status=in.(approved,pending)&suspended=eq.false&select=*&limit=1');
   if(!rows[0])fail(404,'This salon website is not available.');
   const versions=await rest(req.sb,'salon_versions','salon_id=eq.'+rows[0].id+'&status=eq.approved&select=*&order=version.desc&limit=1');
   if(!versions[0])fail(404,'This salon website is not available.');
@@ -521,8 +521,9 @@ supabaseOperationsRouter.get('/public/tenant',asyncRoute(async(req,res)=>{
   const subdomain=host.endsWith('.beautyzone.app')?host.slice(0,-'.beautyzone.app'.length):'';
   const slug=explicit||subdomain;
   if(!slug||! /^[a-z0-9][a-z0-9-]{1,58}[a-z0-9]$/.test(slug))return res.json({tenant:{mode:'path',slug:null,found:false,reason:'not_found'}});
-  const salon=await one(req.sb,'salons','slug=eq.'+slug+'&select=id,slug,name,status,website_published,suspended&limit=1');
-  res.json({tenant:salon&&salon.website_published&&salon.status==='approved'&&!salon.suspended?{mode:'subdomain',slug,salonId:salon.id,salonName:salon.name,found:true}:{mode:'subdomain',slug,found:false,reason:!salon?'not_found':salon.suspended?'suspended':!salon.website_published?'not_published':'not_approved'}});
+  const live=await getLiveSalon(req.sb,slug);
+  const salon=live?.salon||null;
+  res.json({tenant:salon?{mode:'subdomain',slug,salonId:salon.id,salonName:salon.name,found:true}:{mode:'subdomain',slug,found:false,reason:'not_found'}});
 }));
 supabaseOperationsRouter.get('/public/slug-available',asyncRoute(async(req,res)=>{
   const slug=s(req.query.slug,60).toLowerCase();
@@ -607,7 +608,7 @@ supabaseOperationsRouter.post('/public/bookings',asyncRoute(async(req,res)=>{
   res.status(201).json({
     booking:mapBooking(booking),
     salon:salon?{name:salon.name,slug:salon.slug,phone:salon.phone}:null,
-    warning:null,
+    warning:result.highDemand?'This slot is in high demand — the salon may offer the nearest alternative.':null,
   });
 }));
 supabaseOperationsRouter.post('/public/stylist-inquiry',asyncRoute(async(req,res)=>{
@@ -628,11 +629,11 @@ supabaseOperationsRouter.post('/public/stylist-inquiry',asyncRoute(async(req,res
 }));
 
 supabaseOperationsRouter.post('/public/waitlist',asyncRoute(async(req,res)=>{
-  const b=req.body||{},slug=s(b.slug,60),live=slug?await rest(req.sb,'salons','slug=eq.'+slug+'&website_published=eq.true&status=eq.approved&suspended=eq.false&select=id&limit=1'):[];
-  if(slug&&!live[0])fail(404,'Salon not found.');
+  const b=req.body||{},slug=s(b.slug,60),live=slug?await getLiveSalon(req.sb,slug):null;
+  if(slug&&!live)fail(404,'Salon not found.');
   const date=s(b.date,10,true);if(!isoDate(date))fail(400,'Select a valid date.');
   const time=time24(b.time),record={
-    salon_id:live[0]?.id||null,full_name:s(b.fullName,120,true),phone:s(b.phone,40,true),
+    salon_id:live?.salon?.id||null,full_name:s(b.fullName,120,true),phone:s(b.phone,40,true),
     email:s(b.email,254)||null,service:s(b.service,160,true),date, time,
     requested_date:date,requested_time:time,status:'pending',
   };
