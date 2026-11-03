@@ -1,0 +1,380 @@
+import crypto from 'node:crypto';
+
+export const SUPABASE_URL = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://botkjeikjzhnbxnowdkl.supabase.co').replace(/\/+$/, '');
+export const SUPABASE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_f2nHVHcAdrlosQbZwAAxnQ_vnHQuuv0';
+
+export class SupabaseApiError extends Error {
+  constructor(status, message, code) {
+    super(message);
+    this.name = 'SupabaseApiError';
+    this.status = status;
+    this.code = code || null;
+  }
+}
+
+function parseErrorStatus(status, code) {
+  if (status === 401 || code === 'PGRST301') return 401;
+  if (status === 403 || code === '42501') return 403;
+  if (status === 404 || code === 'PGRST116') return 404;
+  if (status === 409 || code === '23505') return 409;
+  if (status === 400 || code === '22023' || code === '23514' || code === '22P02') return 400;
+  return status >= 400 && status < 600 ? status : 500;
+}
+
+export async function requestSupabase(path, token, options = {}) {
+  const url = path.startsWith('http') ? path : SUPABASE_URL + path;
+  const headers = new Headers(options.headers || {});
+  headers.set('apikey', SUPABASE_KEY);
+  headers.set('Authorization', 'Bearer ' + (token || SUPABASE_KEY));
+  if (options.body !== undefined && !(options.body instanceof Blob) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  if (options.prefer) headers.set('Prefer', options.prefer);
+  const response = await fetch(url, {
+    method: options.method || 'GET',
+    headers,
+    body: options.body === undefined ? undefined : options.body instanceof Blob ? options.body : JSON.stringify(options.body),
+  });
+  const text = await response.text();
+  let data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch { data = { message: text.slice(0, 500) }; }
+  }
+  if (!response.ok) {
+    const code = data?.code || data?.error_code;
+    const message = data?.message || data?.msg || data?.error_description || data?.error || ('Supabase request failed (' + response.status + ')');
+    throw new SupabaseApiError(parseErrorStatus(response.status, code), message, code);
+  }
+  return data;
+}
+
+export async function getSupabaseContext(req, { required = true } = {}) {
+  const header = String(req.get('authorization') || '');
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  const token = match?.[1] || null;
+  if (!token) {
+    if (required) throw new SupabaseApiError(401, 'Authentication required.');
+    return null;
+  }
+  const authUser = await requestSupabase('/auth/v1/user', token);
+  if (!authUser?.id) throw new SupabaseApiError(401, 'Your sign-in session is invalid. Please sign in again.');
+  const profiles = await requestSupabase('/rest/v1/profiles?id=eq.' + encodeURIComponent(authUser.id) + '&select=*&limit=1', token);
+  const profile = Array.isArray(profiles) ? profiles[0] : null;
+  if (!profile) throw new SupabaseApiError(409, 'Your BeautyZone profile is not ready yet. Please sign in again.');
+  if (profile.status === 'disabled') throw new SupabaseApiError(403, 'This account has been disabled. Please contact support.');
+  if (!['super_admin', 'salon_owner'].includes(profile.role)) throw new SupabaseApiError(403, 'Your account does not have an application role.');
+  return {
+    token,
+    authUser,
+    profile,
+    id: authUser.id,
+    email: authUser.email || profile.email || '',
+    role: profile.role,
+    name: profile.name || authUser.user_metadata?.name || authUser.user_metadata?.full_name || '',
+    emailVerified: Boolean(authUser.email_confirmed_at || authUser.confirmed_at || profile.email_verified),
+    phoneVerified: Boolean(authUser.phone_confirmed_at),
+    phone: authUser.phone || null,
+  };
+}
+
+export async function rest(ctx, table, query = '', options = {}) {
+  const q = query ? '?' + query.replace(/^\?/, '') : '';
+  return requestSupabase('/rest/v1/' + table + q, ctx?.token, options);
+}
+
+export async function rpc(ctx, name, body = {}) {
+  return requestSupabase('/rest/v1/rpc/' + name, ctx?.token, { method: 'POST', body });
+}
+
+export const isoNow = () => new Date().toISOString();
+export const uuid = () => crypto.randomUUID();
+
+export function profileUser(ctx) {
+  return {
+    id: ctx.id,
+    email: ctx.email,
+    name: ctx.profile.name || ctx.name || '',
+    role: ctx.profile.role,
+    status: ctx.profile.status || 'active',
+    authProvider: ctx.authUser.app_metadata?.provider === 'google' ? 'google' : 'password',
+    emailVerified: ctx.emailVerified,
+    lastLoginAt: ctx.authUser.last_sign_in_at || null,
+    createdAt: ctx.profile.created_at,
+  };
+}
+
+export function mapSalon(row, extras = {}) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    ownerId: row.owner_id,
+    name: row.name,
+    slug: row.slug,
+    tagline: row.tagline || '',
+    description: row.description || '',
+    logoUrl: row.logo_url || '',
+    coverImage: row.cover_image || '',
+    gallery: Array.isArray(row.gallery) ? row.gallery : [],
+    phone: row.phone || '',
+    email: row.email || '',
+    whatsapp: row.whatsapp || '',
+    addressLine: row.address_line || '',
+    city: row.city || '',
+    state: row.state || '',
+    postalCode: row.postal_code || '',
+    country: row.country || 'India',
+    mapUrl: row.map_url || '',
+    instagram: row.instagram || '',
+    facebook: row.facebook || '',
+    heroTitle: row.hero_title || '',
+    heroSubtitle: row.hero_subtitle || '',
+    theme: row.theme && typeof row.theme === 'object' ? row.theme : {},
+    published: Boolean(row.website_published),
+    publishedAt: row.published_at || null,
+    status: row.status || 'draft',
+    submittedAt: row.submitted_at || null,
+    approvedAt: row.approved_at || null,
+    reviewNote: row.review_note || '',
+    reviewedAt: row.reviewed_at || null,
+    suspended: Boolean(row.suspended),
+    suspendedReason: row.suspended_reason || '',
+    suspendedAt: row.suspended_at || null,
+    templateId: row.template_id || 'luxe',
+    timings: Array.isArray(row.timings) ? row.timings : [],
+    ownerName: row.owner_name || '',
+    ownerPhone: row.owner_phone || '',
+    onboardingCompleted: Boolean(row.onboarding_completed),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    ...(extras.owner ? { owner: extras.owner } : {}),
+    ...(extras.subscription !== undefined ? { subscription: extras.subscription } : {}),
+    ...(extras.serviceCount !== undefined ? { serviceCount: extras.serviceCount } : {}),
+  };
+}
+
+export function mapService(row) {
+  if (!row) return null;
+  const pricePaise = Number(row.price_paise || 0);
+  return {
+    id: row.id, salonId: row.salon_id, name: row.name, category: row.category || 'other',
+    description: row.description || '', pricePaise, price: pricePaise / 100,
+    durationMinutes: Number(row.duration_minutes || 30), imageUrl: row.image_url || '',
+    active: Boolean(row.active), sortOrder: Number(row.sort_order || 0),
+    createdAt: row.created_at, updatedAt: row.updated_at,
+  };
+}
+
+export function mapStaff(row) {
+  if (!row) return null;
+  return {
+    id: row.id, salonId: row.salon_id, name: row.name, roleTitle: row.role_title || '',
+    bio: row.bio || '', photoUrl: row.photo_url || '',
+    specialties: Array.isArray(row.specialties) ? row.specialties : [],
+    active: Boolean(row.active), bookingEnabled: row.booking_enabled !== false,
+    sortOrder: Number(row.sort_order || 0), createdAt: row.created_at, updatedAt: row.updated_at,
+  };
+}
+
+export function mapSubscription(row) {
+  if (!row) return null;
+  return {
+    id: row.id, salonId: row.salon_id, plan: row.plan, status: row.status,
+    currentPeriodEnd: row.current_period_end || null,
+    createdAt: row.created_at, updatedAt: row.updated_at,
+  };
+}
+
+export function mapVersion(row) {
+  if (!row) return null;
+  return {
+    id: row.id, salonId: row.salon_id, version: Number(row.version), status: row.status,
+    submittedAt: row.submitted_at, reviewedAt: row.reviewed_at || null,
+    reviewNote: row.review_note || '', contentHash: row.content_hash || undefined,
+  };
+}
+
+export async function getSalonForOwner(ctx) {
+  const rows = await rest(ctx, 'salons', 'owner_id=eq.' + encodeURIComponent(ctx.id) + '&select=*&limit=1');
+  return rows[0] || null;
+}
+
+export async function getSalonById(ctx, salonId) {
+  const rows = await rest(ctx, 'salons', 'id=eq.' + encodeURIComponent(salonId) + '&select=*&limit=1');
+  return rows[0] || null;
+}
+
+export async function getServices(ctx, salonId, { activeOnly = false } = {}) {
+  const q = 'salon_id=eq.' + encodeURIComponent(salonId) + '&select=*&order=sort_order.asc,created_at.asc' + (activeOnly ? '&active=eq.true' : '');
+  return (await rest(ctx, 'services', q)).map(mapService);
+}
+
+export async function getStaff(ctx, salonId, { activeOnly = false } = {}) {
+  const q = 'salon_id=eq.' + encodeURIComponent(salonId) + '&select=*&order=sort_order.asc,created_at.asc' + (activeOnly ? '&active=eq.true' : '');
+  return (await rest(ctx, 'staff', q)).map(mapStaff);
+}
+
+export async function getSubscription(ctx, salonId) {
+  const rows = await rest(ctx, 'subscriptions', 'salon_id=eq.' + encodeURIComponent(salonId) + '&select=*&limit=1');
+  return mapSubscription(rows[0] || null);
+}
+
+export async function getVersions(ctx, salonId) {
+  return (await rest(ctx, 'salon_versions', 'salon_id=eq.' + encodeURIComponent(salonId) + '&select=*&order=version.desc')).map(mapVersion);
+}
+
+export function buildSnapshot(salon, services, staff) {
+  return {
+    salon: {
+      name: salon.name, tagline: salon.tagline, description: salon.description,
+      logoUrl: salon.logo_url, coverImage: salon.cover_image,
+      gallery: Array.isArray(salon.gallery) ? salon.gallery : [],
+      phone: salon.phone, email: salon.email, whatsapp: salon.whatsapp,
+      addressLine: salon.address_line, city: salon.city, state: salon.state,
+      postalCode: salon.postal_code, country: salon.country, mapUrl: salon.map_url,
+      instagram: salon.instagram, facebook: salon.facebook, heroTitle: salon.hero_title,
+      heroSubtitle: salon.hero_subtitle, theme: salon.theme || {},
+      templateId: salon.template_id, timings: salon.timings || [],
+      ownerName: salon.owner_name, ownerPhone: salon.owner_phone,
+    },
+    services: services.map((s) => ({
+      id: s.id, name: s.name, category: s.category, description: s.description,
+      pricePaise: Number(s.price_paise || 0), durationMinutes: Number(s.duration_minutes || 30),
+      active: Boolean(s.active), sortOrder: Number(s.sort_order || 0),
+    })),
+    staff: staff.map((s) => ({
+      id: s.id, name: s.name, roleTitle: s.role_title || '', bio: s.bio || '',
+      photoUrl: s.photo_url || '', specialties: Array.isArray(s.specialties) ? s.specialties : [],
+      active: Boolean(s.active), bookingEnabled: s.booking_enabled !== false,
+      sortOrder: Number(s.sort_order || 0),
+    })),
+  };
+}
+
+export function hashSnapshot(snapshot) {
+  const canonical = JSON.stringify({
+    salon: snapshot.salon,
+    services: snapshot.services.map((s) => ({ ...s })),
+    staff: snapshot.staff.map((s) => ({ ...s })),
+  });
+  return crypto.createHash('sha256').update(canonical).digest('hex');
+}
+
+export async function getWorkflow(ctx, salon) {
+  if (!salon) return null;
+  const versions = await getVersions(ctx, salon.id);
+  const pending = versions.find((v) => v.status === 'pending') || null;
+  const approved = versions.find((v) => v.status === 'approved') || null;
+  const [services, staff] = await Promise.all([getServices(ctx, salon.id), getStaff(ctx, salon.id)]);
+  const currentHash = hashSnapshot(buildSnapshot(salon, await rawServices(ctx, salon.id), await rawStaff(ctx, salon.id)));
+  const blockers = [];
+  if (!ctx.emailVerified) blockers.push({ code: 'EMAIL_UNVERIFIED', message: 'Verify your email address before submitting for approval.' });
+  if (salon.suspended) blockers.push({ code: 'SUSPENDED', message: 'This salon is suspended by the platform.' });
+  const missing = [];
+  if (!salon.name) missing.push('salon name');
+  if (!salon.address_line) missing.push('street address');
+  if (!salon.city) missing.push('city');
+  if (!salon.phone) missing.push('phone number');
+  if (!services.some((s) => s.active)) missing.push('at least one active service');
+  if (missing.length) blockers.push({ code: 'INCOMPLETE', message: 'Complete your profile first: add ' + missing.join(', ') + '.', missing });
+  const hasUnpublishedChanges = Boolean(approved && approved.contentHash !== currentHash);
+  const canPublish = ['approved','pending'].includes(salon.status) && Boolean(approved) && !salon.suspended && ctx.emailVerified && salon.onboarding_completed;
+  return {
+    status: salon.status,
+    suspended: Boolean(salon.suspended),
+    suspendedReason: salon.suspended_reason || '',
+    reviewNote: salon.review_note || '',
+    submittedAt: salon.submitted_at || null,
+    approvedAt: salon.approved_at || null,
+    reviewedAt: salon.reviewed_at || null,
+    emailVerified: ctx.emailVerified,
+    pendingVersion: pending,
+    approvedVersion: approved,
+    hasUnpublishedChanges,
+    canSubmit: !pending && !salon.suspended && blockers.length === 0,
+    canPublish,
+    blockers,
+  };
+}
+
+export async function rawServices(ctx, salonId) {
+  return rest(ctx, 'services', 'salon_id=eq.' + encodeURIComponent(salonId) + '&select=*&order=sort_order.asc,created_at.asc');
+}
+export async function rawStaff(ctx, salonId) {
+  return rest(ctx, 'staff', 'salon_id=eq.' + encodeURIComponent(salonId) + '&select=*&order=sort_order.asc,created_at.asc');
+}
+
+export async function userPayload(ctx, { includeSalon = true } = {}) {
+  const user = profileUser(ctx);
+  const salonRow = includeSalon && ctx.role === 'salon_owner' ? await getSalonForOwner(ctx) : null;
+  if (!salonRow) return {
+    user, salon: null, workflow: null, subscription: null,
+    onboardingRequired: ctx.role === 'salon_owner',
+  };
+  const [workflow, subscription] = await Promise.all([getWorkflow(ctx, salonRow), getSubscription(ctx, salonRow.id)]);
+  return {
+    user, salon: mapSalon(salonRow), workflow, subscription,
+    onboardingRequired: false,
+  };
+}
+
+export async function writeAudit(ctx, action, targetType = null, targetId = null, metadata = null) {
+  try {
+    await rest(ctx, 'audit_logs', '', {
+      method: 'POST',
+      body: [{
+        actor_id: ctx?.id || null,
+        actor_email: ctx?.email || null,
+        action,
+        target_type: targetType,
+        target_id: targetId ? String(targetId) : null,
+        metadata: metadata || null,
+        meta: metadata || null,
+      }],
+      prefer: 'return=minimal',
+    });
+  } catch (error) {
+    console.error('[supabase audit] write failed:', error.message);
+  }
+}
+
+export async function getLiveSalon(ctx, slug) {
+  const rows = await rest(ctx, 'salons', 'slug=eq.' + encodeURIComponent(slug) + '&select=*&limit=1');
+  const salon = rows[0] || null;
+  if (!salon || !salon.website_published || salon.status !== 'approved' && salon.status !== 'pending' || salon.suspended) return null;
+  const versions = await rest(ctx, 'salon_versions', 'salon_id=eq.' + encodeURIComponent(salon.id) + '&status=eq.approved&select=*&order=version.desc&limit=1');
+  const version = versions[0] || null;
+  if (!version || !version.snapshot) return null;
+  return { salon, version, snapshot: version.snapshot };
+}
+
+export function livePayload(live) {
+  if (!live) return null;
+  const s = live.snapshot.salon || {};
+  const salon = {
+    id: live.salon.id, slug: live.salon.slug, name: s.name || live.salon.name,
+    tagline: s.tagline ?? live.salon.tagline ?? '',
+    description: s.description ?? live.salon.description ?? '',
+    logoUrl: s.logoUrl ?? live.salon.logo_url ?? '',
+    coverImage: s.coverImage ?? live.salon.cover_image ?? '',
+    gallery: Array.isArray(s.gallery) ? s.gallery : [],
+    phone: s.phone ?? live.salon.phone ?? '', email: s.email ?? live.salon.email ?? '',
+    whatsapp: s.whatsapp ?? live.salon.whatsapp ?? '', addressLine: s.addressLine ?? live.salon.address_line ?? '',
+    city: s.city ?? live.salon.city ?? '', state: s.state ?? live.salon.state ?? '',
+    postalCode: s.postalCode ?? live.salon.postal_code ?? '', country: s.country ?? live.salon.country ?? '',
+    mapUrl: s.mapUrl ?? live.salon.map_url ?? '', instagram: s.instagram ?? live.salon.instagram ?? '',
+    facebook: s.facebook ?? live.salon.facebook ?? '', heroTitle: s.heroTitle ?? live.salon.hero_title ?? '',
+    heroSubtitle: s.heroSubtitle ?? live.salon.hero_subtitle ?? '', theme: s.theme || live.salon.theme || {},
+    templateId: s.templateId || live.salon.template_id || 'luxe', timings: Array.isArray(s.timings) ? s.timings : [],
+    ownerName: s.ownerName || '', published: true, publishedAt: live.salon.published_at,
+    approvedAt: live.salon.approved_at, websiteVersion: live.version.version, updatedAt: live.version.reviewed_at || live.salon.updated_at,
+  };
+  const services = (live.snapshot.services || []).filter((s) => s.active).map((s) => ({
+    id:s.id, salonId:live.salon.id, name:s.name, category:s.category, description:s.description,
+    pricePaise:s.pricePaise, price:s.pricePaise/100, durationMinutes:s.durationMinutes, active:true, sortOrder:s.sortOrder,
+  }));
+  const staff = (live.snapshot.staff || []).filter((s) => s.active).map((s) => ({
+    id:s.id, salonId:live.salon.id, name:s.name, roleTitle:s.roleTitle, bio:s.bio, photoUrl:s.photoUrl,
+    specialties:Array.isArray(s.specialties)?s.specialties:[], active:true, bookingEnabled:s.bookingEnabled!==false, sortOrder:s.sortOrder,
+  }));
+  return { salon, services, staff };
+}
