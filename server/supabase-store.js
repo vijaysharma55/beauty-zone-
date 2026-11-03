@@ -238,7 +238,7 @@ export function buildSnapshot(salon, services, staff) {
     },
     services: services.map((s) => ({
       id: s.id, name: s.name, category: s.category, description: s.description,
-      pricePaise: Number(s.price_paise || 0), durationMinutes: Number(s.duration_minutes || 30),
+      pricePaise: Number(s.price_paise || 0), durationMinutes: Number(s.duration_minutes || 30), imageUrl: s.image_url || '',
       active: Boolean(s.active), sortOrder: Number(s.sort_order || 0),
     })),
     staff: staff.map((s) => ({
@@ -370,7 +370,7 @@ export function livePayload(live) {
   };
   const services = (live.snapshot.services || []).filter((s) => s.active).map((s) => ({
     id:s.id, salonId:live.salon.id, name:s.name, category:s.category, description:s.description,
-    pricePaise:s.pricePaise, price:s.pricePaise/100, durationMinutes:s.durationMinutes, active:true, sortOrder:s.sortOrder,
+    pricePaise:s.pricePaise, price:s.pricePaise/100, durationMinutes:s.durationMinutes, imageUrl:s.imageUrl||'', active:true, sortOrder:s.sortOrder,
   }));
   const staff = (live.snapshot.staff || []).filter((s) => s.active).map((s) => ({
     id:s.id, salonId:live.salon.id, name:s.name, roleTitle:s.roleTitle, bio:s.bio, photoUrl:s.photoUrl,
