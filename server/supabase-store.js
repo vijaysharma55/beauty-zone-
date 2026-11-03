@@ -97,7 +97,7 @@ export function profileUser(ctx) {
     name: ctx.profile.name || ctx.name || '',
     role: ctx.profile.role,
     status: ctx.profile.status || 'active',
-    authProvider: ctx.authUser.app_metadata?.provider === 'google' ? 'google' : ctx.authUser.app_metadata?.provider === 'phone' ? 'phone' : 'password',
+    authProvider: ctx.profile.auth_provider || (ctx.authUser.app_metadata?.provider === 'google' ? 'google' : ctx.authUser.app_metadata?.provider === 'phone' ? 'phone' : 'password'),
     emailVerified: ctx.emailVerified,
     lastLoginAt: ctx.authUser.last_sign_in_at || null,
     createdAt: ctx.profile.created_at,
