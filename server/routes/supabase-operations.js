@@ -362,15 +362,15 @@ supabaseOperationsRouter.post('/admin/users', asyncRoute(async(req,res)=>{
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) fail(400,'Please enter a valid email address.');
   const password=typeof req.body?.password==='string'?req.body.password:'';
   if(password.length<8||!/[A-Za-z]/.test(password)||!/[0-9]/.test(password)) fail(400,'Password must be at least 8 characters and include a letter and a number.');
-  const role=req.body?.role==='super_admin'?'super_admin':'salon_owner';
+  const role=['super_admin','salon_owner','customer'].includes(req.body?.role)?req.body.role:'salon_owner';
   const created=await requestSupabase('/auth/v1/signup',null,{
     method:'POST',body:{email,password,data:{name,full_name:name}},
   });
   const user=created?.user||created;
   if(!user?.id) fail(502,'Supabase Auth did not return the new user.');
   // The database trigger creates the profile with the safe default salon_owner role.
-  // Only an already-authorized super admin can assign super_admin.
-  if(role==='super_admin'){
+  // Only an already-authorized super admin can assign elevated application roles.
+  if(role!=='salon_owner'){
     const rows=await update(req.sb,'profiles','id=eq.'+encodeURIComponent(user.id),{role,updated_at:isoNow()});
     if(!rows[0]) fail(502,'The account was created but its admin role could not be assigned.');
   }
@@ -386,7 +386,7 @@ supabaseOperationsRouter.patch('/admin/users/:userId', asyncRoute(async(req,res)
   admin(req.sb); const patch={updated_at:isoNow()};
   if(req.body?.name!==undefined) patch.name=s(req.body.name,120,true);
   if(req.body?.status!==undefined){if(!['active','disabled'].includes(req.body.status))fail(400,'Invalid account status.');patch.status=req.body.status;}
-  if(req.body?.role!==undefined){if(!['super_admin','salon_owner'].includes(req.body.role))fail(400,'Invalid application role.');if(req.params.userId===req.sb.id&&req.body.role!=='super_admin')fail(400,'You cannot remove your own super admin role.');patch.role=req.body.role;}
+  if(req.body?.role!==undefined){if(!['super_admin','salon_owner','customer'].includes(req.body.role))fail(400,'Invalid application role.');if(req.params.userId===req.sb.id&&req.body.role!=='super_admin')fail(400,'You cannot remove your own super admin role.');patch.role=req.body.role;}
   const rows=await update(req.sb,'profiles','id=eq.'+encodeURIComponent(req.params.userId),patch);
   if(!rows[0]) fail(404,'User not found.');
   await audit(req.sb,'admin.user_updated','user',req.params.userId,{fields:Object.keys(patch)});
