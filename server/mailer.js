@@ -46,3 +46,11 @@ export function reviewNotificationEmail({ ownerName, salonName, outcome, note, d
     }<p><a href="${dashboardUrl}">Open your dashboard</a></p>`,
   };
 }
+
+export function passwordResetEmail({ name, url, token }) {
+  return {
+    subject: 'Reset your BeautyZone account password',
+    text: `Hi ${name || 'there'},\n\nWe received a request to reset your password for your BeautyZone salon account.\n\nClick the link below to set a new password:\n${url}\n\nReset token: ${token}\n\nThis link is valid for 1 hour. If you did not make this request, you can safely ignore this email.`,
+    html: `<p>Hi ${name || 'there'},</p><p>We received a request to reset your password for your BeautyZone salon account.</p><p><a href="${url}" style="display:inline-block;padding:10px 20px;background:#D09A40;color:#0F172A;font-weight:bold;text-decoration:none;border-radius:6px;">Reset my password</a></p><p style="color:#64748b;font-size:12px;">Or enter this reset token: <code>${token}</code></p><p style="color:#64748b;font-size:12px;">This link is valid for 1 hour. If you did not make this request, you can safely ignore this email.</p>`,
+  };
+}

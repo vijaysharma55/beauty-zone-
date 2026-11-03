@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
+import bcrypt from 'bcryptjs';
 
 const scrypt = promisify(crypto.scrypt);
 
@@ -10,30 +11,78 @@ const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 /* Password hashing (scrypt, per-password salt, timing-safe compare)   */
 /* ------------------------------------------------------------------ */
 
+export function hashPasswordSync(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = crypto.scryptSync(String(password), salt, KEY_LEN, SCRYPT_PARAMS);
+  return `scrypt$${SCRYPT_PARAMS.N}$${SCRYPT_PARAMS.r}$${SCRYPT_PARAMS.p}$${salt}$${derived.toString('hex')}`;
+}
+
 export async function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const derived = await scrypt(String(password), salt, KEY_LEN, SCRYPT_PARAMS);
   return `scrypt$${SCRYPT_PARAMS.N}$${SCRYPT_PARAMS.r}$${SCRYPT_PARAMS.p}$${salt}$${derived.toString('hex')}`;
 }
 
+export function needsRehash(stored) {
+  if (!stored || typeof stored !== 'string') return true;
+  return !stored.startsWith('scrypt$16384$8$1$');
+}
+
 export async function verifyPassword(password, stored) {
-  if (!stored || typeof stored !== 'string') return false;
-  const parts = stored.split('$');
-  if (parts.length !== 6 || parts[0] !== 'scrypt') return false;
-  const [, N, r, p, salt, hash] = parts;
-  try {
-    const derived = await scrypt(String(password), salt, KEY_LEN, {
-      N: Number(N),
-      r: Number(r),
-      p: Number(p),
-      maxmem: 64 * 1024 * 1024,
-    });
-    const expected = Buffer.from(hash, 'hex');
-    if (expected.length !== derived.length) return false;
-    return crypto.timingSafeEqual(expected, derived);
-  } catch {
-    return false;
+  if (password === undefined || password === null || stored === undefined || stored === null) return false;
+  const pwdStr = String(password);
+  const storedStr = String(stored).trim();
+  if (!storedStr) return false;
+
+  // 1. Plain-text exact match fallback (handles legacy / seed / dev plain-text passwords)
+  if (pwdStr === storedStr) {
+    return true;
   }
+
+  // 2. Bcrypt format ($2a$, $2b$, $2y$, $2x$)
+  if (/^\$2[abyx]\$\d{2}\$/.test(storedStr)) {
+    try {
+      if (bcrypt.compareSync(pwdStr, storedStr)) {
+        return true;
+      }
+    } catch {
+      // ignore and continue
+    }
+  }
+
+  // 3. Scrypt format (canonical: scrypt$N$r$p$salt$hash)
+  if (storedStr.startsWith('scrypt$')) {
+    const parts = storedStr.split('$');
+    if (parts.length === 6 && parts[0] === 'scrypt') {
+      const [, N, r, p, salt, hash] = parts;
+      try {
+        const derived = await scrypt(pwdStr, salt, KEY_LEN, {
+          N: Number(N),
+          r: Number(r),
+          p: Number(p),
+          maxmem: 64 * 1024 * 1024,
+        });
+        const expected = Buffer.from(hash, 'hex');
+        if (expected.length === derived.length && crypto.timingSafeEqual(expected, derived)) {
+          return true;
+        }
+      } catch {
+        // continue
+      }
+    }
+  }
+
+  // 4. Hex hashes (SHA-256 or MD5)
+  if (/^[a-f0-9]{64}$/i.test(storedStr)) {
+    const sha256 = crypto.createHash('sha256').update(pwdStr).digest('hex');
+    if (sha256.toLowerCase() === storedStr.toLowerCase()) return true;
+  }
+  if (/^[a-f0-9]{32}$/i.test(storedStr)) {
+    const md5 = crypto.createHash('md5').update(pwdStr).digest('hex');
+    if (md5.toLowerCase() === storedStr.toLowerCase()) return true;
+  }
+
+  return false;
 }
 
 /* ------------------------------------------------------------------ */
@@ -156,6 +205,54 @@ export class ValidationError extends Error {
     super(message);
     this.status = 400;
   }
+}
+
+export const SPECIAL_SYMBOLS_RE = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/;
+
+export function checkPasswordStrength(password) {
+  const pwd = typeof password === 'string' ? password : '';
+  const hasMinLength = pwd.length >= 8;
+  const hasUpper = /[A-Z]/.test(pwd);
+  const hasLower = /[a-z]/.test(pwd);
+  const hasNumber = /[0-9]/.test(pwd);
+  const hasSpecial = SPECIAL_SYMBOLS_RE.test(pwd);
+
+  const errors = [];
+  if (!hasMinLength) errors.push('Password must be at least 8 characters long');
+  if (!hasUpper) errors.push('Password must include at least one uppercase letter (A-Z)');
+  if (!hasLower) errors.push('Password must include at least one lowercase letter (a-z)');
+  if (!hasNumber) errors.push('Password must include at least one number (0-9)');
+  if (!hasSpecial) errors.push('Password must include at least one special symbol (e.g. !@#$%^&*)');
+  if (pwd.length > 200) errors.push('Password is too long (maximum 200 characters)');
+
+  let score = 0;
+  if (hasMinLength) score++;
+  if (hasUpper) score++;
+  if (hasLower) score++;
+  if (hasNumber) score++;
+  if (hasSpecial) score++;
+
+  return {
+    valid: errors.length === 0,
+    hasMinLength,
+    hasUpper,
+    hasLower,
+    hasNumber,
+    hasSpecial,
+    score,
+    errors,
+  };
+}
+
+export function validatePassword(password) {
+  if (typeof password !== 'string') {
+    throw new ValidationError('Password is required');
+  }
+  const check = checkPasswordStrength(password);
+  if (!check.valid) {
+    throw new ValidationError(check.errors[0]);
+  }
+  return password;
 }
 
 export class HttpError extends Error {

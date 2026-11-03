@@ -32,6 +32,8 @@ import { useBrand } from './context/BrandContext';
 import { useAuth } from './context/AuthContext';
 import { LoginPage } from './components/auth/LoginPage';
 import { RegisterPage } from './components/auth/RegisterPage';
+import { ForgotPasswordPage } from './components/auth/ForgotPasswordPage';
+import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { DashboardLayout } from './components/dashboard/DashboardLayout';
 import { OverviewPage } from './components/dashboard/OverviewPage';
@@ -381,6 +383,8 @@ export function App() {
       {/* Authentication */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/verify-email" element={<VerifyEmailPage />} />
 
       {/* Salon owner dashboard — protected, salon-owner role only */}

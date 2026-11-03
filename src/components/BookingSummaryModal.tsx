@@ -40,6 +40,39 @@ export const BookingSummaryModal: React.FC<BookingSummaryModalProps> = ({
     return `${baseUrl}&text=${encodeURIComponent(text)}&details=${encodeURIComponent(details)}&location=${encodeURIComponent(location || '')}&dates=${startDate}/${endDate}`;
   };
 
+  // iCal (.ics) file generator for Apple/Outlook/others
+  const downloadIcsFile = () => {
+    const text = `Booking: ${serviceTitle}`;
+    const details = `Booking Ref: #${bookingRef}\nName: ${form.fullName}\nService: ${serviceTitle}\nLocation: ${form.locationType === 'salon' ? form.selectedBranch : form.homeAddress}`;
+    const location = form.locationType === 'salon' ? form.selectedBranch : form.homeAddress;
+    
+    const date = new Date(`${form.appointmentDate}T${form.timeSlot.replace(/ AM| PM/, '')}`);
+    const startDate = date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    const endDate = new Date(date.getTime() + 60 * 60 * 1000).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+
+    const icsContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'BEGIN:VEVENT',
+      `URL:${window.location.href}`,
+      `DTSTART:${startDate}`,
+      `DTEND:${endDate}`,
+      `SUMMARY:${text}`,
+      `DESCRIPTION:${details.replace(/\n/g, '\\n')}`,
+      `LOCATION:${location}`,
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ].join('\n');
+
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = window.URL.createObjectURL(blob);
+    link.setAttribute('download', `beautyzone-booking-${bookingRef}.ics`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F172A]/80 backdrop-blur-sm">
       <div className="bg-white text-[#0F172A] rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl relative border border-[#D09A40]/40">
@@ -49,7 +82,7 @@ export const BookingSummaryModal: React.FC<BookingSummaryModalProps> = ({
         >
           <X className="w-5 h-5 text-gray-500" />
         </button>
-
+        
         <div className="text-center mb-6">
           <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-4">
             <CheckCircle2 className="w-10 h-10" />
@@ -73,16 +106,27 @@ export const BookingSummaryModal: React.FC<BookingSummaryModalProps> = ({
           </div>
         </div>
 
-        <a
-          href={generateCalendarLink()}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="w-full flex items-center justify-center gap-2 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold text-sm px-6 py-3 rounded-xl shadow-lg transition-all"
-        >
-          <CalendarIcon className="w-4 h-4" />
-          <span>Add to Google Calendar</span>
-        </a>
+        <div className="space-y-3">
+          <a
+            href={generateCalendarLink()}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center justify-center gap-2 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold text-sm px-6 py-3 rounded-xl shadow-lg transition-all"
+          >
+            <CalendarIcon className="w-4 h-4" />
+            <span>Add to Google Calendar</span>
+          </a>
+          
+          <button
+            onClick={downloadIcsFile}
+            className="w-full flex items-center justify-center gap-2 bg-white border border-[#0F172A]/20 hover:bg-gray-50 text-[#0F172A] font-bold text-sm px-6 py-3 rounded-xl transition-all"
+          >
+            <CalendarIcon className="w-4 h-4 text-[#D09A40]" />
+            <span>Download iCal / Outlook</span>
+          </button>
+        </div>
       </div>
     </div>
   );
 };
+

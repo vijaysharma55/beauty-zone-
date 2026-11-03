@@ -21,11 +21,13 @@ function addColumn(table, column, definition) {
   return true;
 }
 
-/* Users: email verification */
+/* Users: email verification & password reset */
 const addedVerification = addColumn('users', 'email_verified', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('users', 'email_verified_at', 'TEXT');
 addColumn('users', 'email_verification_token_hash', 'TEXT');
 addColumn('users', 'email_verification_expires', 'TEXT');
+addColumn('users', 'password_reset_token_hash', 'TEXT');
+addColumn('users', 'password_reset_expires', 'TEXT');
 
 /* Legacy accounts predate email verification, so treat them as trusted and
    let owners resend/verify from their dashboard if they prefer. */

@@ -42,6 +42,8 @@ db.exec(`
     email_verification_expires TEXT,
     failed_logins INTEGER NOT NULL DEFAULT 0,
     locked_until TEXT,
+    password_reset_token_hash TEXT,
+    password_reset_expires TEXT,
     last_login_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -637,6 +639,101 @@ export function seedIfEmpty(hashPassword) {
   return { seeded: true, adminEmail, ownerEmail };
 }
 
+export function ensureDemoUsers(hashPassword) {
+  const adminEmail = (process.env.SEED_ADMIN_EMAIL || 'admin@beautyzone.app').toLowerCase();
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD || 'Admin@12345';
+  const ownerEmail = (process.env.SEED_OWNER_EMAIL || 'owner@luminaluxe.in').toLowerCase();
+  const ownerPassword = process.env.SEED_OWNER_PASSWORD || 'Owner@12345';
+  const ts = nowIso();
+
+  // Ensure Admin
+  let admin = findUserByEmail(adminEmail);
+  if (!admin) {
+    const adminId = newId();
+    db.prepare(
+      `INSERT INTO users (id, email, password_hash, auth_provider, name, role, status, email_verified, email_verified_at, created_at, updated_at)
+       VALUES (?, ?, ?, 'password', ?, 'super_admin', 'active', 1, ?, ?, ?)`
+    ).run(adminId, adminEmail, hashPassword(adminPassword), 'Platform Super Admin', ts, ts, ts);
+  } else if (admin.status !== 'active' || admin.locked_until) {
+    db.prepare('UPDATE users SET status = ?, locked_until = NULL, failed_logins = 0 WHERE id = ?').run('active', admin.id);
+  }
+
+  // Ensure Owner
+  let owner = findUserByEmail(ownerEmail);
+  if (!owner) {
+    const ownerId = newId();
+    db.prepare(
+      `INSERT INTO users (id, email, password_hash, auth_provider, name, role, status, email_verified, email_verified_at, created_at, updated_at)
+       VALUES (?, ?, ?, 'password', ?, 'salon_owner', 'active', 1, ?, ?, ?)`
+    ).run(ownerId, ownerEmail, hashPassword(ownerPassword), 'Aanya Sharma', ts, ts, ts);
+    owner = findUserByEmail(ownerEmail);
+  } else if (owner.status !== 'active' || owner.locked_until) {
+    db.prepare('UPDATE users SET status = ?, locked_until = NULL, failed_logins = 0 WHERE id = ?').run('active', owner.id);
+  }
+
+  // Ensure salon exists for owner
+  if (owner) {
+    const salon = findSalonByOwner(owner.id);
+    if (!salon) {
+      const salonId = newId();
+      const luminaGallery = JSON.stringify([
+        { url: '/images/jaipur_luxury_salon_1792644552318.jpg', caption: 'Lumina Luxe Royal Interior Studio — Jaipur' },
+        { url: '/images/jaipur_royal_bride_1792647664582.jpg', caption: 'Signature Royal HD Bridal Makeover & Draping' },
+        { url: '/images/luxury_hair_nanoplastia_1792647835332.jpg', caption: 'Moroccan Nanoplastia & Hair Botox Suite' },
+        { url: '/images/bridal_nail_art_1792647953738.jpg', caption: 'Russian Gel Nail Extensions & 24K Gold Foil Art' },
+        { url: '/images/skin_spa_treatment_1790672037475.jpg', caption: 'HydraFacial Glow Ritual Room' },
+      ]);
+      db.prepare(
+        `INSERT INTO salons (id, owner_id, name, slug, tagline, description, logo_url, cover_image, gallery_json,
+            phone, email, whatsapp, address_line, city, state, postal_code, country, map_url, instagram,
+            hero_title, hero_subtitle, theme_json, website_published, published_at, onboarding_completed,
+            status, approved_at, template_id, timings_json, owner_name, owner_phone, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, '', '/images/jaipur_luxury_salon_1792644552318.jpg', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 1, 'approved', ?, 'luxe', ?, 'Aanya Sharma', '919800012345', ?, ?)`
+      ).run(
+        salonId,
+        owner.id,
+        'Lumina Luxe',
+        'lumina-luxe',
+        'Luxury Salon & Bridal Studio',
+        'Bespoke bridal artistry, clinical skin treatments and luxury hair care by certified master stylists.',
+        luminaGallery,
+        '+91 98000 12345',
+        ownerEmail,
+        '919800012345',
+        '12 Civil Lines, Ashok Nagar',
+        'Jaipur',
+        'Rajasthan',
+        '302001',
+        'India',
+        'https://maps.google.com/?q=Jaipur',
+        '@luminaluxestudio',
+        'Signature Bridal, Hair & Skin Luxury Studio',
+        'Award-winning bridal makeovers, luxury hair couture and clinical facials in the heart of Jaipur.',
+        JSON.stringify({ accent: '#D09A40', primary: '#0F172A', background: '#FAF5E5', surface: '#FFFFFF' }),
+        ts,
+        ts,
+        JSON.stringify(DEFAULT_TIMINGS),
+        ts,
+        ts
+      );
+      const services = [
+        { name: 'HD Airbrush Bridal Makeover', category: 'bridal', price: 24999, durationMinutes: 180, description: 'Long-wear HD airbrush bridal look with premium products, lashes and draping.' },
+        { name: 'Balayage & Gloss Couture', category: 'hair', price: 8999, durationMinutes: 150, description: 'Hand-painted balayage with bond-building gloss and blow-dry finish.' },
+        { name: 'HydraFacial Glow Ritual', category: 'skin', price: 4999, durationMinutes: 75, description: 'Deep-cleansing hydra-facial with antioxidant serum infusion.' },
+        { name: 'Russian Gel Nail Extensions', category: 'nails', price: 3499, durationMinutes: 90, description: 'Precision dry-manicure and durable gel extensions with custom art.' },
+        { name: 'Aroma Spa De-Stress Massage', category: 'spa', price: 3999, durationMinutes: 60, description: 'Full-body aroma therapy massage with warm oils.' },
+        { name: 'Professional Bridal Makeup Course', category: 'academy', price: 45000, durationMinutes: 480, description: 'Hands-on bridal makeup certification with kit and portfolio shoot.' },
+      ];
+      services.forEach((s, i) => seedService(salonId, s, i));
+      const periodEnd = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+      db.prepare(
+        `INSERT OR IGNORE INTO subscriptions (id, salon_id, plan, status, current_period_end, created_at, updated_at)
+         VALUES (?, ?, 'elite', 'active', ?, ?, ?)`
+      ).run(newId(), salonId, periodEnd, ts, ts);
+    }
+  }
+}
+
 function seedJaipurSalons(ownerId, hashPassword, ts) {
   const landmarks = [
     { name: 'Rambagh Palace Luxe', slug: 'rambagh-palace-luxe', addr: 'Rambagh Palace Road' },
@@ -651,14 +748,24 @@ function seedJaipurSalons(ownerId, hashPassword, ts) {
     { name: 'Tonk Road Aesthetics', slug: 'tonk-road-aesthetics', addr: 'Tonk Road' },
   ];
 
-  landmarks.forEach((l) => {
+  landmarks.forEach((l, i) => {
+    const exists = db.prepare('SELECT 1 FROM salons WHERE slug = ?').get(l.slug);
+    if (exists) return;
+
+    const jOwnerId = newId();
+    const pw = hashPassword ? hashPassword('Owner@12345') : null;
+    db.prepare(
+      `INSERT OR IGNORE INTO users (id, email, password_hash, name, role, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'salon_owner', ?, ?)`
+    ).run(jOwnerId, `owner-${l.slug}@jaipur.salon`, pw, `Owner ${l.name}`, ts, ts);
+
     const salonId = newId();
     db.prepare(
       `INSERT INTO salons (id, owner_id, name, slug, tagline, description, city, state, country, status, website_published, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'Rajasthan', 'India', 'approved', 1, ?, ?)`
     ).run(
       salonId,
-      ownerId,
+      jOwnerId,
       l.name,
       l.slug,
       'Premium Salon & Spa',
@@ -669,3 +776,4 @@ function seedJaipurSalons(ownerId, hashPassword, ts) {
     );
   });
 }
+

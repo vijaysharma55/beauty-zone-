@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { AlertCircle, Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, Lock, Mail, X } from 'lucide-react';
 import { AuthLayout } from './AuthLayout';
 import { GoogleSignInButton } from './GoogleSignInButton';
 import { Button, Field, Input } from '../ui';
@@ -69,9 +69,19 @@ export const LoginPage: React.FC = () => {
     >
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         {error && (
-          <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{error}</span>
+          <div className="flex items-start justify-between gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setError('')}
+              className="rounded p-0.5 text-red-400 hover:text-red-700"
+              aria-label="Dismiss error"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
         )}
 
@@ -84,14 +94,25 @@ export const LoginPage: React.FC = () => {
               autoComplete="email"
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (error) setError('');
+              }}
               placeholder="you@salon.com"
               className="pl-9"
             />
           </div>
         </Field>
 
-        <Field label="Password" htmlFor="password" required>
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <label htmlFor="password" className="block text-xs font-semibold uppercase tracking-wider text-slate-700">
+              Password <span className="text-red-500">*</span>
+            </label>
+            <Link to="/forgot-password" className="text-xs font-semibold text-[#8a641f] hover:underline">
+              Forgot password?
+            </Link>
+          </div>
           <div className="relative">
             <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <Input
@@ -100,7 +121,10 @@ export const LoginPage: React.FC = () => {
               autoComplete="current-password"
               required
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (error) setError('');
+              }}
               placeholder="••••••••"
               className="pl-9 pr-10"
             />
@@ -113,7 +137,7 @@ export const LoginPage: React.FC = () => {
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
-        </Field>
+        </div>
 
         <Button type="submit" variant="gold" size="lg" loading={loading} className="w-full">
           Sign in securely
@@ -128,20 +152,42 @@ export const LoginPage: React.FC = () => {
 
       <GoogleSignInButton onCredential={handleGoogle} />
 
-      <div className="mt-6 rounded-xl border border-slate-200 bg-white/60 p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Demo accounts</p>
-        <div className="mt-2 space-y-1 text-xs text-slate-600">
-          <p>
-            Salon owner: <span className="font-mono">owner@luminaluxe.in</span> /{' '}
-            <span className="font-mono">Owner@12345</span>
-          </p>
-          <p>
-            Super admin: <span className="font-mono">admin@beautyzone.app</span> /{' '}
-            <span className="font-mono">Admin@12345</span>
-          </p>
+      <div className="mt-6 rounded-xl border border-slate-200 bg-white/70 p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Demo accounts (Click to fill)</p>
+        <div className="mt-2 space-y-2 text-xs">
+          <button
+            type="button"
+            onClick={() => {
+              setError('');
+              setEmail('owner@luminaluxe.in');
+              setPassword('Owner@12345');
+            }}
+            className="w-full text-left p-2 rounded-lg bg-amber-50/70 hover:bg-amber-100/70 border border-amber-200/60 transition-colors flex items-center justify-between cursor-pointer"
+          >
+            <div>
+              <span className="font-semibold text-slate-800">Salon owner:</span>{' '}
+              <span className="font-mono text-slate-600">owner@luminaluxe.in</span>
+            </div>
+            <span className="text-[11px] text-amber-800 font-medium underline">Fill</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setError('');
+              setEmail('admin@beautyzone.app');
+              setPassword('Admin@12345');
+            }}
+            className="w-full text-left p-2 rounded-lg bg-slate-100/80 hover:bg-slate-200/80 border border-slate-200 transition-colors flex items-center justify-between cursor-pointer"
+          >
+            <div>
+              <span className="font-semibold text-slate-800">Super admin:</span>{' '}
+              <span className="font-mono text-slate-600">admin@beautyzone.app</span>
+            </div>
+            <span className="text-[11px] text-slate-700 font-medium underline">Fill</span>
+          </button>
         </div>
         <p className="mt-2 text-[11px] text-slate-400">
-          Seeded demo credentials — change them in production.
+          Seeded demo credentials — click to auto-fill or type manually.
         </p>
       </div>
     </AuthLayout>

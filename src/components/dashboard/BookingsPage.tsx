@@ -12,7 +12,10 @@ import {
   Store,
   User as UserIcon,
   XCircle,
+  LayoutList,
+  Calendar as CalendarIcon,
 } from 'lucide-react';
+import { CalendarView } from './CalendarView';
 import { api, errorMessage } from '../../lib/api';
 import {
   Alert,
@@ -109,6 +112,7 @@ export const BookingsPage: React.FC = () => {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [filter, setFilter] = useState<'all' | BookingStatus>('all');
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [updating, setUpdating] = useState<string | null>(null);
 
   const load = async () => {
@@ -165,9 +169,31 @@ export const BookingsPage: React.FC = () => {
         title="Bookings"
         description="Every request submitted from your live website lands here."
         actions={
-          <Button variant="secondary" onClick={load} loading={loading}>
-            <RefreshCw className="h-4 w-4" /> Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            <div className="mr-2 flex rounded-lg bg-slate-100 p-1">
+              <button
+                onClick={() => setViewMode('list')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition-all rounded-md ${
+                  viewMode === 'list' ? 'bg-white text-[#0F172A] shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <LayoutList className="h-3.5 w-3.5" />
+                List
+              </button>
+              <button
+                onClick={() => setViewMode('calendar')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition-all rounded-md ${
+                  viewMode === 'calendar' ? 'bg-white text-[#0F172A] shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <CalendarIcon className="h-3.5 w-3.5" />
+                Calendar
+              </button>
+            </div>
+            <Button variant="secondary" onClick={load} loading={loading}>
+              <RefreshCw className="h-4 w-4" /> Refresh
+            </Button>
+          </div>
         }
       />
 
@@ -192,170 +218,175 @@ export const BookingsPage: React.FC = () => {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader
-          title="Appointment requests"
-          description="Confirm, complete or decline each request. Clients are notified by your team."
-          action={
-            <Select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value as 'all' | BookingStatus)}
-              className="w-44"
-              aria-label="Filter bookings by status"
-            >
-              <option value="all">All statuses</option>
-              <option value="requested">New requests</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="completed">Completed</option>
-              <option value="declined">Declined</option>
-              <option value="cancelled">Cancelled</option>
-            </Select>
-          }
-        />
-
-        {loading ? (
-          <div className="flex items-center justify-center gap-2 p-10 text-sm text-slate-500">
-            <Spinner className="h-4 w-4 text-[#D09A40]" /> Loading bookings…
-          </div>
-        ) : filtered.length === 0 ? (
-          <EmptyState
-            icon={<Inbox className="h-6 w-6" />}
-            title={bookings.length === 0 ? 'No bookings yet' : 'Nothing matches this filter'}
-            description={
-              bookings.length === 0
-                ? 'When a visitor books on your published website, the request appears here instantly.'
-                : 'Try a different status filter to see other requests.'
+      {viewMode === 'calendar' ? (
+        <CalendarView bookings={bookings} onStatusChange={changeStatus} />
+      ) : (
+        <Card>
+          <CardHeader
+            title="Appointment requests"
+            description="Confirm, complete or decline each request. Clients are notified by your team."
+            action={
+              <Select
+                value={filter}
+                onChange={(e) => setFilter(e.target.value as 'all' | BookingStatus)}
+                className="w-44"
+                aria-label="Filter bookings by status"
+              >
+                <option value="all">All statuses</option>
+                <option value="requested">New requests</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="completed">Completed</option>
+                <option value="declined">Declined</option>
+                <option value="cancelled">Cancelled</option>
+              </Select>
             }
           />
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {filtered.map((booking) => (
-              <div key={booking.id} className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-[#8a641f]">{booking.reference}</span>
-                    <Badge tone={STATUS_TONE[booking.status]}>{STATUS_LABEL[booking.status]}</Badge>
-                    {booking.locationType === 'home' ? (
-                      <Badge tone="amber">
-                        <Home className="h-3 w-3" /> Home visit
-                      </Badge>
-                    ) : (
-                      <Badge tone="slate">
-                        <Store className="h-3 w-3" /> In salon
-                      </Badge>
-                    )}
-                    {booking.bridalTrial && <Badge tone="gold">Bridal trial</Badge>}
-                  </div>
 
-                  <p className="mt-2 truncate font-semibold text-slate-900">
-                    <Scissors className="mr-1.5 inline h-3.5 w-3.5 text-slate-400" />
-                    {booking.service}
-                  </p>
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 p-10 text-sm text-slate-500">
+              <Spinner className="h-4 w-4 text-[#D09A40]" /> Loading bookings…
+            </div>
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon={<Inbox className="h-6 w-6" />}
+              title={bookings.length === 0 ? 'No bookings yet' : 'Nothing matches this filter'}
+              description={
+                bookings.length === 0
+                  ? 'When a visitor books on your published website, the request appears here instantly.'
+                  : 'Try a different status filter to see other requests.'
+              }
+            />
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {filtered.map((booking) => (
+                <div key={booking.id} className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-xs font-bold text-[#8a641f]">{booking.reference}</span>
+                      <Badge tone={STATUS_TONE[booking.status]}>{STATUS_LABEL[booking.status]}</Badge>
+                      {booking.locationType === 'home' ? (
+                        <Badge tone="amber">
+                          <Home className="h-3 w-3" /> Home visit
+                        </Badge>
+                      ) : (
+                        <Badge tone="slate">
+                          <Store className="h-3 w-3" /> In salon
+                        </Badge>
+                      )}
+                      {booking.bridalTrial && <Badge tone="gold">Bridal trial</Badge>}
+                    </div>
 
-                  <div className="mt-2 grid gap-1.5 text-xs text-slate-600 sm:grid-cols-2">
-                    <p className="flex items-center gap-1.5">
-                      <UserIcon className="h-3.5 w-3.5 text-slate-400" />
-                      {booking.fullName}
+                    <p className="mt-2 truncate font-semibold text-slate-900">
+                      <Scissors className="mr-1.5 inline h-3.5 w-3.5 text-slate-400" />
+                      {booking.service}
                     </p>
-                    <p className="flex items-center gap-1.5">
-                      <Phone className="h-3.5 w-3.5 text-slate-400" />
-                      <a href={`tel:${booking.phone.replace(/[^\d+]/g, '')}`} className="hover:underline">
-                        {booking.phone}
-                      </a>
-                    </p>
-                    <p className="flex items-center gap-1.5">
-                      <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
-                      {booking.date}
-                    </p>
-                    <p className="flex items-center gap-1.5">
-                      <Clock className="h-3.5 w-3.5 text-slate-400" />
-                      {formatTime(booking.time)}
-                    </p>
-                    {booking.stylist && (
-                      <p className="flex items-center gap-1.5 sm:col-span-2">
+
+                    <div className="mt-2 grid gap-1.5 text-xs text-slate-600 sm:grid-cols-2">
+                      <p className="flex items-center gap-1.5">
                         <UserIcon className="h-3.5 w-3.5 text-slate-400" />
-                        Preferred specialist: {booking.stylist}
+                        {booking.fullName}
                       </p>
-                    )}
-                    {booking.locationType === 'salon' && booking.branch && (
-                      <p className="flex items-center gap-1.5 sm:col-span-2">
-                        <MapPin className="h-3.5 w-3.5 text-slate-400" />
-                        {booking.branch}
+                      <p className="flex items-center gap-1.5">
+                        <Phone className="h-3.5 w-3.5 text-slate-400" />
+                        <a href={`tel:${booking.phone.replace(/[^\d+]/g, '')}`} className="hover:underline">
+                          {booking.phone}
+                        </a>
                       </p>
-                    )}
-                    {booking.locationType === 'home' && (booking.address || booking.locality) && (
-                      <p className="flex items-start gap-1.5 sm:col-span-2">
-                        <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
-                        <span>
-                          {[booking.address, booking.locality].filter(Boolean).join(' · ')}
-                          {booking.distanceKm ? ` (~${booking.distanceKm} km)` : ''}
-                        </span>
+                      <p className="flex items-center gap-1.5">
+                        <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
+                        {booking.date}
                       </p>
-                    )}
-                  </div>
-
-                  {(booking.notes || booking.promoCode) && (
-                    <div className="mt-2 space-y-1 rounded-lg bg-slate-50 p-2.5 text-xs text-slate-600">
-                      {booking.notes && <p>Notes: {booking.notes}</p>}
-                      {booking.promoCode && (
-                        <p>
-                          Voucher: <span className="font-mono font-semibold">{booking.promoCode}</span>
+                      <p className="flex items-center gap-1.5">
+                        <Clock className="h-3.5 w-3.5 text-slate-400" />
+                        {formatTime(booking.time)}
+                      </p>
+                      {booking.stylist && (
+                        <p className="flex items-center gap-1.5 sm:col-span-2">
+                          <UserIcon className="h-3.5 w-3.5 text-slate-400" />
+                          Preferred specialist: {booking.stylist}
+                        </p>
+                      )}
+                      {booking.locationType === 'salon' && booking.branch && (
+                        <p className="flex items-center gap-1.5 sm:col-span-2">
+                          <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                          {booking.branch}
+                        </p>
+                      )}
+                      {booking.locationType === 'home' && (booking.address || booking.locality) && (
+                        <p className="flex items-start gap-1.5 sm:col-span-2">
+                          <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+                          <span>
+                            {[booking.address, booking.locality].filter(Boolean).join(' · ')}
+                            {booking.distanceKm ? ` (~${booking.distanceKm} km)` : ''}
+                          </span>
                         </p>
                       )}
                     </div>
-                  )}
 
-                  <p className="mt-2 text-[11px] text-slate-400">
-                    Submitted {formatDate(booking.createdAt)}
-                    {booking.estimatedTotal ? ` · Estimated ${formatMoney(booking.estimatedTotal)}` : ''}
-                    {booking.advancePaid ? ` · Advance ${formatMoney(booking.advancePaid)} paid` : ''}
-                  </p>
-                </div>
+                    {(booking.notes || booking.promoCode) && (
+                      <div className="mt-2 space-y-1 rounded-lg bg-slate-50 p-2.5 text-xs text-slate-600">
+                        {booking.notes && <p>Notes: {booking.notes}</p>}
+                        {booking.promoCode && (
+                          <p>
+                            Voucher: <span className="font-mono font-semibold">{booking.promoCode}</span>
+                          </p>
+                        )}
+                      </div>
+                    )}
 
-                <div className="flex shrink-0 flex-wrap gap-1.5 sm:flex-col sm:items-stretch">
-                  {(NEXT_ACTIONS[booking.status] || []).map((action) => (
-                    <Button
-                      key={action.status}
-                      size="sm"
-                      variant={action.status === 'confirmed' || action.status === 'completed' ? 'gold' : 'secondary'}
-                      loading={updating === booking.id}
-                      disabled={updating === booking.id}
-                      onClick={() => changeStatus(booking, action.status)}
-                    >
-                      {action.status === 'confirmed' ? (
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                      ) : action.status === 'declined' || action.status === 'cancelled' ? (
-                        <XCircle className="h-3.5 w-3.5" />
-                      ) : null}
-                      {action.label}
-                    </Button>
-                  ))}
-                  {booking.status === 'completed' && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={updating === booking.id}
-                      onClick={() => changeStatus(booking, 'confirmed')}
-                    >
-                      Reopen
-                    </Button>
-                  )}
-                  {(booking.status === 'declined' || booking.status === 'cancelled') && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={updating === booking.id}
-                      onClick={() => changeStatus(booking, 'requested')}
-                    >
-                      Restore
-                    </Button>
-                  )}
+                    <p className="mt-2 text-[11px] text-slate-400">
+                      Submitted {formatDate(booking.createdAt)}
+                      {booking.estimatedTotal ? ` · Estimated ${formatMoney(booking.estimatedTotal)}` : ''}
+                      {booking.advancePaid ? ` · Advance ${formatMoney(booking.advancePaid)} paid` : ''}
+                    </p>
+                  </div>
+
+                  <div className="flex shrink-0 flex-wrap gap-1.5 sm:flex-col sm:items-stretch">
+                    {(NEXT_ACTIONS[booking.status] || []).map((action) => (
+                      <Button
+                        key={action.status}
+                        size="sm"
+                        variant={action.status === 'confirmed' || action.status === 'completed' ? 'gold' : 'secondary'}
+                        loading={updating === booking.id}
+                        disabled={updating === booking.id}
+                        onClick={() => changeStatus(booking, action.status)}
+                      >
+                        {action.status === 'confirmed' ? (
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        ) : action.status === 'declined' || action.status === 'cancelled' ? (
+                          <XCircle className="h-3.5 w-3.5" />
+                        ) : null}
+                        {action.label}
+                      </Button>
+                    ))}
+                    {booking.status === 'completed' && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={updating === booking.id}
+                        onClick={() => changeStatus(booking, 'confirmed')}
+                      >
+                        Reopen
+                      </Button>
+                    )}
+                    {(booking.status === 'declined' || booking.status === 'cancelled') && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={updating === booking.id}
+                        onClick={() => changeStatus(booking, 'requested')}
+                      >
+                        Restore
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
     </div>
   );
 };

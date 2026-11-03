@@ -9,8 +9,10 @@ import { errorMessage } from '../../lib/api';
 
 const rules = [
   { label: 'At least 8 characters', test: (v: string) => v.length >= 8 },
-  { label: 'Contains a letter', test: (v: string) => /[A-Za-z]/.test(v) },
-  { label: 'Contains a number', test: (v: string) => /[0-9]/.test(v) },
+  { label: 'At least one uppercase letter (A-Z)', test: (v: string) => /[A-Z]/.test(v) },
+  { label: 'At least one lowercase letter (a-z)', test: (v: string) => /[a-z]/.test(v) },
+  { label: 'At least one number (0-9)', test: (v: string) => /[0-9]/.test(v) },
+  { label: 'At least one special symbol (!@#$%^&*)', test: (v: string) => /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/.test(v) },
 ];
 
 export const RegisterPage: React.FC = () => {

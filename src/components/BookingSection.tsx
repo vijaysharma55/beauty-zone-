@@ -101,6 +101,88 @@ function rewardValueFor(rewardTitle: string): number {
   return catalogueFloor();
 }
 
+/** Visual Service Picker Component */
+const ServicePicker: React.FC<{
+  services: ServiceItem[];
+  selectedService: string;
+  onSelect: (service: ServiceItem) => void;
+  formatPrice: (amount: number) => string;
+}> = ({ services, selectedService, onSelect, formatPrice }) => {
+  const categories = Array.from(new Set(services.map((s) => s.category)));
+  const [activeCategory, setActiveCategory] = useState(categories[0] || 'all');
+
+  const filtered = services.filter((s) => s.category === activeCategory);
+
+  return (
+    <div className="space-y-4">
+      {/* Category Pills */}
+      <div className="flex flex-wrap gap-2">
+        {categories.map((cat) => (
+          <button
+            key={cat}
+            type="button"
+            onClick={() => setActiveCategory(cat)}
+            className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border ${
+              activeCategory === cat
+                ? 'bg-[#0F172A] text-[#D09A40] border-[#0F172A]'
+                : 'bg-white text-slate-500 border-slate-200 hover:border-[#D09A40]'
+            }`}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* Service Cards Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto p-1 custom-scrollbar">
+        {filtered.map((srv) => {
+          const isSelected = selectedService === srv.title;
+          return (
+            <button
+              key={srv.id}
+              type="button"
+              onClick={() => onSelect(srv)}
+              className={`flex items-start gap-3 p-3 rounded-2xl border-2 text-left transition-all group ${
+                isSelected
+                  ? 'border-[#D09A40] bg-[#FAF5E5] shadow-md'
+                  : 'border-slate-100 bg-white hover:border-slate-200 shadow-sm'
+              }`}
+            >
+              {srv.image && (
+                <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-slate-100">
+                  <img src={srv.image} alt={srv.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex justify-between items-start gap-2">
+                  <h4 className="font-bold text-xs text-[#0F172A] leading-tight line-clamp-2">{srv.title}</h4>
+                  <span className="font-bold text-xs text-[#D09A40] whitespace-nowrap">{formatPrice(srv.price)}</span>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1 line-clamp-2">{srv.description}</p>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <span className="text-[9px] font-bold text-slate-400 flex items-center gap-1">
+                    <Clock className="w-2.5 h-2.5" />
+                    {srv.duration}
+                  </span>
+                  {srv.popular && (
+                    <span className="text-[9px] font-bold text-emerald-600 flex items-center gap-1">
+                      <Sparkles className="w-2.5 h-2.5" />
+                      Popular
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className={`mt-0.5 shrink-0 ${isSelected ? 'text-[#D09A40]' : 'text-slate-200'}`}>
+                <CheckCircle2 className="w-4 h-4" />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 export const BookingSection: React.FC<BookingSectionProps> = ({
   services = SALON_SERVICES,
   preselectedServiceId,
@@ -1074,54 +1156,49 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                     </div>
                   )}
 
-                  {/* Select Service & Preferred Specialist */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
-                        {t('bookingSelectService')}
-                      </label>
+                  {/* Visual Service Picker */}
+                  <div className="space-y-4">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A]">
+                      {t('bookingSelectService')}
+                    </label>
+                    <ServicePicker
+                      services={catalogServices}
+                      selectedService={form.selectedService}
+                      onSelect={(srv) =>
+                        setForm({
+                          ...form,
+                          selectedService: srv.title,
+                          serviceCategory: srv.category,
+                        })
+                      }
+                      formatPrice={formatPrice}
+                    />
+                  </div>
+
+                  {/* Preferred Specialist */}
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-3">
+                      {t('bookingSelectStylist')}
+                    </label>
+                    <div className="relative">
+                      <UserCheck className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
                       <select
-                        value={form.selectedService}
-                        onChange={(e) => setForm({ ...form, selectedService: e.target.value })}
-                        className="w-full px-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
+                        value={form.preferredStylist}
+                        onChange={(e) => setForm({ ...form, preferredStylist: e.target.value })}
+                        className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
                       >
-                        {preselectedServiceTitle &&
-                          !catalogServices.some((s) => s.title === preselectedServiceTitle) && (
-                            <option value={preselectedServiceTitle}>
-                              {preselectedServiceTitle}
-                            </option>
-                          )}
-                        {catalogServices.map((srv) => (
-                          <option key={srv.id} value={srv.title}>
-                            {srv.title} — {formatPrice(srv.price)} ({srv.duration})
+                        <option value="Any Senior Specialist">
+                          Any Available Senior Specialist
+                        </option>
+                        {brand.stylists.map((stylist) => (
+                          <option key={stylist.id} value={stylist.name}>
+                            {stylist.name} — {stylist.role} ({stylist.branch.split(' ')[0]})
                           </option>
                         ))}
                       </select>
                     </div>
-
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2">
-                        {t('bookingSelectStylist')}
-                      </label>
-                      <div className="relative">
-                        <UserCheck className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
-                        <select
-                          value={form.preferredStylist}
-                          onChange={(e) => setForm({ ...form, preferredStylist: e.target.value })}
-                          className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
-                        >
-                          <option value="Any Senior Specialist">
-                            Any Available Senior Specialist
-                          </option>
-                          {brand.stylists.map((stylist) => (
-                            <option key={stylist.id} value={stylist.name}>
-                              {stylist.name} — {stylist.role} ({stylist.branch.split(' ')[0]})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
                   </div>
+
 
                   {viewMode === 'wizard' && (
                     <div className="pt-4 flex justify-end">

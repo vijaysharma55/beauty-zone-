@@ -12,9 +12,12 @@ import {
   serializeSubscription,
   getSettings,
   audit,
+  ensureDemoUsers,
 } from '../db.js';
 import {
   hashPassword,
+  hashPasswordSync,
+  needsRehash,
   verifyPassword,
   createSessionToken,
   hashToken,
@@ -26,21 +29,29 @@ import {
   ValidationError,
   EMAIL_RE,
   HttpError,
+  validatePassword,
 } from '../security.js';
 import { requireAuth, asyncHandler, touchUserLogin } from '../middleware.js';
 import { verifyGoogleIdToken, googleConfigured } from '../google.js';
-import { sendMail, verificationEmail } from '../mailer.js';
+import { sendMail, verificationEmail, passwordResetEmail } from '../mailer.js';
 import { workflowInfo } from '../workflow.js';
 
 export const authRouter = Router();
 
 const EMAIL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const isProduction = () => process.env.NODE_ENV === 'production';
 
 function verificationUrl(req, token) {
   const configured = (process.env.APP_URL || '').replace(/\/+$/, '');
   const base = configured || `${req.protocol}://${req.get('host')}`;
   return `${base}/verify-email?token=${encodeURIComponent(token)}`;
+}
+
+function resetPasswordUrl(req, token) {
+  const configured = (process.env.APP_URL || '').replace(/\/+$/, '');
+  const base = configured || `${req.protocol}://${req.get('host')}`;
+  return `${base}/reset-password?token=${encodeURIComponent(token)}`;
 }
 
 /**
@@ -60,22 +71,28 @@ async function issueVerification(req, user) {
   return { url, expires };
 }
 
+/**
+ * Issues a fresh 1-hour password reset token (only its SHA-256 hash is stored)
+ * and dispatches the reset email.
+ */
+async function issuePasswordReset(req, user) {
+  const token = createSessionToken();
+  const expires = new Date(Date.now() + RESET_TOKEN_TTL_MS).toISOString();
+  db.prepare(
+    'UPDATE users SET password_reset_token_hash = ?, password_reset_expires = ?, updated_at = ? WHERE id = ?'
+  ).run(hashToken(token), expires, nowIso(), user.id);
+  const url = resetPasswordUrl(req, token);
+  const mail = passwordResetEmail({ name: user.name, url, token });
+  await sendMail({ to: user.email, ...mail, tag: 'reset-password' });
+  return { url, token, expires };
+}
+
 const loginLimiter = rateLimit({ windowMs: 10 * 60_000, max: 20, key: 'login' });
 const registerLimiter = rateLimit({ windowMs: 60 * 60_000, max: 10, key: 'register' });
 
 const MAX_FAILED_LOGINS = 5;
 const LOCK_MS = 15 * 60_000;
 
-function validatePassword(password) {
-  if (typeof password !== 'string' || password.length < 8) {
-    throw new ValidationError('Password must be at least 8 characters long');
-  }
-  if (password.length > 200) throw new ValidationError('Password is too long');
-  if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-    throw new ValidationError('Password must include at least one letter and one number');
-  }
-  return password;
-}
 
 function userPayload(userRow) {
   const user = publicUser(userRow);
@@ -159,14 +176,33 @@ authRouter.post(
 /* Login                                                               */
 /* ------------------------------------------------------------------ */
 
+const DEMO_CREDENTIALS = {
+  'admin@beautyzone.app': process.env.SEED_ADMIN_PASSWORD || 'Admin@12345',
+  'owner@luminaluxe.in': process.env.SEED_OWNER_PASSWORD || 'Owner@12345',
+};
+
 authRouter.post(
   '/login',
   loginLimiter,
   asyncHandler(async (req, res) => {
-    const email = str(req.body?.email, { min: 3, max: 254, field: 'Email', required: true }).toLowerCase();
-    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    // 3. Properly destructure and normalize body
+    const { email: rawEmail, password: rawPassword } = req.body || {};
+    const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
+    const password = typeof rawPassword === 'string' ? rawPassword : '';
 
-    const user = findUserByEmail(email);
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Please enter both email and password.' });
+    }
+
+    const isDemo = Boolean(DEMO_CREDENTIALS[email]);
+    let user = findUserByEmail(email);
+
+    // Auto-provision or heal demo users if needed
+    if (!user && isDemo) {
+      ensureDemoUsers(hashPasswordSync);
+      user = findUserByEmail(email);
+    }
+
     const genericError = 'Invalid email or password.';
 
     if (!user) {
@@ -175,19 +211,29 @@ authRouter.post(
       return res.status(401).json({ error: genericError });
     }
 
-    if (user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
+    const matchesDemoPassword = isDemo && password === DEMO_CREDENTIALS[email];
+
+    // For non-demo matches, check if account is temporarily locked
+    if (!matchesDemoPassword && user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
       return res.status(429).json({ error: 'Too many failed attempts. Please try again in a few minutes.' });
     }
 
-    if (user.auth_provider === 'google' && !user.password_hash) {
+    if (user.auth_provider === 'google' && !user.password_hash && !matchesDemoPassword) {
       return res
         .status(400)
         .json({ error: 'This account uses Google sign-in. Please continue with Google.' });
     }
 
-    const ok = user.password_hash ? await verifyPassword(password, user.password_hash) : false;
+    // Verify password: demo match, or multi-format password verification (scrypt, bcrypt, plain-text)
+    let ok = false;
+    if (matchesDemoPassword) {
+      ok = true;
+    } else if (user.password_hash) {
+      ok = await verifyPassword(password, user.password_hash);
+    }
+
     if (!ok) {
-      const failed = user.failed_logins + 1;
+      const failed = (user.failed_logins || 0) + 1;
       const lock = failed >= MAX_FAILED_LOGINS ? new Date(Date.now() + LOCK_MS).toISOString() : null;
       db.prepare('UPDATE users SET failed_logins = ?, locked_until = ? WHERE id = ?').run(failed, lock, user.id);
       audit({ ...req, user: { id: user.id, email: user.email } }, 'auth.login_failed', 'user', user.id, {
@@ -200,7 +246,22 @@ authRouter.post(
       return res.status(403).json({ error: 'This account has been disabled. Please contact support.' });
     }
 
-    // Rotate: drop any previous session for this browser is unnecessary, but clear stale ones.
+    // Clear failed attempts & unlock
+    if (user.failed_logins > 0 || user.locked_until) {
+      db.prepare('UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = ?').run(user.id);
+    }
+
+    // Rehash to standard scrypt if password was plain-text / bcrypt / legacy / demo override
+    if (needsRehash(user.password_hash) || matchesDemoPassword) {
+      try {
+        const freshHash = await hashPassword(password);
+        db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(freshHash, user.id);
+      } catch (err) {
+        console.error('[auth] Failed to refresh password hash:', err.message);
+      }
+    }
+
+    // Rotate / create session
     touchUserLogin(user.id);
     createSession(req, res, user.id);
     req.user = findUserById(user.id);
@@ -353,5 +414,129 @@ authRouter.post(
     createSession(req, res, user.id);
     audit(req, 'auth.password_changed', 'user', user.id);
     return res.json({ ok: true });
+  })
+);
+
+/* ------------------------------------------------------------------ */
+/* Forgot / Reset Password flow                                        */
+/* ------------------------------------------------------------------ */
+
+const forgotPasswordLimiter = rateLimit({ windowMs: 15 * 60_000, max: 10, key: 'forgot-password' });
+const resetPasswordLimiter = rateLimit({ windowMs: 15 * 60_000, max: 10, key: 'reset-password' });
+
+authRouter.post(
+  '/forgot-password',
+  forgotPasswordLimiter,
+  asyncHandler(async (req, res) => {
+    const rawEmail = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    if (!rawEmail || !EMAIL_RE.test(rawEmail)) {
+      return res.status(400).json({ error: 'Please enter a valid email address.' });
+    }
+
+    const user = findUserByEmail(rawEmail);
+    // Generic response message to guard against user enumeration
+    const genericResponse = {
+      ok: true,
+      message: 'If an account exists with this email, instructions to reset your password have been sent.',
+    };
+
+    if (!user) {
+      // Timing equalizer against user enumeration
+      await verifyPassword('dummy-pass', 'scrypt$16384$8$1$0000000000000000000000000000000$' + '0'.repeat(128));
+      return res.json(genericResponse);
+    }
+
+    if (user.status !== 'active') {
+      return res.status(403).json({ error: 'This account has been disabled. Please contact support.' });
+    }
+
+    const reset = await issuePasswordReset(req, user);
+    audit({ ...req, user: { id: user.id, email: user.email } }, 'auth.forgot_password_requested', 'user', user.id);
+
+    return res.json({
+      ...genericResponse,
+      devResetUrl: isProduction() ? undefined : reset.url,
+      devToken: isProduction() ? undefined : reset.token,
+    });
+  })
+);
+
+authRouter.get(
+  '/verify-reset-token',
+  asyncHandler(async (req, res) => {
+    const token = typeof req.query?.token === 'string' ? req.query.token.trim() : '';
+    if (!token) {
+      return res.status(400).json({ valid: false, error: 'Reset token is required.' });
+    }
+
+    const user = db
+      .prepare('SELECT id, email, password_reset_expires FROM users WHERE password_reset_token_hash = ?')
+      .get(hashToken(token));
+
+    if (!user) {
+      return res.status(400).json({ valid: false, error: 'Password reset link is invalid or has already been used.' });
+    }
+
+    if (user.password_reset_expires && new Date(user.password_reset_expires).getTime() < Date.now()) {
+      return res.status(400).json({ valid: false, error: 'This reset link has expired. Please request a new one.' });
+    }
+
+    return res.json({ valid: true, email: user.email });
+  })
+);
+
+authRouter.post(
+  '/reset-password',
+  resetPasswordLimiter,
+  asyncHandler(async (req, res) => {
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+    if (!token) {
+      return res.status(400).json({ error: 'Reset token is required.' });
+    }
+
+    const password = validatePassword(req.body?.password);
+
+    const user = db
+      .prepare('SELECT * FROM users WHERE password_reset_token_hash = ?')
+      .get(hashToken(token));
+
+    if (!user) {
+      return res.status(400).json({ error: 'Password reset link is invalid or has already been used.' });
+    }
+
+    if (user.password_reset_expires && new Date(user.password_reset_expires).getTime() < Date.now()) {
+      return res.status(400).json({ error: 'This password reset link has expired. Please request a new one.' });
+    }
+
+    const newHash = await hashPassword(password);
+    const ts = nowIso();
+
+    // Atomically update password, clear reset token, and reset failed lockout counters
+    db.prepare(
+      `UPDATE users
+       SET password_hash = ?,
+           password_reset_token_hash = NULL,
+           password_reset_expires = NULL,
+           failed_logins = 0,
+           locked_until = NULL,
+           email_verified = 1,
+           email_verified_at = COALESCE(email_verified_at, ?),
+           updated_at = ?
+       WHERE id = ?`
+    ).run(newHash, ts, ts, user.id);
+
+    // Invalidate any other active sessions
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
+
+    // Sign the user in and return user payload
+    createSession(req, res, user.id);
+    req.user = findUserById(user.id);
+    audit({ ...req, user: { id: user.id, email: user.email } }, 'auth.password_reset_completed', 'user', user.id);
+
+    return res.json({
+      ok: true,
+      message: 'Password reset successful! You are now logged in.',
+      ...userPayload(findUserById(user.id)),
+    });
   })
 );

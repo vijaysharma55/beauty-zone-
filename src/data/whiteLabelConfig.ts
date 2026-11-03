@@ -101,14 +101,14 @@ export const FONT_PAIRINGS = [
 ];
 
 export const DEFAULT_WHITE_LABEL_CONFIG: WhiteLabelConfig = {
-  presetId: 'lumina-luxe',
-  brandName: 'Lumina Luxe',
-  brandSubtext: 'Luxury Salon & Bridal Studio',
-  tagline: 'Bespoke Bridal Artistry, Clinical Skin & Luxury Hair Care',
+  presetId: 'beauty-zone',
+  brandName: 'Beauty Zone',
+  brandSubtext: 'Premium Salon, Bridal Studio & Academy',
+  tagline: 'Exquisite Bridal Transformations, Hair Botox & Clinical Skin Care',
   logoUrl: '',
   logoIcon: 'sparkles',
-  cityName: 'Metropolitan City',
-  stateName: 'Luxury District',
+  cityName: 'Jaipur',
+  stateName: 'Rajasthan',
   countryName: 'India',
   establishedYear: '2016',
   currencySymbol: '₹',

@@ -21,8 +21,14 @@ export const AccountPage: React.FC = () => {
     e.preventDefault();
     setError('');
     setNotice('');
-    if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
-      setError('New password must be at least 8 characters and include a letter and a number.');
+    if (
+      newPassword.length < 8 ||
+      !/[A-Z]/.test(newPassword) ||
+      !/[a-z]/.test(newPassword) ||
+      !/[0-9]/.test(newPassword) ||
+      !/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/.test(newPassword)
+    ) {
+      setError('New password must be at least 8 characters and include uppercase, lowercase, a number, and a special symbol (!@#$%^&*...).');
       return;
     }
     if (newPassword !== confirm) {
