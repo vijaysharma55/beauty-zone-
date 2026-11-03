@@ -117,6 +117,15 @@ supabaseOperationsRouter.post('/auth/logout-all', asyncRoute(async(req,res)=>{
   await requestSupabase('/auth/v1/logout?scope=global',req.sb.token,{method:'POST'});
   res.json({ok:true});
 }));
+supabaseOperationsRouter.post('/auth/resend-verification', asyncRoute(async(req,res)=>{
+  if(!req.sb) fail(401,'Sign in before requesting another verification email.');
+  if(req.sb.emailVerified) return res.json({ok:true,message:'Your email is already verified.'});
+  await requestSupabase('/auth/v1/resend',null,{
+    method:'POST',
+    body:{type:'signup',email:req.sb.email,options:{emailRedirectTo:(process.env.APP_URL||'https://beauty-zone.vercel.app').replace(/\/+$/,'')+'/verify-email'}},
+  });
+  res.json({ok:true,message:'A confirmation email was requested. Check your inbox.'});
+}));
 
 // Salon onboarding, profile, approvals, staff, services and subscription.
 supabaseOperationsRouter.get('/salon', asyncRoute(async(req,res)=>{
@@ -331,6 +340,33 @@ supabaseOperationsRouter.get('/admin/users', asyncRoute(async(req,res)=>{
     subscription:sub?{plan:sub.plan,status:sub.status}:null};
   }));
   res.json({users});
+}));
+supabaseOperationsRouter.post('/admin/users', asyncRoute(async(req,res)=>{
+  admin(req.sb);
+  const name=s(req.body?.name,120,true);
+  const email=s(req.body?.email,254,true).toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) fail(400,'Please enter a valid email address.');
+  const password=typeof req.body?.password==='string'?req.body.password:'';
+  if(password.length<8||!/[A-Za-z]/.test(password)||!/[0-9]/.test(password)) fail(400,'Password must be at least 8 characters and include a letter and a number.');
+  const role=req.body?.role==='super_admin'?'super_admin':'salon_owner';
+  const created=await requestSupabase('/auth/v1/signup',null,{
+    method:'POST',body:{email,password,data:{name,full_name:name}},
+  });
+  const user=created?.user||created;
+  if(!user?.id) fail(502,'Supabase Auth did not return the new user.');
+  // The database trigger creates the profile with the safe default salon_owner role.
+  // Only an already-authorized super admin can assign super_admin.
+  if(role==='super_admin'){
+    const rows=await update(req.sb,'profiles','id=eq.'+encodeURIComponent(user.id),{role,updated_at:isoNow()});
+    if(!rows[0]) fail(502,'The account was created but its admin role could not be assigned.');
+  }
+  const profile=await one(req.sb,'profiles','id=eq.'+encodeURIComponent(user.id)+'&select=*&limit=1');
+  await audit(req.sb,'admin.user_created','user',user.id,{role});
+  res.status(201).json({user:{
+    id:user.id,email:user.email||email,name:profile?.name||name,role:profile?.role||'salon_owner',
+    status:profile?.status||'active',emailVerified:Boolean(user.email_confirmed_at||profile?.email_verified),
+    authProvider:'password',createdAt:profile?.created_at||user.created_at,
+  }});
 }));
 supabaseOperationsRouter.patch('/admin/users/:userId', asyncRoute(async(req,res)=>{
   admin(req.sb); const patch={updated_at:isoNow()};
