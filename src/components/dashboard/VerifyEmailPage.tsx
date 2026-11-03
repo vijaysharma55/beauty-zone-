@@ -3,113 +3,92 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, MailCheck, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api, errorMessage } from '../../lib/api';
-import { Alert, Button, Card, PageHeader, Spinner } from '../ui';
+import { supabase } from '../../lib/supabase';
+import { Button, Card, PageHeader, Spinner } from '../ui';
 import { AuthLayout } from '../auth/AuthLayout';
 
-/**
- * Landing page for the emailed verification link.
- * Tokens are single-use, hashed at rest and expire after 24 hours.
- */
+/** Supabase email-confirmation and legacy verification callback handler. */
 export const VerifyEmailPage: React.FC = () => {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const { user, loading, refresh } = useAuth();
-  const token = params.get('token') || '';
+  const legacyToken = params.get('token') || '';
   const [state, setState] = useState<'idle' | 'verifying' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
 
-  const verify = useCallback(
-    async (value: string) => {
-      setState('verifying');
-      setMessage('');
-      try {
-        await api.post('/auth/verify-email', { token: value });
-        setState('success');
-        if (user) await refresh();
-      } catch (err) {
-        setState('error');
-        setMessage(errorMessage(err));
+  const verify = useCallback(async () => {
+    setState('verifying');
+    setMessage('');
+    try {
+      if (legacyToken) {
+        await api.post('/auth/verify-email', { token: legacyToken });
+      } else {
+        const recovered = await supabase.auth.recoverSessionFromUrl();
+        const session = recovered || await supabase.auth.getSession();
+        if (!session) {
+          const queryError = params.get('error_description') || params.get('error');
+          throw new Error(queryError || 'This confirmation link is invalid or expired. Request a fresh link and open it again.');
+        }
       }
-    },
-    [refresh, user]
-  );
+      await refresh();
+      setState('success');
+    } catch (err) {
+      setState('error');
+      setMessage(errorMessage(err));
+    }
+  }, [legacyToken, params, refresh]);
 
   useEffect(() => {
-    if (!token) {
-      setState('error');
-      setMessage('This verification link is missing its token. Please use the link from your email.');
-      return;
-    }
-    verify(token);
-    // Only run once per token.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+    if (loading) return;
+    void verify();
+  }, [loading, verify]);
 
   if (loading && state === 'idle') {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#FAF5E5]">
-        <Spinner className="h-8 w-8 text-[#D09A40]" />
-      </div>
-    );
+    return <div className="flex min-h-screen items-center justify-center bg-[#FAF5E5]"><Spinner className="h-8 w-8 text-[#D09A40]" /></div>;
   }
 
   return (
     <AuthLayout
-      title={state === 'success' ? 'Email verified' : 'Verifying your email'}
-      subtitle="Confirmation keeps salon websites trustworthy before they go live."
-      footer={
-        <Link to={user ? '/dashboard' : '/login'} className="font-semibold text-[#8a641f] hover:underline">
-          {user ? 'Go to your dashboard' : 'Sign in'}
-        </Link>
-      }
+      title={state === 'success' ? 'Email verified' : state === 'error' ? 'Verification failed' : 'Confirming your email'}
+      subtitle="Email confirmation keeps BeautyZone accounts secure."
+      footer={<Link to={user ? '/dashboard' : '/login'} className="font-semibold text-[#8a641f] hover:underline">{user ? 'Go to your dashboard' : 'Sign in'}</Link>}
     >
       <div className="space-y-4">
         {state === 'verifying' && (
           <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-5">
             <Spinner className="h-5 w-5 text-[#D09A40]" />
-            <p className="text-sm text-slate-600">Checking your verification link…</p>
+            <p className="text-sm text-slate-600">Checking your secure confirmation link…</p>
           </div>
         )}
-
         {state === 'success' && (
           <>
             <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-5">
               <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
               <div>
-                <p className="text-sm font-semibold text-emerald-800">Your email address is verified</p>
-                <p className="mt-1 text-sm text-emerald-700">
-                  You can now submit your salon website for review and publish it once approved.
-                </p>
+                <p className="text-sm font-semibold text-emerald-800">Your email address is confirmed</p>
+                <p className="mt-1 text-sm text-emerald-700">You can now sign in and continue setting up your salon.</p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="gold" onClick={() => navigate(user ? '/dashboard/approval' : '/login')}>
-                {user ? 'Continue to submissions' : 'Sign in to continue'}
-              </Button>
-            </div>
+            <Button variant="gold" onClick={() => navigate(user ? '/dashboard/approval' : '/login')}>{user ? 'Continue to dashboard' : 'Sign in to continue'}</Button>
           </>
         )}
-
         {state === 'error' && (
           <>
-            <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-5">
+            <div role="alert" className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-5">
               <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
               <div>
-                <p className="text-sm font-semibold text-red-800">We could not verify this link</p>
+                <p className="text-sm font-semibold text-red-800">We could not confirm this link</p>
                 <p className="mt-1 text-sm text-red-700">{message}</p>
               </div>
             </div>
-            <Button variant="secondary" onClick={() => navigate(user ? '/dashboard/approval' : '/login')}>
-              {user ? 'Request a new link' : 'Sign in'}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => navigate('/login')}>Go to sign in</Button>
+              <Button variant="gold" onClick={() => navigate('/forgot-password')}>Password help</Button>
+            </div>
           </>
         )}
-
         <Card className="p-4">
-          <p className="flex items-center gap-2 text-xs text-slate-500">
-            <MailCheck className="h-3.5 w-3.5 text-[#D09A40]" />
-            Verification links expire after 24 hours and can only be used once.
-          </p>
+          <p className="flex items-center gap-2 text-xs text-slate-500"><MailCheck className="h-3.5 w-3.5 text-[#D09A40]" />Confirmation links are single-use and expire according to your Supabase Auth email settings.</p>
         </Card>
       </div>
     </AuthLayout>
