@@ -1,6 +1,9 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import type { AuthResponse, AuthUser, MembershipPlan, Salon, SalonWorkflow } from '../types/auth';
+
+export type RegisterResult = AuthResponse | { user: null; emailVerificationSent: true; pendingEmail: string };
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -11,14 +14,13 @@ interface AuthContextValue {
   isAdmin: boolean;
   isOwner: boolean;
   login: (email: string, password: string) => Promise<AuthResponse>;
-  register: (name: string, email: string, password: string) => Promise<AuthResponse>;
+  register: (name: string, email: string, password: string) => Promise<RegisterResult>;
   loginWithGoogle: (credential: string) => Promise<AuthResponse>;
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
   refresh: () => Promise<AuthResponse | null>;
   setSession: (data: Partial<AuthResponse>) => void;
 }
-
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -27,13 +29,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [subscription, setSubscription] = useState<MembershipPlan | null>(null);
   const [workflow, setWorkflow] = useState<SalonWorkflow | null>(null);
   const [loading, setLoading] = useState(true);
+  const syncInFlight = useRef<Promise<AuthResponse> | null>(null);
 
   const apply = useCallback((data: AuthResponse | null) => {
-    if (!data || !data.user) {
-      setUser(null);
-      setSalon(null);
-      setSubscription(null);
-      setWorkflow(null);
+    if (!data?.user) {
+      setUser(null); setSalon(null); setSubscription(null); setWorkflow(null);
       return;
     }
     setUser(data.user);
@@ -42,8 +42,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setWorkflow(data.workflow ?? null);
   }, []);
 
+  const syncAccessToken = useCallback(async (accessToken: string): Promise<AuthResponse> => {
+    if (syncInFlight.current) return syncInFlight.current;
+    const task = api.post<AuthResponse>('/auth/supabase-session', { accessToken }).then((data) => {
+      apply(data);
+      return data;
+    });
+    syncInFlight.current = task;
+    try { return await task; }
+    finally { if (syncInFlight.current === task) syncInFlight.current = null; }
+  }, [apply]);
+
   const refresh = useCallback(async () => {
     try {
+      const session = await supabase.auth.getSession();
+      if (session?.access_token) return await syncAccessToken(session.access_token);
       const data = await api.get<AuthResponse>('/auth/me');
       apply(data);
       return data;
@@ -51,64 +64,83 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (err instanceof ApiError && err.status === 401) apply(null);
       return null;
     }
-  }, [apply]);
+  }, [apply, syncAccessToken]);
 
   useEffect(() => {
     let cancelled = false;
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        apply(null);
+        return;
+      }
+      if (session?.access_token && ['SIGNED_IN', 'TOKEN_REFRESHED', 'PASSWORD_RECOVERY', 'USER_UPDATED'].includes(event)) {
+        void syncAccessToken(session.access_token).catch((err) => {
+          console.error('[auth] Supabase session sync failed:', err);
+          apply(null);
+        });
+      }
+    });
+
     (async () => {
       try {
-        const data = await api.get<AuthResponse>('/auth/me');
-        if (!cancelled) apply(data);
-      } catch {
-        // Unauthenticated visitors simply get the public site.
+        const session = await supabase.auth.getSession();
+        if (cancelled) return;
+        if (session?.access_token) await syncAccessToken(session.access_token);
+        else {
+          try {
+            const legacySession = await api.get<AuthResponse>('/auth/me');
+            if (!cancelled) apply(legacySession);
+          } catch {
+            if (!cancelled) apply(null);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error('[auth] Session restore failed:', err);
+          apply(null);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
+
     return () => {
       cancelled = true;
+      listener.subscription.unsubscribe();
     };
-  }, [apply]);
+  }, [apply, syncAccessToken]);
 
-  const login = useCallback(
-    async (email: string, password: string) => {
-      const data = await api.post<AuthResponse>('/auth/login', { email, password });
-      apply(data);
-      return data;
-    },
-    [apply]
-  );
+  const login = useCallback(async (email: string, password: string) => {
+    const result = await supabase.auth.signInWithPassword(email.trim().toLowerCase(), password);
+    if (!result.session?.access_token) throw new Error('Sign-in did not create a valid session.');
+    return syncAccessToken(result.session.access_token);
+  }, [syncAccessToken]);
 
-  const register = useCallback(
-    async (name: string, email: string, password: string) => {
-      const data = await api.post<AuthResponse>('/auth/register', { name, email, password });
-      apply(data);
-      return data;
-    },
-    [apply]
-  );
+  const register = useCallback(async (name: string, email: string, password: string): Promise<RegisterResult> => {
+    const result = await supabase.auth.signUp(email.trim().toLowerCase(), password, name.trim());
+    if (result.session?.access_token) return syncAccessToken(result.session.access_token);
+    apply(null);
+    return { user: null, emailVerificationSent: true, pendingEmail: email.trim().toLowerCase() };
+  }, [apply, syncAccessToken]);
 
-  const loginWithGoogle = useCallback(
-    async (credential: string) => {
-      const data = await api.post<AuthResponse>('/auth/google', { credential });
-      apply(data);
-      return data;
-    },
-    [apply]
-  );
+  const loginWithGoogle = useCallback(async (credential: string) => {
+    const result = await supabase.auth.signInWithIdToken('google', credential);
+    if (!result.session?.access_token) throw new Error('Google sign-in did not create a valid session.');
+    return syncAccessToken(result.session.access_token);
+  }, [syncAccessToken]);
 
   const logout = useCallback(async () => {
-    try {
-      await api.post('/auth/logout');
-    } finally {
+    try { await api.post('/auth/logout'); }
+    finally {
+      await supabase.auth.signOut('local').catch(() => undefined);
       apply(null);
     }
   }, [apply]);
 
   const logoutAll = useCallback(async () => {
-    try {
-      await api.post('/auth/logout-all');
-    } finally {
+    try { await api.post('/auth/logout-all'); }
+    finally {
+      await supabase.auth.signOut('global').catch(() => undefined);
       apply(null);
     }
   }, [apply]);
@@ -120,38 +152,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (data.workflow !== undefined) setWorkflow(data.workflow ?? null);
   }, []);
 
-  const value = useMemo<AuthContextValue>(
-    () => ({
-      user,
-      salon,
-      subscription,
-      workflow,
-      loading,
-      isAdmin: user?.role === 'super_admin',
-      isOwner: user?.role === 'salon_owner',
-      login,
-      register,
-      loginWithGoogle,
-      logout,
-      logoutAll,
-      refresh,
-      setSession,
-    }),
-    [
-      user,
-      salon,
-      subscription,
-      workflow,
-      loading,
-      login,
-      register,
-      loginWithGoogle,
-      logout,
-      logoutAll,
-      refresh,
-      setSession,
-    ]
-  );
+  const value = useMemo<AuthContextValue>(() => ({
+    user, salon, subscription, workflow, loading,
+    isAdmin: user?.role === 'super_admin',
+    isOwner: user?.role === 'salon_owner',
+    login, register, loginWithGoogle, logout, logoutAll, refresh, setSession,
+  }), [user, salon, subscription, workflow, loading, login, register, loginWithGoogle, logout, logoutAll, refresh, setSession]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
