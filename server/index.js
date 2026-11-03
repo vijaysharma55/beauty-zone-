@@ -24,6 +24,7 @@ import { adminRouter } from './routes/admin.js';
 import { aiRouter } from './routes/ai.js';
 import { bookingsRouter } from './routes/bookings.js';
 import { loyaltyRouter } from './routes/loyalty.js';
+import { supabaseOperationsRouter } from './routes/supabase-operations.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -81,6 +82,9 @@ app.use('/api', csrfProtection);
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, service: 'beautyzone', time: new Date().toISOString() });
 });
+
+// Supabase JWT-backed API routes take precedence; requests without bearer tokens fall through to legacy routes.
+app.use('/api', supabaseOperationsRouter);
 
 app.use('/api/auth', authRouter);
 app.use('/api/salon', salonRouter);
