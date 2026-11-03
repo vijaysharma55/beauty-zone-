@@ -294,6 +294,58 @@ bookingsRouter.post('/bookings', createLimiter, asyncHandler(async (req, res) =>
   });
 }));
 
+/**
+ * Join waitlist for a fully booked slot.
+ *
+ * POST /api/public/waitlist
+ */
+bookingsRouter.post('/waitlist', createLimiter, asyncHandler(async (req, res) => {
+  const b = req.body || {};
+  const fullName = str(b.fullName, { min: 2, max: 120, field: 'Name', required: true });
+  const phoneRaw = str(b.phone, { min: 6, max: 40, field: 'Phone', required: true });
+  const phone = phoneRaw.replace(/[^\d+\-\s()]/g, '');
+  if (phone.replace(/\D/g, '').length < 8) {
+    throw new ValidationError('Phone must contain at least 8 digits.');
+  }
+  const email = str(b.email, { max: 120, field: 'Email' }) || null;
+  const service = str(b.service, { min: 2, max: 160, field: 'Service', required: true });
+  const date = str(b.date, { max: 10, field: 'Date', required: true });
+  const time = normaliseTime(b.time);
+  const slug = str(b.slug, { max: 60, field: 'Salon' });
+
+  let salon = null;
+  if (slug) {
+    salon = findLiveSalon(slug);
+    if (!salon) {
+      throw new HttpError(404, 'Salon not found.');
+    }
+  }
+
+  const id = newId();
+  const ts = nowIso();
+
+  db.prepare(
+    `INSERT INTO waitlist (id, salon_id, full_name, phone, email, service, date, time, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+  ).run(
+    id,
+    salon ? salon.id : null,
+    fullName,
+    phone,
+    email,
+    service,
+    date,
+    time,
+    ts,
+    ts
+  );
+
+  return res.status(201).json({
+    message: 'You have been added to the waitlist. We will notify you if an opening becomes available!',
+    id,
+  });
+}));
+
 /* ------------------------------------------------------------------ */
 /* Owner-facing read/update (mounted under /api/salon)                 */
 /* ------------------------------------------------------------------ */

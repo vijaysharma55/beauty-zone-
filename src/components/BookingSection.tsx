@@ -256,6 +256,8 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     homeAddress?: string;
   }>({});
   const [attemptCount, setAttemptCount] = useState(0);
+  const [waitlistStatus, setWaitlistStatus] = useState<'idle' | 'submitting' | 'success'>('idle');
+  const [waitlistMessage, setWaitlistMessage] = useState<string | null>(null);
 
   // Step-by-Step Progress Indicator state
   const [currentStep, setCurrentStep] = useState<number>(1);
@@ -610,6 +612,31 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [availability.slots, form.appointmentDate]);
 
+  const selectedSlot = useMemo(() => {
+    return timeSlotOptions.find((s) => s.label === form.timeSlot);
+  }, [timeSlotOptions, form.timeSlot]);
+
+  const isSlotFull = selectedSlot ? !selectedSlot.available : false;
+
+  const handleJoinWaitlist = async () => {
+    setWaitlistStatus('submitting');
+    try {
+      const res = await api.post<{ message: string }>('/public/waitlist', {
+        slug: salonSlug,
+        fullName: form.fullName.trim(),
+        phone: form.phone.trim(),
+        service: form.selectedService,
+        date: form.appointmentDate,
+        time: form.timeSlot,
+      });
+      setWaitlistStatus('success');
+      setWaitlistMessage(res.message);
+    } catch (err) {
+      setWaitlistStatus('idle');
+      alert(err instanceof Error ? err.message : 'Failed to join waitlist. Please try again.');
+    }
+  };
+
   /** Local calendar day (YYYY-MM-DD) used for the date input's min value. */
   const todayStr = useMemo(() => {
     const d = new Date();
@@ -771,6 +798,16 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
           ? err.message
           : 'We could not save your booking just now. Please retry — or confirm on WhatsApp.'
       );
+    }
+  };
+
+  const handleFinalAction = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSlotFull) {
+      if (waitlistStatus === 'success') return;
+      handleJoinWaitlist();
+    } else {
+      handleSubmit(e);
     }
   };
 
@@ -939,7 +976,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
           </div>
 
           {!isSubmitted ? (
-            <form id="booking-form" onSubmit={handleSubmit} className="p-6 sm:p-10 space-y-7" noValidate>
+            <form id="booking-form" onSubmit={handleFinalAction} className="p-6 sm:p-10 space-y-7" noValidate>
               {/* Speak to Book Voice AI Bar */}
               <div className="p-4 rounded-2xl bg-[#FAF5E5] border border-[#D09A40]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-start gap-3">
@@ -1282,6 +1319,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                               <option key={slot.value} value={slot.label}>
                                 {slot.label}
                                 {slot.end && slot.start ? ` – ${slot.end}` : ''}
+                                {!slot.available ? ' (Fully Booked)' : ''}
                               </option>
                             ))
                           )}
@@ -1308,6 +1346,36 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                             ? 'No slots left today — please pick another date.'
                             : 'No slots left on this date. Please choose another day.'}
                         </p>
+                      )}
+
+                      {isSlotFull && (
+                        <div className="mt-2.5 p-3 rounded-xl bg-[#FAF5E5] border border-[#D09A40]/30">
+                          <p className="text-[11px] font-bold text-[#0F172A] flex items-center gap-1.5 mb-2">
+                            <Clock className="w-3.5 h-3.5 text-[#D09A40]" />
+                            <span>This slot is fully booked. Join the waitlist to be notified of cancellations!</span>
+                          </p>
+                          {waitlistStatus === 'success' ? (
+                            <div className="flex items-center gap-2 text-emerald-700 font-bold text-[10px]">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>{waitlistMessage || 'Added to waitlist!'}</span>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!validateStep3()) {
+                                  setCurrentStep(3);
+                                  return;
+                                }
+                                handleJoinWaitlist();
+                              }}
+                              disabled={waitlistStatus === 'submitting'}
+                              className="w-full py-2 rounded-lg bg-[#0F172A] text-[#D09A40] text-[10px] font-bold uppercase tracking-wider hover:bg-[#D09A40] hover:text-[#0F172A] transition-colors disabled:opacity-50"
+                            >
+                              {waitlistStatus === 'submitting' ? 'Joining...' : 'Join Waitlist for this Slot'}
+                            </button>
+                          )}
+                        </div>
                       )}
 
                       {availability.usingFallback && (
@@ -1702,6 +1770,12 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                           <>
                             <Loader2 className="w-4 h-4 animate-spin" /> Confirming…
                           </>
+                        ) : isSlotFull ? (
+                          waitlistStatus === 'success' ? (
+                            'Already on Waitlist'
+                          ) : (
+                            'Join Waitlist'
+                          )
                         ) : form.locationType === 'home' && !form.advancePaymentVerified ? (
                           `Pay ${formatPrice(advanceRequired)} Token & Reserve`
                         ) : (

@@ -230,6 +230,21 @@ db.exec(`
     expires_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_loyalty_vouchers_phone ON loyalty_vouchers(phone);
+
+  CREATE TABLE IF NOT EXISTS waitlist (
+    id TEXT PRIMARY KEY,
+    salon_id TEXT REFERENCES salons(id) ON DELETE CASCADE,
+    full_name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    email TEXT,
+    service TEXT NOT NULL,
+    date TEXT NOT NULL,
+    time TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'notified', 'expired')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_waitlist_salon ON waitlist(salon_id, date);
 `);
 
 export const nowIso = () => new Date().toISOString();
