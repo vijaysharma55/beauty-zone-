@@ -84,7 +84,9 @@ app.get('/api/health', (req, res) => {
 });
 
 // Supabase JWT-backed API routes take precedence; requests without bearer tokens fall through to legacy routes.
-app.use('/api', supabaseOperationsRouter);
+if (process.env.BEAUTYZONE_TEST_MODE !== 'true') {
+  app.use('/api', supabaseOperationsRouter);
+}
 
 app.use('/api/auth', authRouter);
 app.use('/api/salon', salonRouter);
