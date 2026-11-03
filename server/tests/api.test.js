@@ -51,6 +51,7 @@ before(async () => {
       PORT: String(PORT),
       DATA_DIR: TMP_DATA,
       NODE_ENV: 'development',
+      BEAUTYZONE_TEST_MODE: 'true',
       DISABLE_HMR: 'true',
       SEED_ADMIN_EMAIL: 'admin@test.local',
       SEED_ADMIN_PASSWORD: 'Admin@12345',
