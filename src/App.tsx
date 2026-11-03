@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link, Route, Routes, useNavigate } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
@@ -28,6 +28,7 @@ import { getStoredPackages, saveStoredPackages } from './data/packagesData';
 import { getStoredGallery, saveStoredGallery } from './data/galleryData';
 import { getStoredVideos, saveStoredVideos } from './data/videosData';
 import { getStoredServices, saveStoredServices } from './data/servicesStore';
+import { loadSiteSection, saveSiteSection } from './lib/sectionStore';
 import { useBrand } from './context/BrandContext';
 import { useAuth } from './context/AuthContext';
 import { LoginPage } from './components/auth/LoginPage';
@@ -68,6 +69,30 @@ function MarketingSite() {
   const [packages, setPackages] = useState<SalonPackage[]>(() => getStoredPackages());
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>(() => getStoredGallery());
   const [videos, setVideos] = useState<VideoItem[]>(() => getStoredVideos());
+  // Pull the signed-in owner's published content from Supabase; localStorage remains a fallback cache.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [cloudServices, cloudPackages, cloudGallery, cloudVideos] = await Promise.all([
+          loadSiteSection<ServiceItem[]>('services'),
+          loadSiteSection<SalonPackage[]>('packages'),
+          loadSiteSection<GalleryItem[]>('gallery'),
+          loadSiteSection<VideoItem[]>('videos'),
+        ]);
+        if (cancelled) return;
+        if (cloudServices) { setServices(cloudServices); saveStoredServices(cloudServices); }
+        if (cloudPackages) { setPackages(cloudPackages); saveStoredPackages(cloudPackages); }
+        if (cloudGallery) { setGalleryItems(cloudGallery); saveStoredGallery(cloudGallery); }
+        if (cloudVideos) { setVideos(cloudVideos); saveStoredVideos(cloudVideos); }
+      } catch (error) {
+        console.error('[site-content] Supabase read failed; using cached content:', error);
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
   const [galleryView, setGalleryView] = useState<'photos' | 'videos'>('photos');
 
   const [preselectedServiceId, setPreselectedServiceId] = useState<string | null>(null);
@@ -86,21 +111,25 @@ function MarketingSite() {
   const handleUpdateServices = useCallback((next: ServiceItem[]) => {
     setServices(next);
     saveStoredServices(next);
+    void saveSiteSection('services', next).catch((error) => console.error('[site-content] Services save failed:', error));
   }, []);
 
   const handleUpdatePackages = useCallback((next: SalonPackage[]) => {
     setPackages(next);
     saveStoredPackages(next);
+    void saveSiteSection('packages', next).catch((error) => console.error('[site-content] Packages save failed:', error));
   }, []);
 
   const handleUpdateGallery = useCallback((next: GalleryItem[]) => {
     setGalleryItems(next);
     saveStoredGallery(next);
+    void saveSiteSection('gallery', next).catch((error) => console.error('[site-content] Gallery save failed:', error));
   }, []);
 
   const handleUpdateVideos = useCallback((next: VideoItem[]) => {
     setVideos(next);
     saveStoredVideos(next);
+    void saveSiteSection('videos', next).catch((error) => console.error('[site-content] Video save failed:', error));
   }, []);
 
   /**
@@ -327,10 +356,7 @@ function MarketingSite() {
 
       {/* Floating WhatsApp & White-Label Studio Quick Actions */}
       {brand.sections.showFloatingActions && (
-        <FloatingActions 
-          onBookClick={() => scrollToSection('booking')} 
-          onOpenBranding={() => setIsBrandingModalOpen(true)}
-        />
+        <FloatingActions onOpenBranding={() => setIsBrandingModalOpen(true)} />
       )}
 
       {/* Sticky Mobile Bottom Navigation Bar */}
