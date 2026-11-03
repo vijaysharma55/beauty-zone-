@@ -128,6 +128,95 @@ function createSession(req, res, userId) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Supabase Auth session bridge                                        */
+/* Verifies the access token with Supabase before issuing the legacy   */
+/* HttpOnly session cookie used by existing salon/dashboard APIs.      */
+/* ------------------------------------------------------------------ */
+authRouter.post(
+  '/supabase-session',
+  loginLimiter,
+  asyncHandler(async (req, res) => {
+    const accessToken = typeof req.body?.accessToken === 'string' ? req.body.accessToken : '';
+    if (!accessToken || accessToken.length > 8192) {
+      throw new ValidationError('A valid Supabase access token is required.');
+    }
+
+    const projectUrl = (process.env.SUPABASE_URL || 'https://botkjeikjzhnbxnowdkl.supabase.co').replace(/\/+$/, '');
+    const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY
+      || process.env.SUPABASE_ANON_KEY
+      || process.env.VITE_SUPABASE_PUBLISHABLE_KEY
+      || process.env.VITE_SUPABASE_ANON_KEY
+      || 'sb_publishable_f2nHVHcAdrlosQbZwAAxnQ_vnHQuuv0';
+
+    const identityResponse = await fetch(projectUrl + '/auth/v1/user', {
+      headers: { apikey: publishableKey, Authorization: 'Bearer ' + accessToken },
+    });
+    if (!identityResponse.ok) {
+      throw new HttpError(401, 'Your sign-in session is invalid or has expired. Please sign in again.');
+    }
+    const identity = await identityResponse.json();
+    const email = typeof identity.email === 'string' ? identity.email.trim().toLowerCase() : '';
+    if (!identity.id || !EMAIL_RE.test(email)) {
+      throw new HttpError(401, 'Supabase did not return a verified account identity.');
+    }
+
+    const profileResponse = await fetch(
+      projectUrl + '/rest/v1/profiles?id=eq.' + encodeURIComponent(identity.id) + '&select=id,email,name,role&limit=1',
+      { headers: { apikey: publishableKey, Authorization: 'Bearer ' + accessToken } }
+    );
+    if (!profileResponse.ok) {
+      throw new HttpError(503, 'Could not load your BeautyZone profile. Please try again.');
+    }
+    const profiles = await profileResponse.json();
+    const profile = Array.isArray(profiles) ? profiles[0] : null;
+    if (!profile || profile.id !== identity.id) {
+      throw new HttpError(409, 'Your BeautyZone profile is still being created. Please try again in a moment.');
+    }
+
+    // Never accept roles from user metadata or the browser. Only public.profiles.role is trusted.
+    const role = profile.role === 'super_admin' ? 'super_admin' : profile.role === 'salon_owner' ? 'salon_owner' : null;
+    if (!role) throw new HttpError(403, 'Your account does not have an approved application role.');
+    const provider = identity.app_metadata?.provider === 'google' ? 'google' : 'password';
+    const providerId = Array.isArray(identity.identities)
+      ? identity.identities.find((item) => item.provider === 'google')?.id || null
+      : null;
+    const name = String(profile.name || identity.user_metadata?.name || identity.user_metadata?.full_name || email.split('@')[0]).slice(0, 120);
+    const ts = nowIso();
+    const verified = Boolean(identity.email_confirmed_at || identity.confirmed_at);
+    let localUser = db.prepare('SELECT * FROM users WHERE supabase_uid = ?').get(identity.id);
+    if (!localUser) localUser = findUserByEmail(email);
+
+    if (localUser) {
+      if (localUser.supabase_uid && localUser.supabase_uid !== identity.id) {
+        throw new HttpError(409, 'This email is already linked to another sign-in identity.');
+      }
+      db.prepare(
+        \`UPDATE users SET supabase_uid = ?, email = ?, name = ?, role = ?, auth_provider = ?,
+          google_sub = COALESCE(?, google_sub), email_verified = ?, email_verified_at = CASE WHEN ? = 1 THEN COALESCE(email_verified_at, ?) ELSE NULL END,
+          updated_at = ? WHERE id = ?\`
+      ).run(identity.id, email, name, role, provider, providerId, verified ? 1 : 0, verified ? 1 : 0, ts, ts, localUser.id);
+      localUser = findUserById(localUser.id);
+    } else {
+      db.prepare(
+        \`INSERT INTO users (id, supabase_uid, email, password_hash, auth_provider, google_sub, name, role, status,
+          email_verified, email_verified_at, created_at, updated_at)
+         VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'active', ?, ?, ?, ?)\`
+      ).run(identity.id, identity.id, email, provider, providerId, name, role, verified ? 1 : 0, verified ? ts : null, ts, ts);
+      localUser = findUserById(identity.id);
+    }
+
+    if (!localUser || localUser.status !== 'active') {
+      throw new HttpError(403, 'This account has been disabled. Please contact support.');
+    }
+    touchUserLogin(localUser.id);
+    createSession(req, res, localUser.id);
+    req.user = findUserById(localUser.id);
+    audit(req, 'auth.supabase_session', 'user', localUser.id, { supabaseUserId: identity.id });
+    return res.json(userPayload(req.user));
+  })
+);
+
+/* ------------------------------------------------------------------ */
 /* Register (salon owner self-service)                                 */
 /* ------------------------------------------------------------------ */
 
