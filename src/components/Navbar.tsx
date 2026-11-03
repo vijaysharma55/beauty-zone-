@@ -277,26 +277,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               onClick={() => {
                 setMobileMenuOpen(false);
-                handleLinkClick('booking');
-              }}
-              className="w-full flex items-center justify-center gap-2 bg-[#D09A40] text-[#0F172A] font-bold py-3 rounded-full shadow-md"
-            >
-              <Calendar className="w-4 h-4" />
-              <span>{t('navBookAppointment')}</span>
-            </button>
-            <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                setIsCustomizerOpen(true);
-              }}
-              className="w-full flex items-center justify-center gap-2 bg-white/10 border border-[#D09A40]/40 text-[#FAF5E5] font-semibold py-2.5 rounded-full text-sm"
-            >
-              <Palette className="w-4 h-4 text-[#D09A40]" />
-              <span>{t('navWhiteLabelStudio')}</span>
-            </button>
-            <button
-              onClick={() => {
-                setMobileMenuOpen(false);
                 onOpenManagement();
               }}
               className="w-full flex items-center justify-center gap-2 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-semibold py-2.5 rounded-full text-sm"
