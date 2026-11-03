@@ -6,7 +6,7 @@ export interface AuthUser {
   name: string;
   role: Role;
   status: 'active' | 'disabled';
-  authProvider: 'password' | 'google';
+  authProvider: 'password' | 'google' | 'phone';
   emailVerified: boolean;
   lastLoginAt: string | null;
   createdAt: string;
