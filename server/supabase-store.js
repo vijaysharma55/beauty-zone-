@@ -26,14 +26,15 @@ export async function requestSupabase(path, token, options = {}) {
   const headers = new Headers(options.headers || {});
   headers.set('apikey', SUPABASE_KEY);
   headers.set('Authorization', 'Bearer ' + (token || SUPABASE_KEY));
-  if (options.body !== undefined && !(options.body instanceof Blob) && !headers.has('Content-Type')) {
+  const binaryBody = options.body instanceof Blob || options.body instanceof Uint8Array;
+  if (options.body !== undefined && !binaryBody && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
   if (options.prefer) headers.set('Prefer', options.prefer);
   const response = await fetch(url, {
     method: options.method || 'GET',
     headers,
-    body: options.body === undefined ? undefined : options.body instanceof Blob ? options.body : JSON.stringify(options.body),
+    body: options.body === undefined ? undefined : binaryBody ? options.body : JSON.stringify(options.body),
   });
   const text = await response.text();
   let data = null;
