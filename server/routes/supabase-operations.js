@@ -349,7 +349,7 @@ supabaseOperationsRouter.get('/admin/users', asyncRoute(async(req,res)=>{
     const sub=salon?await one(req.sb,'subscriptions','salon_id=eq.'+salon.id+'&select=plan,status&limit=1'):null;
     return {...{
       id:p.id,email:p.email,name:p.name,role:p.role,status:p.status||'active',
-      emailVerified:Boolean(p.email_verified),authProvider:'password',createdAt:p.created_at,
+      emailVerified:Boolean(p.email_verified),authProvider:p.auth_provider||'password',createdAt:p.created_at,
     },salon:salon?{id:salon.id,name:salon.name,slug:salon.slug,published:salon.website_published,status:salon.status,suspended:salon.suspended}:null,
     subscription:sub?{plan:sub.plan,status:sub.status}:null};
   }));
@@ -379,7 +379,7 @@ supabaseOperationsRouter.post('/admin/users', asyncRoute(async(req,res)=>{
   res.status(201).json({user:{
     id:user.id,email:user.email||email,name:profile?.name||name,role:profile?.role||'salon_owner',
     status:profile?.status||'active',emailVerified:Boolean(user.email_confirmed_at||profile?.email_verified),
-    authProvider:'password',createdAt:profile?.created_at||user.created_at,
+    authProvider:profile?.auth_provider||'password',createdAt:profile?.created_at||user.created_at,
   }});
 }));
 supabaseOperationsRouter.patch('/admin/users/:userId', asyncRoute(async(req,res)=>{
