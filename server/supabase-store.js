@@ -58,7 +58,11 @@ export async function getSupabaseContext(req, { required = true } = {}) {
     return null;
   }
   const authUser = await requestSupabase('/auth/v1/user', token);
-  if (!authUser?.id) throw new SupabaseApiError(401, 'Your sign-in session is invalid. Please sign in again.');
+  const email = typeof authUser?.email === 'string' ? authUser.email.trim().toLowerCase() : '';
+  const phone = typeof authUser?.phone === 'string' ? authUser.phone.trim() : '';
+  if (!authUser?.id || (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) && !phone)) {
+    throw new SupabaseApiError(401, 'Your sign-in session is invalid. Please sign in again.');
+  }
   const profiles = await requestSupabase('/rest/v1/profiles?id=eq.' + encodeURIComponent(authUser.id) + '&select=*&limit=1', token);
   const profile = Array.isArray(profiles) ? profiles[0] : null;
   if (!profile) throw new SupabaseApiError(409, 'Your BeautyZone profile is not ready yet. Please sign in again.');
