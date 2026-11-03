@@ -4,7 +4,7 @@ import {
   getSalonForOwner, getSalonById, getServices, getStaff, getSubscription,
   getVersions, getWorkflow, userPayload, mapSalon, mapService, mapStaff,
   mapSubscription, mapVersion, buildSnapshot, hashSnapshot, writeAudit,
-  livePayload, isoNow, uuid,
+  livePayload, getLiveSalon, isoNow, uuid,
 } from '../supabase-store.js';
 import { generateSlots, FALLBACK_TIMINGS, DEFAULT_SLOT_MINUTES, DEFAULT_LEAD_MINUTES } from '../availability.js';
 
@@ -541,8 +541,8 @@ supabaseOperationsRouter.get('/public/availability',asyncRoute(async(req,res)=>{
   const slug=s(req.query.slug,60);
   let timings=FALLBACK_TIMINGS,source='default',salonName=null;
   if(slug){
-    const live=await rest(req.sb,'salons','slug=eq.'+slug+'&website_published=eq.true&status=eq.approved&suspended=eq.false&select=id,name,timings&limit=1');
-    if(live[0]){timings=live[0].timings||FALLBACK_TIMINGS;source='salon';salonName=live[0].name;}
+    const live=await getLiveSalon(req.sb,slug);
+    if(live){timings=live.snapshot?.salon?.timings||FALLBACK_TIMINGS;source='salon';salonName=live.salon.name;}
   }
   const duration=num(req.query.duration,1,1440,60),slot=num(req.query.slot,5,240,DEFAULT_SLOT_MINUTES),offset=num(req.query.tzOffset,-840,840,0);
   const result=generateSlots({date,timings,durationMinutes:duration,slotMinutes:slot,leadMinutes:DEFAULT_LEAD_MINUTES,timeZoneOffsetMinutes:offset});
@@ -557,9 +557,22 @@ supabaseOperationsRouter.post('/public/bookings',asyncRoute(async(req,res)=>{
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata'}).format(new Date());
   if(!isoDate(date)||date<today) fail(400,'Please choose today or a future date.');
   const slug=s(b.slug,60);
-  const live=slug?await rest(req.sb,'salons','slug=eq.'+encodeURIComponent(slug)+'&website_published=eq.true&status=eq.approved&suspended=eq.false&select=id,name,phone,slug,timings&limit=1'):[];
-  if(slug&&!live[0]) fail(404,'Salon not found.');
-  const salon=live[0]||null;
+  const live=slug?await getLiveSalon(req.sb,slug):null;
+  if(slug&&!live) fail(404,'Salon not found.');
+  const salon=live?.salon||null;
+  if(salon){
+    const requestedService= b.serviceId
+      ? await one(req.sb,'services','id=eq.'+encodeURIComponent(b.serviceId)+'&salon_id=eq.'+encodeURIComponent(salon.id)+'&active=eq.true&select=id,duration_minutes,price_paise&limit=1')
+      : null;
+    if(b.serviceId&&!requestedService) fail(400,'Selected service is not available.');
+    const requestedStaff=b.staffId
+      ? await one(req.sb,'staff','id=eq.'+encodeURIComponent(b.staffId)+'&salon_id=eq.'+encodeURIComponent(salon.id)+'&active=eq.true&booking_enabled=eq.true&select=id&limit=1')
+      : null;
+    if(b.staffId&&!requestedStaff) fail(400,'Selected specialist is not available.');
+    const duration=Number(requestedService?.duration_minutes||60);
+    const slots=generateSlots({date,timings:live.snapshot?.salon?.timings||FALLBACK_TIMINGS,durationMinutes:duration,slotMinutes:DEFAULT_SLOT_MINUTES,leadMinutes:DEFAULT_LEAD_MINUTES,timeZoneOffsetMinutes:330});
+    if(slots.closed||!slots.slots?.some(slot=>slot.value===time)) fail(409,'That time is not available. Please choose an available slot.');
+  }
   const payload={
     id:uuid(),
     reference:'BZ-'+Date.now().toString(36).toUpperCase()+'-'+uuid().slice(0,5).toUpperCase(),
@@ -597,6 +610,23 @@ supabaseOperationsRouter.post('/public/bookings',asyncRoute(async(req,res)=>{
     warning:null,
   });
 }));
+supabaseOperationsRouter.post('/public/stylist-inquiry',asyncRoute(async(req,res)=>{
+  const b=req.body||{};
+  const requestedSalon=s(b.salonId,80,true);
+  const salon=await one(req.sb,'salons','select=id,slug&'+( /^[0-9a-f-]{36}$/i.test(requestedSalon)?'id=eq.':'slug=eq.')+encodeURIComponent(requestedSalon)+'&website_published=eq.true&status=eq.approved&suspended=eq.false&limit=1');
+  if(!salon) fail(404,'Salon not found.');
+  const stylistId=s(b.stylistId,80,true);
+  const stylist=await one(req.sb,'staff','id=eq.'+encodeURIComponent(stylistId)+'&salon_id=eq.'+encodeURIComponent(salon.id)+'&active=eq.true&select=id,name&limit=1');
+  if(!stylist) fail(404,'This specialist is not available.');
+  const userName=s(b.userName,120,true),userPhone=s(b.userPhone,40,true),message=s(b.message,2000,true);
+  if(userPhone.replace(/\D/g,'').length<8) fail(400,'Please enter a valid phone number.');
+  await write(req.sb,'stylist_inquiries',{
+    salon_id:salon.id,stylist_id:stylist.id,stylist_name:s(b.stylistName,120)||stylist.name,
+    user_name:userName,user_phone:userPhone,message,status:'new',
+  },'return=minimal');
+  res.status(201).json({success:true,message:'Inquiry sent successfully.'});
+}));
+
 supabaseOperationsRouter.post('/public/waitlist',asyncRoute(async(req,res)=>{
   const b=req.body||{},slug=s(b.slug,60),live=slug?await rest(req.sb,'salons','slug=eq.'+slug+'&website_published=eq.true&status=eq.approved&suspended=eq.false&select=id&limit=1'):[];
   if(slug&&!live[0])fail(404,'Salon not found.');
