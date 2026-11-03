@@ -58,6 +58,16 @@ allow the deployed /verify-email and /reset-password redirect URLs. Set up
 SMTP for production email. Google login also requires the Google provider to
 be enabled in Supabase Auth and matching OAuth client configuration.
 
+## First super-admin bootstrap
+
+After the administrator has signed up and the auth trigger has created the profiles row, use the trusted Supabase SQL Editor to set the role for the designated email:
+
+```sql
+update public.profiles set role = 'super_admin' where email = 'your-admin-email@example.com';
+```
+
+Never make role assignment a public signup field or client-side action. The database trigger blocks self-service role changes.
+
 ## Migration still required
 
 The current Supabase schema does not automatically migrate SQLite data. Existing
