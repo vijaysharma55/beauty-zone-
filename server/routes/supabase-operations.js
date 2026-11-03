@@ -277,9 +277,9 @@ supabaseOperationsRouter.post('/salon/subscription/payments', asyncRoute(async(r
   if(!['razorpay','phonepe','cashfree','upi','manual'].includes(provider)) fail(400,'Unsupported payment provider.');
   const plan=s(req.body?.plan,20,true);
   if(!['trial','starter','pro','elite'].includes(plan)) fail(400,'Invalid subscription plan.');
-  const amountPaise=num(req.body?.amountPaise,0,100000000);
+  const amountPaise=num(req.body?.amountPaise,1,100000000);
   const rows=await write(req.sb,'subscription_payments',{
-    salon_id:salon.id,provider,provider_reference:s(req.body?.providerReference,150)||null,
+    salon_id:salon.id,provider,provider_reference:s(req.body?.providerReference,150,true),
     amount_paise:amountPaise,currency:'INR',status:'pending',plan,
     metadata:isObject(req.body?.metadata)?req.body.metadata:{},
   });
