@@ -35,7 +35,12 @@ export function csrfProtection(req, res, next) {
   }
   const source = origin || refererOrigin;
   if (!source) {
-    if (req.get('x-requested-with') === 'beautyzone') return next();
+    // A cookie-authenticated mutation without Origin/Referer is unsafe unless it
+    // carries our same-origin custom header (which forces a browser preflight cross-site).
+    const hasSessionCookie = Boolean(parseCookies(req)[SESSION_COOKIE]);
+    if (hasSessionCookie && req.get('x-requested-with') !== 'beautyzone') {
+      return res.status(403).json({ error: 'Request blocked: request origin could not be verified.' });
+    }
     return next();
   }
   const host = req.get('host');
