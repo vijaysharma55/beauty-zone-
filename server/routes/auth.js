@@ -196,16 +196,16 @@ authRouter.post(
         throw new HttpError(409, 'This email is already linked to another sign-in identity.');
       }
       db.prepare(
-        \`UPDATE users SET supabase_uid = ?, email = ?, name = ?, role = ?, auth_provider = ?,
+        `UPDATE users SET supabase_uid = ?, email = ?, name = ?, role = ?, auth_provider = ?,
           google_sub = COALESCE(?, google_sub), email_verified = ?, email_verified_at = CASE WHEN ? = 1 THEN COALESCE(email_verified_at, ?) ELSE NULL END,
-          updated_at = ? WHERE id = ?\`
+          updated_at = ? WHERE id = ?`
       ).run(identity.id, email, name, role, provider, providerId, verified ? 1 : 0, verified ? 1 : 0, ts, ts, localUser.id);
       localUser = findUserById(localUser.id);
     } else {
       db.prepare(
-        \`INSERT INTO users (id, supabase_uid, email, password_hash, auth_provider, google_sub, name, role, status,
+        `INSERT INTO users (id, supabase_uid, email, password_hash, auth_provider, google_sub, name, role, status,
           email_verified, email_verified_at, created_at, updated_at)
-         VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'active', ?, ?, ?, ?)\`
+         VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`
       ).run(identity.id, identity.id, email, provider, providerId, name, role, verified ? 1 : 0, verified ? ts : null, ts, ts);
       localUser = findUserById(identity.id);
     }
