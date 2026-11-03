@@ -561,16 +561,26 @@ supabaseOperationsRouter.post('/public/bookings',asyncRoute(async(req,res)=>{
   const live=slug?await getLiveSalon(req.sb,slug):null;
   if(slug&&!live) fail(404,'Salon not found.');
   const salon=live?.salon||null;
+  let approvedService=null,approvedStaff=null,bookingServiceId=null,bookingStaffId=null;
   if(salon){
-    const requestedService= b.serviceId
-      ? await one(req.sb,'services','id=eq.'+encodeURIComponent(b.serviceId)+'&salon_id=eq.'+encodeURIComponent(salon.id)+'&active=eq.true&select=id,duration_minutes,price_paise&limit=1')
-      : null;
-    if(b.serviceId&&!requestedService) fail(400,'Selected service is not available.');
-    const requestedStaff=b.staffId
-      ? await one(req.sb,'staff','id=eq.'+encodeURIComponent(b.staffId)+'&salon_id=eq.'+encodeURIComponent(salon.id)+'&active=eq.true&booking_enabled=eq.true&select=id&limit=1')
-      : null;
-    if(b.staffId&&!requestedStaff) fail(400,'Selected specialist is not available.');
-    const duration=Number(requestedService?.duration_minutes||60);
+    const snapshotServices=Array.isArray(live.snapshot?.services)?live.snapshot.services:[];
+    approvedService=snapshotServices.find(item=>item.active&&(
+      (b.serviceId&&item.id===b.serviceId)||String(item.name||'').trim().toLowerCase()===service.toLowerCase()
+    ))||null;
+    if(!approvedService) fail(400,'Selected service is not part of the live approved salon website.');
+    const serviceRow=await one(req.sb,'services','id=eq.'+encodeURIComponent(approvedService.id)+'&salon_id=eq.'+encodeURIComponent(salon.id)+'&select=id&limit=1');
+    bookingServiceId=serviceRow?.id||null;
+    const stylistName=s(b.stylist,120);
+    if(b.staffId||stylistName){
+      const snapshotStaff=Array.isArray(live.snapshot?.staff)?live.snapshot.staff:[];
+      approvedStaff=snapshotStaff.find(item=>item.active&&item.bookingEnabled!==false&&(
+        (b.staffId&&item.id===b.staffId)||(!b.staffId&&String(item.name||'').trim().toLowerCase()===stylistName.toLowerCase())
+      ))||null;
+      if(!approvedStaff) fail(400,'Selected specialist is not part of the live approved salon website.');
+      const staffRow=await one(req.sb,'staff','id=eq.'+encodeURIComponent(approvedStaff.id)+'&salon_id=eq.'+encodeURIComponent(salon.id)+'&select=id&limit=1');
+      bookingStaffId=staffRow?.id||null;
+    }
+    const duration=Number(approvedService.durationMinutes||60);
     const slots=generateSlots({date,timings:live.snapshot?.salon?.timings||FALLBACK_TIMINGS,durationMinutes:duration,slotMinutes:DEFAULT_SLOT_MINUTES,leadMinutes:DEFAULT_LEAD_MINUTES,timeZoneOffsetMinutes:330});
     if(slots.closed||!slots.slots?.some(slot=>slot.value===time)) fail(409,'That time is not available. Please choose an available slot.');
   }
@@ -582,10 +592,10 @@ supabaseOperationsRouter.post('/public/bookings',asyncRoute(async(req,res)=>{
     phone,
     email:s(b.email,254)||null,
     service,
-    service_id:b.serviceId||null,
-    category:s(b.category,80),
+    service_id:bookingServiceId,
+    category:s(b.serviceCategory||b.category||approvedService?.category||'',80),
     stylist:s(b.stylist,120),
-    staff_id:b.staffId||null,
+    staff_id:bookingStaffId,
     date,
     time,
     location_type:b.locationType==='home'?'home':'salon',
@@ -596,7 +606,7 @@ supabaseOperationsRouter.post('/public/bookings',asyncRoute(async(req,res)=>{
     bridal_trial:bool(b.bridalTrial),
     notes:s(b.notes,2000),
     promo_code:s(b.promoCode,100)||null,
-    estimated_total:num(b.estimatedTotal,0,100000000,0),
+    estimated_total:approvedService?num(approvedService.pricePaise,0,100000000,0):num(b.estimatedTotal,0,100000000,0),
   };
   if(payload.service_id&&!/^[0-9a-f-]{36}$/i.test(payload.service_id)) fail(400,'Invalid service.');
   if(payload.staff_id&&!/^[0-9a-f-]{36}$/i.test(payload.staff_id)) fail(400,'Invalid specialist.');
