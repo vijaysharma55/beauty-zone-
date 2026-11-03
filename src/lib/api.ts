@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, customerSupabase } from './supabase';
 
 export class ApiError extends Error {
   status: number;
@@ -77,3 +77,31 @@ export const api = {
 
 export const errorMessage = (err: unknown) =>
   err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Something went wrong.';
+
+
+// API helper for the isolated phone-OTP customer session used by the loyalty area.
+async function customerRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const headers = new Headers(options.headers);
+  headers.set('X-Requested-With', 'beautyzone');
+  const accessToken = await customerSupabase.auth.getAccessToken().catch(() => null);
+  if (accessToken) headers.set('Authorization', 'Bearer ' + accessToken);
+  if (options.body && !(options.body instanceof Blob) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  let res: Response;
+  try {
+    res = await fetch(\`\${BASE}\${path}\`, {
+      credentials: 'same-origin',
+      ...options,
+      headers,
+    });
+  } catch {
+    throw new ApiError(0, 'Network error. Please check your connection and try again.');
+  }
+  return parseResponse(res) as Promise<T>;
+}
+export const customerApi = {
+  get: <T>(path: string) => customerRequest<T>(path),
+  post: <T>(path: string, body?: unknown) =>
+    customerRequest<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) }),
+};
