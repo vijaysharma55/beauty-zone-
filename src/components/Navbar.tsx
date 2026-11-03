@@ -5,7 +5,6 @@ import {
   Phone,
   Menu,
   X,
-  Calendar,
   Sliders,
   Settings,
   Palette,
@@ -220,13 +219,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span>Brand Studio</span>
           </button>
 
-          <button
-            onClick={() => handleLinkClick('booking')}
-            className="flex items-center gap-2 bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A] font-semibold text-sm px-5 py-2.5 rounded-full shadow-lg hover:shadow-[#D09A40]/25 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
-          >
-            <Calendar className="w-4 h-4" />
-            <span>{brand.heroPrimaryCta || t('navBookAppointment')}</span>
-          </button>
         </div>
 
         {/* Mobile Hamburger */}
