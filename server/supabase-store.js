@@ -62,7 +62,7 @@ export async function getSupabaseContext(req, { required = true } = {}) {
   const profile = Array.isArray(profiles) ? profiles[0] : null;
   if (!profile) throw new SupabaseApiError(409, 'Your BeautyZone profile is not ready yet. Please sign in again.');
   if (profile.status === 'disabled') throw new SupabaseApiError(403, 'This account has been disabled. Please contact support.');
-  if (!['super_admin', 'salon_owner'].includes(profile.role)) throw new SupabaseApiError(403, 'Your account does not have an application role.');
+  if (!['super_admin', 'salon_owner', 'customer'].includes(profile.role)) throw new SupabaseApiError(403, 'Your account does not have an application role.');
   return {
     token,
     authUser,
