@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { SocialLinksBar, InstagramIcon } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
-import { BrandEmblemIcon } from './WhiteLabelCustomizer';
+import { BrandEmblemIcon } from './BrandEmblemIcon';
 import { useAuth } from '../context/AuthContext';
 
 interface FooterProps {

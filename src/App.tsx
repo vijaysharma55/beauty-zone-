@@ -20,9 +20,6 @@ import { FAQSection } from './components/FAQSection';
 import { Footer } from './components/Footer';
 import { FloatingActions } from './components/FloatingActions';
 import { MobileBottomDock } from './components/MobileBottomDock';
-import { BrandingModal } from './components/BrandingModal';
-import { DesignSystemInspector } from './components/DesignSystemInspector';
-import { WhiteLabelCustomizer } from './components/WhiteLabelCustomizer';
 import { ServiceCategory, SalonPackage, GalleryItem, VideoItem, ServiceItem } from './types';
 import { getStoredPackages, saveStoredPackages } from './data/packagesData';
 import { getStoredGallery, saveStoredGallery } from './data/galleryData';
@@ -33,40 +30,49 @@ import { useBrand } from './context/BrandContext';
 import { useAuth } from './context/AuthContext';
 import { api, ApiError } from './lib/api';
 import type { PublicSalonResponse, SalonStaff } from './types/auth';
-import { LoginPage } from './components/auth/LoginPage';
-import { RegisterPage } from './components/auth/RegisterPage';
-import { ForgotPasswordPage } from './components/auth/ForgotPasswordPage';
-import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
-import { ProtectedRoute } from './components/auth/ProtectedRoute';
-import { DashboardLayout } from './components/dashboard/DashboardLayout';
-import { OverviewPage } from './components/dashboard/OverviewPage';
-import { OnboardingPage } from './components/dashboard/OnboardingPage';
-import { WebsiteEditor } from './components/dashboard/WebsiteEditor';
-import { ServicesPage } from './components/dashboard/ServicesPage';
-import { StaffPage } from './components/dashboard/StaffPage';
-import { BillingPage } from './components/dashboard/BillingPage';
-import { BookingsPage } from './components/dashboard/BookingsPage';
-import { AnalyticsPage } from './components/dashboard/AnalyticsPage';
-import { AccountPage } from './components/dashboard/AccountPage';
-import { PreviewPage } from './components/dashboard/PreviewPage';
-import { AdminLayout } from './components/admin/AdminLayout';
-import { AdminOverview } from './components/admin/AdminOverview';
-import { AdminUsers } from './components/admin/AdminUsers';
-import { AdminSalons } from './components/admin/AdminSalons';
-import { AdminSubscriptions } from './components/admin/AdminSubscriptions';
-import { AdminSettings } from './components/admin/AdminSettings';
-import { PublicSalonPage } from './components/site/PublicSalonPage';
-import { SalonDirectoryPage } from './components/site/SalonDirectoryPage';
-import { VerifyEmailPage } from './components/dashboard/VerifyEmailPage';
-import { ApprovalPage } from './components/dashboard/ApprovalPage';
-import { AdminApprovals } from './components/admin/AdminApprovals';
 import { Button } from './components/ui';
 import { SubdomainAwareHome } from './components/site/SubdomainResolver';
 import { PUBLIC_PATHS } from './publicPaths';
 import { homeStructuredData, SITE_ORIGIN } from './homeMetadata';
 
+
+const LoginPage = React.lazy(() => import('./components/auth/LoginPage').then((module) => ({ default: module.LoginPage })));
+const RegisterPage = React.lazy(() => import('./components/auth/RegisterPage').then((module) => ({ default: module.RegisterPage })));
+const ForgotPasswordPage = React.lazy(() => import('./components/auth/ForgotPasswordPage').then((module) => ({ default: module.ForgotPasswordPage })));
+const ResetPasswordPage = React.lazy(() => import('./components/auth/ResetPasswordPage').then((module) => ({ default: module.ResetPasswordPage })));
+const ProtectedRoute = React.lazy(() => import('./components/auth/ProtectedRoute').then((module) => ({ default: module.ProtectedRoute })));
+
+const DashboardLayout = React.lazy(() => import('./components/dashboard/DashboardLayout').then((module) => ({ default: module.DashboardLayout })));
+const OverviewPage = React.lazy(() => import('./components/dashboard/OverviewPage').then((module) => ({ default: module.OverviewPage })));
+const OnboardingPage = React.lazy(() => import('./components/dashboard/OnboardingPage').then((module) => ({ default: module.OnboardingPage })));
+const WebsiteEditor = React.lazy(() => import('./components/dashboard/WebsiteEditor').then((module) => ({ default: module.WebsiteEditor })));
+const ServicesPage = React.lazy(() => import('./components/dashboard/ServicesPage').then((module) => ({ default: module.ServicesPage })));
+const StaffPage = React.lazy(() => import('./components/dashboard/StaffPage').then((module) => ({ default: module.StaffPage })));
+const BillingPage = React.lazy(() => import('./components/dashboard/BillingPage').then((module) => ({ default: module.BillingPage })));
+const BookingsPage = React.lazy(() => import('./components/dashboard/BookingsPage').then((module) => ({ default: module.BookingsPage })));
+const AnalyticsPage = React.lazy(() => import('./components/dashboard/AnalyticsPage').then((module) => ({ default: module.AnalyticsPage })));
+const AccountPage = React.lazy(() => import('./components/dashboard/AccountPage').then((module) => ({ default: module.AccountPage })));
+const PreviewPage = React.lazy(() => import('./components/dashboard/PreviewPage').then((module) => ({ default: module.PreviewPage })));
+const VerifyEmailPage = React.lazy(() => import('./components/dashboard/VerifyEmailPage').then((module) => ({ default: module.VerifyEmailPage })));
+const ApprovalPage = React.lazy(() => import('./components/dashboard/ApprovalPage').then((module) => ({ default: module.ApprovalPage })));
+
+const AdminLayout = React.lazy(() => import('./components/admin/AdminLayout').then((module) => ({ default: module.AdminLayout })));
+const AdminOverview = React.lazy(() => import('./components/admin/AdminOverview').then((module) => ({ default: module.AdminOverview })));
+const AdminUsers = React.lazy(() => import('./components/admin/AdminUsers').then((module) => ({ default: module.AdminUsers })));
+const AdminSalons = React.lazy(() => import('./components/admin/AdminSalons').then((module) => ({ default: module.AdminSalons })));
+const AdminSubscriptions = React.lazy(() => import('./components/admin/AdminSubscriptions').then((module) => ({ default: module.AdminSubscriptions })));
+const AdminSettings = React.lazy(() => import('./components/admin/AdminSettings').then((module) => ({ default: module.AdminSettings })));
+const AdminApprovals = React.lazy(() => import('./components/admin/AdminApprovals').then((module) => ({ default: module.AdminApprovals })));
+
+const PublicSalonPage = React.lazy(() => import('./components/site/PublicSalonPage').then((module) => ({ default: module.PublicSalonPage })));
+const SalonDirectoryPage = React.lazy(() => import('./components/site/SalonDirectoryPage').then((module) => ({ default: module.SalonDirectoryPage })));
+
+const BrandingModal = React.lazy(() => import('./components/BrandingModal').then((module) => ({ default: module.BrandingModal })));
+const DesignSystemInspector = React.lazy(() => import('./components/DesignSystemInspector').then((module) => ({ default: module.DesignSystemInspector })));
+const WhiteLabelCustomizer = React.lazy(() => import('./components/WhiteLabelCustomizer').then((module) => ({ default: module.WhiteLabelCustomizer })));
+
 function MarketingSite() {
-  const { brand, formatPrice } = useBrand();
+  const { brand, formatPrice, isCustomizerOpen } = useBrand();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [services, setServices] = useState<ServiceItem[]>(() => getStoredServices());
@@ -140,6 +146,13 @@ function MarketingSite() {
 
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [isBrandingModalOpen, setIsBrandingModalOpen] = useState(false);
+  const [hasOpenedInspector, setHasOpenedInspector] = useState(false);
+  const [hasOpenedBrandingModal, setHasOpenedBrandingModal] = useState(false);
+  const [hasOpenedCustomizer, setHasOpenedCustomizer] = useState(false);
+
+  useEffect(() => {
+    if (isCustomizerOpen) setHasOpenedCustomizer(true);
+  }, [isCustomizerOpen]);
 
   // Inline CRUD handlers used by the section cards. State updates stay in sync
   // with localStorage so edits survive reloads and route changes.
@@ -386,13 +399,13 @@ function MarketingSite() {
       {/* 11. Footer */}
       <Footer
         onNavigate={scrollToSection}
-        onOpenInspector={() => setIsInspectorOpen(true)}
+        onOpenInspector={() => { setHasOpenedInspector(true); setIsInspectorOpen(true); }}
         onOpenManagement={() => handleOpenManagement('packages')}
       />
 
       {/* Floating WhatsApp & White-Label Studio Quick Actions */}
       {brand.sections.showFloatingActions && (
-        <FloatingActions onOpenBranding={() => setIsBrandingModalOpen(true)} />
+        <FloatingActions onOpenBranding={() => { setHasOpenedBrandingModal(true); setIsBrandingModalOpen(true); }} />
       )}
 
       {/* Sticky Mobile Bottom Navigation Bar */}
@@ -401,20 +414,32 @@ function MarketingSite() {
         onOpenBooking={() => scrollToSection('booking')}
       />
 
-      {/* Interactive Design System Inspector Drawer */}
-      <DesignSystemInspector
-        isOpen={isInspectorOpen}
-        onClose={() => setIsInspectorOpen(false)}
-      />
+      {/* Interactive Design System Inspector Drawer — loaded on first open */}
+      {hasOpenedInspector && (
+        <React.Suspense fallback={null}>
+          <DesignSystemInspector
+            isOpen={isInspectorOpen}
+            onClose={() => setIsInspectorOpen(false)}
+          />
+        </React.Suspense>
+      )}
 
-      {/* Branding Management Modal */}
-      <BrandingModal
-        isOpen={isBrandingModalOpen}
-        onClose={() => setIsBrandingModalOpen(false)}
-      />
+      {/* Branding Management Modal — loaded on first open */}
+      {hasOpenedBrandingModal && (
+        <React.Suspense fallback={null}>
+          <BrandingModal
+            isOpen={isBrandingModalOpen}
+            onClose={() => setIsBrandingModalOpen(false)}
+          />
+        </React.Suspense>
+      )}
 
-      {/* White-Label Brand Studio Drawer */}
-      <WhiteLabelCustomizer />
+      {/* White-Label Brand Studio Drawer — loaded on first open */}
+      {hasOpenedCustomizer && (
+        <React.Suspense fallback={null}>
+          <WhiteLabelCustomizer />
+        </React.Suspense>
+      )}
     </div>
   );
 }
@@ -468,6 +493,7 @@ export function App() {
   return (
     <>
     <HomeMetadata />
+    <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#FAF5E5] text-sm text-slate-600">Loading page…</div>}>
     <Routes>
       {/* Public marketing site — subdomain-aware: tenant subdomains render the salon site */}
       <Route path={PUBLIC_PATHS.home} element={<SubdomainAwareHome><MarketingSite /></SubdomainAwareHome>} />
@@ -526,6 +552,7 @@ export function App() {
 
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
+    </React.Suspense>
     </>
   );
 }

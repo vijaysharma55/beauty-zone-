@@ -246,7 +246,7 @@ export const DEFAULT_WHITE_LABEL_CONFIG: WhiteLabelConfig = {
     faviconUrl: '',
     appleTouchIconUrl: '',
     themeColorHex: '#0F172A',
-    seoTitle: 'Beauty Zone | Premium Salon, Bridal Studio & Academy Services in Jaipur',
+    seoTitle: 'Beauty Zone Jaipur | Salon & Bridal Services',
     seoDescription:
       'Book salon and doorstep home services in Jaipur, including HD bridal makeup, hair botox, 24K gold facials and curated salon packages.',
     seoKeywords:
@@ -738,6 +738,13 @@ export function loadWhiteLabelConfig(): WhiteLabelConfig {
       domainSeo: {
         ...DEFAULT_WHITE_LABEL_CONFIG.domainSeo,
         ...(parsed.domainSeo || {}),
+        // Migrate known template titles while preserving owner-customized SEO titles.
+        seoTitle: [
+          'Beauty Zone | Premium Salon, Bridal Studio & Academy Services in Jaipur',
+          'Lumina Luxe — Luxury Salon, Bridal Studio & Spa | Metropolitan City',
+        ].includes(parsed.domainSeo?.seoTitle || '')
+          ? DEFAULT_WHITE_LABEL_CONFIG.domainSeo.seoTitle
+          : (parsed.domainSeo?.seoTitle ?? DEFAULT_WHITE_LABEL_CONFIG.domainSeo.seoTitle),
         // Migrate the former template default without overriding custom canonical URLs.
         canonicalUrl: /^https:\/\/www\.luminaluxestudio\.com\/?$/.test(parsed.domainSeo?.canonicalUrl || '')
           ? DEFAULT_WHITE_LABEL_CONFIG.domainSeo.canonicalUrl
