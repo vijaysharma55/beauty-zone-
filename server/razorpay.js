@@ -27,7 +27,7 @@ export async function fetchRazorpayOrder(orderId) {
 export async function createRazorpayOrder({amountPaise,receipt,notes}) {
   const amount=Math.round(Number(amountPaise));
   if(!Number.isSafeInteger(amount)||amount<=0||amount>100000000) throw new Error('Payment amount is invalid.');
-  const order=await razorpayRequest('/orders',{method:'POST',body:JSON.stringify({amount,currency:'INR',receipt:String(receipt).slice(0,40),payment_capture:1,notes:notes||{}})});
+  const order=await razorpayRequest('/orders',{method:'POST',body:JSON.stringify({amount,currency:'INR',receipt:String(receipt).slice(0,40),notes:notes||{}})});
   if(!order?.id||Number(order.amount)!==amount||order.currency!=='INR') throw new Error('Razorpay returned an invalid order.');
   return order;
 }
