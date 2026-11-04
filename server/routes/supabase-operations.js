@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  SupabaseApiError, getSupabaseContext, requestSupabase, rest, rpc,
+  SupabaseApiError, getSupabaseContext, requestSupabase, rest, rpc, SUPABASE_URL,
   getSalonForOwner, getSalonById, getServices, getStaff, getSubscription,
   getVersions, getWorkflow, userPayload, mapSalon, mapService, mapStaff,
   mapSubscription, mapVersion, buildSnapshot, hashSnapshot, writeAudit,
@@ -257,7 +257,7 @@ supabaseOperationsRouter.post('/salon/uploads', asyncRoute(async(req,res)=>{
     method:'POST',headers:{'Content-Type':mime,'x-upsert':'true'},body:data,
   });
   await audit(req.sb,'salon.image_uploaded','salon',salon.id,{kind,size:data.length});
-  res.status(201).json({url:process.env.SUPABASE_URL?.replace(/\/+$/,'')+'/storage/v1/object/public/beautyzone-assets/'+key});
+  res.status(201).json({url:SUPABASE_URL+'/storage/v1/object/public/beautyzone-assets/'+key});
 }));
 supabaseOperationsRouter.get('/salon/services', asyncRoute(async(req,res)=>{
   const salon=await ownSalonOrFail(req.sb); res.json({services:await getServices(req.sb,salon.id)});
@@ -375,6 +375,26 @@ supabaseOperationsRouter.post('/salon/subscription/checkout', asyncRoute(async(r
     await patchServiceRow('subscription_payments','id=eq.'+encodeURIComponent(payment.id),{status:'failed',metadata:{purpose:'salon_subscription',orderCreationError:String(error.message).slice(0,300)},updated_at:isoNow()}).catch(()=>{});
     throw error;
   }
+}));
+
+supabaseOperationsRouter.post('/salon/subscription/checkout/:paymentId/cancel', asyncRoute(async(req,res)=>{
+  const salon=await ownSalonOrFail(req.sb);
+  const row=await one(req.sb,'subscription_payments',
+    'id=eq.'+encodeURIComponent(req.params.paymentId)+'&salon_id=eq.'+encodeURIComponent(salon.id)+'&provider=eq.razorpay&status=eq.pending&select=id,provider_order_id,metadata,plan&limit=1');
+  if(!row) return res.json({cancelled:false,message:'This checkout is no longer pending.'});
+  if(row.provider_order_id){
+    const order=await fetchRazorpayOrder(row.provider_order_id);
+    if(Number(order?.attempts||0)>0 || ['paid','attempted'].includes(String(order?.status||'').toLowerCase())){
+      fail(409,'A payment attempt already exists for this order. Wait for Razorpay confirmation or contact support.');
+    }
+  }
+  await patchServiceRow('subscription_payments','id=eq.'+encodeURIComponent(row.id),{
+    status:'failed',
+    metadata:{...(row.metadata||{}),checkoutDismissedAt:isoNow(),checkoutDismissedBeforePaymentAttempt:true},
+    updated_at:isoNow(),
+  });
+  await audit(req.sb,'subscription.checkout_dismissed','subscription_payment',row.id,{plan:row.plan});
+  res.json({cancelled:true});
 }));
 
 supabaseOperationsRouter.post('/salon/subscription/verify', asyncRoute(async(req,res)=>{
@@ -495,6 +515,7 @@ supabaseOperationsRouter.post('/admin/users/:userId/reset-password', asyncRoute(
   admin(req.sb);
   const profile=await one(req.sb,'profiles','id=eq.'+encodeURIComponent(req.params.userId)+'&select=email&limit=1');
   if(!profile) fail(404,'User not found.');
+  if(!profile.email||! /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(profile.email)) fail(400,'This phone-only account has no recovery email. Ask the user to add and verify an email address first.');
   await requestSupabase('/auth/v1/recover?redirect_to='+encodeURIComponent(redirectUrl(req,'/reset-password')),null,{method:'POST',body:{email:profile.email}});
   await audit(req.sb,'admin.password_reset_email_sent','user',req.params.userId);
   res.json({ok:true,message:'Password recovery email requested.'});
