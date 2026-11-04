@@ -58,11 +58,13 @@ export const BillingPage: React.FC = () => {
     setError('');
     setNotice('');
     setRequesting(true);
+    let paymentRecordId = '';
     try {
       const order = await api.post<{
         keyId: string; orderId: string; amount: number; currency: string;
         paymentRecordId: string; description: string;
       }>('/salon/subscription/checkout', { plan: targetPlan });
+      paymentRecordId = order.paymentRecordId;
       const response = await openRazorpayCheckout(order);
       const result = await api.post<{ success: boolean; status: string; paymentId: string }>(
         '/salon/subscription/verify',
@@ -79,7 +81,21 @@ export const BillingPage: React.FC = () => {
       setPaymentsLoading(true);
       await loadPayments();
     } catch (err) {
-      setError(errorMessage(err));
+      const message = errorMessage(err);
+      if (paymentRecordId && message.includes('Payment window closed before payment was completed')) {
+        try {
+          const result = await api.post<{ cancelled: boolean }>(
+            '/salon/subscription/checkout/' + encodeURIComponent(paymentRecordId) + '/cancel'
+          );
+          setNotice(result.cancelled
+            ? 'Checkout closed. No payment attempt was made, so you can choose another plan.'
+            : 'Checkout is still being reconciled. Refresh payment history before starting another plan.');
+        } catch (cancelError) {
+          setError(errorMessage(cancelError));
+        }
+      } else {
+        setError(message);
+      }
     } finally {
       setRequesting(false);
     }
