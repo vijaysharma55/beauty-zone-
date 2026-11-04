@@ -11,6 +11,14 @@ interface BookingSummaryModalProps {
   price: string;
   promoDiscount?: number;
   promoCode?: string;
+  paymentRequired?: boolean;
+  paymentEnabled?: boolean;
+  paymentBusy?: boolean;
+  paymentMessage?: string;
+  paymentError?: string;
+  advanceAmount?: string;
+  advancePaid?: boolean;
+  onPayAdvance?: () => void;
 }
 
 export const BookingSummaryModal: React.FC<BookingSummaryModalProps> = ({
@@ -22,6 +30,14 @@ export const BookingSummaryModal: React.FC<BookingSummaryModalProps> = ({
   price,
   promoDiscount,
   promoCode,
+  paymentRequired = false,
+  paymentEnabled = false,
+  paymentBusy = false,
+  paymentMessage = '',
+  paymentError = '',
+  advanceAmount = '',
+  advancePaid = false,
+  onPayAdvance,
 }) => {
   if (!isOpen) return null;
 
@@ -87,7 +103,7 @@ export const BookingSummaryModal: React.FC<BookingSummaryModalProps> = ({
           <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-4">
             <CheckCircle2 className="w-10 h-10" />
           </div>
-          <h2 className="font-serif text-2xl font-bold text-[#0F172A]">Booking Confirmed!</h2>
+          <h2 className="font-serif text-2xl font-bold text-[#0F172A]">Booking Request Saved</h2>
           <p className="text-sm text-[#4A4A4A] mt-2">Booking Reference: #{bookingRef}</p>
         </div>
 
@@ -105,6 +121,29 @@ export const BookingSummaryModal: React.FC<BookingSummaryModalProps> = ({
             <span className="font-semibold text-right">{form.locationType === 'salon' ? form.selectedBranch : form.homeAddress}</span>
           </div>
         </div>
+
+        {paymentRequired && (
+          <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-bold text-[#0F172A]">Home visit advance (25%)</span>
+              <span className={advancePaid ? 'text-xs font-bold text-emerald-700' : 'text-xs font-bold text-amber-800'}>
+                {advancePaid ? 'Paid' : 'Payment pending'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-600">Advance due: {advanceAmount}. Remaining balance is payable after the service.</p>
+            {!advancePaid && paymentEnabled && (
+              <button type="button" onClick={onPayAdvance} disabled={paymentBusy}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#D09A40] px-4 py-3 text-sm font-bold text-[#0F172A] disabled:opacity-60">
+                {paymentBusy ? 'Opening secure checkout…' : 'Pay advance with Razorpay'}
+              </button>
+            )}
+            {!advancePaid && !paymentEnabled && (
+              <p className="text-xs text-amber-800">Online payment is not configured yet. No advance has been marked as received.</p>
+            )}
+            {paymentMessage && <p role="status" className="text-xs font-semibold text-emerald-700">{paymentMessage}</p>}
+            {paymentError && <p role="alert" className="text-xs text-red-700">{paymentError}</p>}
+          </div>
+        )}
 
         <div className="space-y-3">
           <a

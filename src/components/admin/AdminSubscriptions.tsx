@@ -19,6 +19,12 @@ import {
 const PLANS = ['trial', 'starter', 'pro', 'elite'] as const;
 const STATUSES = ['trialing', 'active', 'past_due', 'canceled'] as const;
 
+type AdminPayment = {
+  id: string; salon_id: string; subscription_id: string | null; provider: string;
+  provider_reference: string | null; provider_order_id?: string | null; amount_paise: number; status: 'pending'|'verified'|'failed'|'refunded';
+  plan: string; created_at: string; salons?: { name?: string; slug?: string };
+};
+
 const PLAN_PRICE_PAISE: Record<string, number> = {
   trial: 0,
   starter: 149900,
@@ -31,6 +37,8 @@ const toneForStatus = (status: string) =>
 
 export const AdminSubscriptions: React.FC = () => {
   const [subscriptions, setSubscriptions] = useState<SubscriptionWithSalon[]>([]);
+  const [payments, setPayments] = useState<AdminPayment[]>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -41,12 +49,17 @@ export const AdminSubscriptions: React.FC = () => {
 
   const load = useCallback(async () => {
     try {
-      const res = await api.get<{ subscriptions: SubscriptionWithSalon[] }>('/admin/subscriptions');
+      const [res, paymentRes] = await Promise.all([
+        api.get<{ subscriptions: SubscriptionWithSalon[] }>('/admin/subscriptions'),
+        api.get<{ payments: AdminPayment[] }>('/admin/subscription-payments'),
+      ]);
       setSubscriptions(res.subscriptions);
+      setPayments(paymentRes.payments || []);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
       setLoading(false);
+      setPaymentsLoading(false);
     }
   }, []);
 
@@ -103,6 +116,21 @@ export const AdminSubscriptions: React.FC = () => {
         prev.map((s) => (s.id === sub.id ? { ...s, ...res.subscription, salonName: s.salonName, salonSlug: s.salonSlug, ownerEmail: s.ownerEmail } : s))
       );
       flash('Billing period extended by 30 days.');
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const verifyPayment = async (payment: AdminPayment) => {
+    setBusyId('payment:' + payment.id);
+    setError('');
+    try {
+      await api.post('/admin/subscription-payments/' + payment.id + '/verify');
+      setPayments(prev => prev.map(p => p.id === payment.id ? {...p,status:'verified'} : p));
+      await load();
+      flash('Payment verified and subscription activated.');
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -207,6 +235,63 @@ export const AdminSubscriptions: React.FC = () => {
             </table>
           </div>
         )}
+      </Card>
+
+      <Card>
+        <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-3 text-sm text-slate-600">
+          <CreditCard className="h-4 w-4 text-[#D09A40]" /> Payment references awaiting verification
+        </div>
+        {paymentsLoading ? (
+          <p className="px-5 py-8 text-sm text-slate-500">Loading payment references…</p>
+        ) : payments.length === 0 ? (
+          <EmptyState icon={<CreditCard className="h-6 w-6" />} title="No payment references submitted" />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-5 py-3 font-medium">Salon</th>
+                  <th className="px-5 py-3 font-medium">Plan</th>
+                  <th className="px-5 py-3 font-medium">Method / reference</th>
+                  <th className="px-5 py-3 font-medium">Amount</th>
+                  <th className="px-5 py-3 font-medium">Status</th>
+                  <th className="px-5 py-3 text-right font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {payments.map(payment => (
+                  <tr key={payment.id}>
+                    <td className="px-5 py-3">
+                      <p className="font-medium text-slate-900">{payment.salons?.name || payment.salon_id}</p>
+                      <p className="text-xs text-slate-500">{formatDate(payment.created_at)}</p>
+                    </td>
+                    <td className="px-5 py-3 capitalize">{payment.plan}</td>
+                    <td className="px-5 py-3">
+                      <p className="uppercase text-xs text-slate-500">{payment.provider}</p>
+                      <p className="font-mono text-xs text-slate-800">{payment.provider_reference || payment.provider_order_id || 'No reference'}</p>
+                    </td>
+                    <td className="px-5 py-3">{formatCurrency(Number(payment.amount_paise || 0))}</td>
+                    <td className="px-5 py-3">
+                      <Badge tone={payment.status === 'verified' ? 'green' : payment.status === 'pending' ? 'amber' : 'red'}>{payment.status}</Badge>
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      {payment.status === 'pending' && payment.provider !== 'razorpay' ? (
+                        <Button variant="gold" size="sm" loading={busyId === 'payment:' + payment.id} onClick={() => verifyPayment(payment)}>
+                          Verify & activate
+                        </Button>
+                      ) : payment.status === 'pending' && payment.provider === 'razorpay' ? (
+                        <span className="text-xs text-amber-700">Waiting for signed webhook</span>
+                      ) : <span className="text-xs text-slate-400">No action</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+          Verify the UPI / bank transaction in your payment account before selecting “Verify & activate”. This is a manual reconciliation step, not an automatic gateway confirmation.
+        </p>
       </Card>
 
       <Modal

@@ -105,6 +105,68 @@ async function currentSession(): Promise<SupabaseSession | null> {
   }
 }
 
+
+// Loyalty/customer OTP has an isolated browser session. Verifying a customer phone
+// must never overwrite an authenticated salon-owner or super-admin session.
+let cachedCustomerSession: SupabaseSession | null = null;
+function readCustomerSession(): SupabaseSession | null {
+  // Customer OTP tokens are deliberately memory-only: an XSS cannot read a
+  // persisted refresh token, and a reload requires the customer to verify again.
+  return cachedCustomerSession;
+}
+function persistCustomerSession(session: SupabaseSession | null): void {
+  cachedCustomerSession = session;
+}
+async function customerAuthRequest<T>(path: string, body?: unknown, method = 'POST', useSession = false): Promise<T> {
+  const session = useSession ? readCustomerSession() : null;
+  const headers = new Headers({
+    apikey: SUPABASE_KEY,
+    Authorization: 'Bearer ' + (session?.access_token || SUPABASE_KEY),
+  });
+  if (body !== undefined) headers.set('Content-Type', 'application/json');
+  const response = await fetch(SUPABASE_URL + '/auth/v1' + path, {
+    method, headers, body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  return parseResponse<T>(response);
+}
+async function currentCustomerSession(): Promise<SupabaseSession | null> {
+  const session = readCustomerSession();
+  if (!session) return null;
+  if (session.expires_at > Math.floor(Date.now() / 1000) + 60) return session;
+  try {
+    const refreshed = await customerAuthRequest<any>('/token?grant_type=refresh_token', {
+      refresh_token: session.refresh_token,
+    });
+    const next = normalizedSession(refreshed);
+    persistCustomerSession(next);
+    return next;
+  } catch {
+    persistCustomerSession(null);
+    return null;
+  }
+}
+export const customerSupabase = {
+  auth: {
+    getSession: async (): Promise<SupabaseSession | null> => currentCustomerSession(),
+    getAccessToken: async (): Promise<string | null> => (await currentCustomerSession())?.access_token || null,
+    signInWithOtp: async (phone: string): Promise<void> => {
+      await customerAuthRequest('/otp', { phone, create_user: true });
+    },
+    verifyPhoneOtp: async (phone: string, token: string): Promise<AuthResult> => {
+      const result = await customerAuthRequest<any>('/verify', { type: 'sms', phone, token });
+      const session = normalizedSession(result);
+      if (!session?.access_token) throw new Error('Phone verification did not create a valid customer session.');
+      persistCustomerSession(session);
+      return { user: session.user, session };
+    },
+    signOut: async () => {
+      // Local-only sign-out: this isolated customer session must not revoke the
+      // user's separate owner/admin session (or sign out other devices).
+      persistCustomerSession(null);
+    },
+  },
+};
+
 export const supabase = {
   url: SUPABASE_URL,
   publishableKey: SUPABASE_KEY,
@@ -128,6 +190,16 @@ export const supabase = {
       const session = normalizedSession(result);
       if (session) persistSession(session, 'SIGNED_IN');
       return { user: result?.user || session?.user || null, session };
+    },
+    signInWithOtp: async (phone: string): Promise<void> => {
+      await authRequest('/otp', { phone, create_user: true });
+    },
+    verifyPhoneOtp: async (phone: string, token: string): Promise<AuthResult> => {
+      const result = await authRequest<any>('/verify', { type: 'sms', phone, token });
+      const session = normalizedSession(result);
+      if (!session?.access_token) throw new Error('Phone OTP did not create a valid session. Check the code and try again.');
+      persistSession(session, 'SIGNED_IN');
+      return { user: session.user, session };
     },
     signInWithPassword: async (email: string, password: string): Promise<AuthResult> => {
       const result = await authRequest<any>('/token?grant_type=password', { email, password });

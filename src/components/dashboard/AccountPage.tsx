@@ -37,11 +37,13 @@ export const AccountPage: React.FC = () => {
     }
     setSaving(true);
     try {
-      await api.post('/auth/password', {
+      const result = await api.post<{ signedOutOtherSessions: boolean }>('/auth/password', {
         currentPassword,
         newPassword,
       });
-      setNotice('Password updated. Other devices have been signed out.');
+      setNotice(result.signedOutOtherSessions
+        ? 'Password updated. Other active sessions have been signed out.'
+        : 'Password updated. Some other sessions may remain active; sign out everywhere to revoke them.');
       setCurrentPassword('');
       setNewPassword('');
       setConfirm('');

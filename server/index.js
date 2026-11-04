@@ -24,6 +24,8 @@ import { adminRouter } from './routes/admin.js';
 import { aiRouter } from './routes/ai.js';
 import { bookingsRouter } from './routes/bookings.js';
 import { loyaltyRouter } from './routes/loyalty.js';
+import { supabaseOperationsRouter } from './routes/supabase-operations.js';
+import { razorpayWebhookHandler } from './razorpay.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -68,6 +70,9 @@ app.use(subdomainMiddleware);
 // Raw body for image uploads must be registered before the JSON parser.
 app.use('/api/salon/uploads', express.raw({ type: 'image/*', limit: '5mb' }));
 
+// Razorpay requires the untouched raw request body for HMAC verification.
+app.post('/api/webhooks/razorpay', express.raw({ type: 'application/json', limit: '1mb' }), razorpayWebhookHandler);
+
 app.use(express.json({ limit: '2mb' }));
 
 app.use('/api', (req, res, next) => {
@@ -81,6 +86,11 @@ app.use('/api', csrfProtection);
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, service: 'beautyzone', time: new Date().toISOString() });
 });
+
+// Supabase JWT-backed API routes take precedence; requests without bearer tokens fall through to legacy routes.
+if (process.env.BEAUTYZONE_TEST_MODE !== 'true') {
+  app.use('/api', supabaseOperationsRouter);
+}
 
 app.use('/api/auth', authRouter);
 app.use('/api/salon', salonRouter);

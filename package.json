@@ -14,9 +14,10 @@
     "clean": "rm -rf dist data",
     "lint": "tsc --noEmit",
     "test:api": "node --test server/tests/api.test.js",
-    "test": "node --test server/tests/unit.test.js server/tests/api.test.js",
+    "test": "node --test server/tests/unit.test.js server/tests/api.test.js server/tests/migration.test.js server/tests/payments.test.js",
     "test:unit": "node --test server/tests/unit.test.js",
-    "verify": "npm run lint && npm test && npm run build"
+    "verify": "npm run lint && npm test && npm run build",
+    "test:migration": "node --test server/tests/migration.test.js"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

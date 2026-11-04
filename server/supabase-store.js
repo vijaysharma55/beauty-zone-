@@ -26,14 +26,15 @@ export async function requestSupabase(path, token, options = {}) {
   const headers = new Headers(options.headers || {});
   headers.set('apikey', SUPABASE_KEY);
   headers.set('Authorization', 'Bearer ' + (token || SUPABASE_KEY));
-  if (options.body !== undefined && !(options.body instanceof Blob) && !headers.has('Content-Type')) {
+  const binaryBody = options.body instanceof Blob || options.body instanceof Uint8Array;
+  if (options.body !== undefined && !binaryBody && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
   if (options.prefer) headers.set('Prefer', options.prefer);
   const response = await fetch(url, {
     method: options.method || 'GET',
     headers,
-    body: options.body === undefined ? undefined : options.body instanceof Blob ? options.body : JSON.stringify(options.body),
+    body: options.body === undefined ? undefined : binaryBody ? options.body : JSON.stringify(options.body),
   });
   const text = await response.text();
   let data = null;
@@ -57,12 +58,16 @@ export async function getSupabaseContext(req, { required = true } = {}) {
     return null;
   }
   const authUser = await requestSupabase('/auth/v1/user', token);
-  if (!authUser?.id) throw new SupabaseApiError(401, 'Your sign-in session is invalid. Please sign in again.');
+  const email = typeof authUser?.email === 'string' ? authUser.email.trim().toLowerCase() : '';
+  const phone = typeof authUser?.phone === 'string' ? authUser.phone.trim() : '';
+  if (!authUser?.id || (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) && !phone)) {
+    throw new SupabaseApiError(401, 'Your sign-in session is invalid. Please sign in again.');
+  }
   const profiles = await requestSupabase('/rest/v1/profiles?id=eq.' + encodeURIComponent(authUser.id) + '&select=*&limit=1', token);
   const profile = Array.isArray(profiles) ? profiles[0] : null;
   if (!profile) throw new SupabaseApiError(409, 'Your BeautyZone profile is not ready yet. Please sign in again.');
   if (profile.status === 'disabled') throw new SupabaseApiError(403, 'This account has been disabled. Please contact support.');
-  if (!['super_admin', 'salon_owner'].includes(profile.role)) throw new SupabaseApiError(403, 'Your account does not have an application role.');
+  if (!['super_admin', 'salon_owner', 'customer'].includes(profile.role)) throw new SupabaseApiError(403, 'Your account does not have an application role.');
   return {
     token,
     authUser,
@@ -96,7 +101,7 @@ export function profileUser(ctx) {
     name: ctx.profile.name || ctx.name || '',
     role: ctx.profile.role,
     status: ctx.profile.status || 'active',
-    authProvider: ctx.authUser.app_metadata?.provider === 'google' ? 'google' : 'password',
+    authProvider: ctx.profile.auth_provider || (ctx.authUser.app_metadata?.provider === 'google' ? 'google' : ctx.authUser.app_metadata?.provider === 'phone' ? 'phone' : 'password'),
     emailVerified: ctx.emailVerified,
     lastLoginAt: ctx.authUser.last_sign_in_at || null,
     createdAt: ctx.profile.created_at,
@@ -238,7 +243,7 @@ export function buildSnapshot(salon, services, staff) {
     },
     services: services.map((s) => ({
       id: s.id, name: s.name, category: s.category, description: s.description,
-      pricePaise: Number(s.price_paise || 0), durationMinutes: Number(s.duration_minutes || 30),
+      pricePaise: Number(s.price_paise || 0), durationMinutes: Number(s.duration_minutes || 30), imageUrl: s.image_url || '',
       active: Boolean(s.active), sortOrder: Number(s.sort_order || 0),
     })),
     staff: staff.map((s) => ({
@@ -370,7 +375,7 @@ export function livePayload(live) {
   };
   const services = (live.snapshot.services || []).filter((s) => s.active).map((s) => ({
     id:s.id, salonId:live.salon.id, name:s.name, category:s.category, description:s.description,
-    pricePaise:s.pricePaise, price:s.pricePaise/100, durationMinutes:s.durationMinutes, active:true, sortOrder:s.sortOrder,
+    pricePaise:s.pricePaise, price:s.pricePaise/100, durationMinutes:s.durationMinutes, imageUrl:s.imageUrl||'', active:true, sortOrder:s.sortOrder,
   }));
   const staff = (live.snapshot.staff || []).filter((s) => s.active).map((s) => ({
     id:s.id, salonId:live.salon.id, name:s.name, roleTitle:s.roleTitle, bio:s.bio, photoUrl:s.photoUrl,

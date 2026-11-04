@@ -31,7 +31,6 @@ export const AdminUsers: React.FC = () => {
   const [creating, setCreating] = useState(false);
 
   const [resetTarget, setResetTarget] = useState<AdminUser | null>(null);
-  const [resetPassword, setResetPassword] = useState('');
   const [resetting, setResetting] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -101,10 +100,9 @@ export const AdminUsers: React.FC = () => {
     setResetting(true);
     setError('');
     try {
-      await api.post(`/admin/users/${resetTarget.id}/reset-password`, { password: resetPassword });
+      await api.post(`/admin/users/${resetTarget.id}/reset-password`);
       setResetTarget(null);
-      setResetPassword('');
-      flash('Password reset. The user has been signed out of all sessions.');
+      flash('Password recovery email sent to ' + resetTarget.email + '.');
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -153,6 +151,7 @@ export const AdminUsers: React.FC = () => {
               <option value="all">All roles</option>
               <option value="salon_owner">Salon owners</option>
               <option value="super_admin">Super admins</option>
+              <option value="customer">Customers</option>
             </Select>
           </div>
         </div>
@@ -185,7 +184,7 @@ export const AdminUsers: React.FC = () => {
                         </p>
                         <p className="text-xs text-slate-500">{user.email}</p>
                         <p className="mt-0.5 text-[11px] text-slate-400">
-                          {user.authProvider === 'google' ? 'Google sign-in' : 'Email & password'}
+                          {user.authProvider === 'google' ? 'Google sign-in' : user.authProvider === 'phone' ? 'Phone OTP' : 'Email & password'}
                         </p>
                       </td>
                       <td className="px-5 py-3">
@@ -198,6 +197,7 @@ export const AdminUsers: React.FC = () => {
                         >
                           <option value="salon_owner">Salon owner</option>
                           <option value="super_admin">Super admin</option>
+                          <option value="customer">Customer</option>
                         </Select>
                       </td>
                       <td className="px-5 py-3">
@@ -236,7 +236,7 @@ export const AdminUsers: React.FC = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => setResetTarget(user)}
-                            title="Reset password"
+                            title="Send password recovery email"
                           >
                             <KeyRound className="h-3.5 w-3.5" />
                           </Button>
@@ -318,6 +318,7 @@ export const AdminUsers: React.FC = () => {
               >
                 <option value="salon_owner">Salon owner</option>
                 <option value="super_admin">Super admin</option>
+                <option value="customer">Customer</option>
               </Select>
             </Field>
           </div>
@@ -341,7 +342,7 @@ export const AdminUsers: React.FC = () => {
               Cancel
             </Button>
             <Button variant="danger" onClick={submitReset} loading={resetting}>
-              Reset password
+              Send recovery email
             </Button>
           </>
         }
@@ -350,19 +351,9 @@ export const AdminUsers: React.FC = () => {
           {error && <Alert tone="error">{error}</Alert>}
           <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-            Resetting <strong>{resetTarget?.email}</strong> will sign them out of all active sessions. Share the new
-            password with them securely.
+            Send a secure, single-use password recovery link to <strong>{resetTarget?.email}</strong>.
+            The user chooses their new password on the recovery page. No temporary password is displayed or emailed by the admin panel.
           </div>
-          <Field label="New password" htmlFor="reset-password" required>
-            <Input
-              id="reset-password"
-              type="text"
-              value={resetPassword}
-              onChange={(e) => setResetPassword(e.target.value)}
-              placeholder="Temporary password"
-              required
-            />
-          </Field>
         </form>
       </Modal>
     </div>

@@ -15,11 +15,7 @@ import {
   MessageSquare,
   Navigation,
   ShieldCheck,
-  QrCode,
   Check,
-  Copy,
-  CreditCard,
-  X,
   UserCheck,
   Tag,
   Gift,
@@ -36,7 +32,8 @@ import {
 import { WhatsAppIcon } from './SocialIcons';
 import { BookingSummaryModal } from './BookingSummaryModal';
 import { useBrand } from '../context/BrandContext';
-import { api } from '../lib/api';
+import { api, customerApi } from '../lib/api';
+import { openRazorpayCheckout } from '../lib/razorpay';
 import { useAvailability, FALLBACK_SLOTS } from '../hooks/useAvailability';
 
 declare global {
@@ -229,8 +226,11 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [bookingRefCode, setBookingRefCode] = useState('');
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [copiedUpi, setCopiedUpi] = useState(false);
+  const [savedBookingId, setSavedBookingId] = useState('');
+  const [gatewayEnabled, setGatewayEnabled] = useState(false);
+  const [paymentWorking, setPaymentWorking] = useState(false);
+  const [paymentMessage, setPaymentMessage] = useState('');
+  const [paymentError, setPaymentError] = useState('');
 
   // Loyalty Voucher & Gift Card Promo Code State
   const [promoCodeInput, setPromoCodeInput] = useState('');
@@ -419,13 +419,25 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     }
   }, [preselectedPromoCode]);
 
+  useEffect(() => {
+    if (!salonSlug) {
+      setGatewayEnabled(false);
+      return;
+    }
+    let active = true;
+    api.get<{ enabled: boolean }>('/public/payments/config')
+      .then((result) => { if (active) setGatewayEnabled(Boolean(result.enabled)); })
+      .catch(() => { if (active) setGatewayEnabled(false); });
+    return () => { active = false; };
+  }, [salonSlug]);
+
   const validateAndApplyPromo = async (codeToTest: string) => {
     const clean = codeToTest.trim().toUpperCase();
     setPromoError(null);
     if (!clean) return;
 
     try {
-      const res = await api.post<{
+      const res = await customerApi.post<{
         valid: boolean;
         voucher: {
           code: string;
@@ -451,7 +463,14 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
       }
     }
 
-    // Local fallback check for voucher
+    // Demo/local vouchers are preview-only. A published salon accepts only
+    // vouchers verified by the signed-in customer through Supabase OTP.
+    if (salonSlug) {
+      setPromoError('Sign in and verify the mobile number that owns this voucher before applying it.');
+      return;
+    }
+
+    // Local fallback check for a non-published enquiry preview only.
     const storedCustomer = getStoredLoyaltyCustomer();
     const matchedRedeemed = storedCustomer.redeemedRewards.find(
       (r) => r.voucherCode.toUpperCase() === clean
@@ -655,14 +674,15 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     return form.locationType === 'home' ? calculateDistanceFee(form.distanceKm) : 0;
   }, [form.locationType, form.distanceKm, brand.homeServiceBaseFee, brand.homeServicePerKmRate]);
 
-  const advanceRequired = useMemo(() => {
-    if (form.locationType !== 'home') return 0;
-    const pct = (brand.advancePercentage || 20) / 100;
-    return Math.max(500, Math.round((treatmentPrice * pct) / 50) * 50);
-  }, [form.locationType, treatmentPrice, brand.advancePercentage]);
-
   const promoDiscount = appliedPromo ? appliedPromo.discountAmount : 0;
   const totalEstimatedAmount = Math.max(0, treatmentPrice + distanceFee - promoDiscount);
+  // UI amounts are rupees; the Supabase booking/payment API stores paise.
+  const advanceRequired = useMemo(() => {
+    if (form.locationType !== 'home') return 0;
+    // The server derives the payable base from the approved service snapshot;
+    // travel is collected at the salon after the visit, not in this advance.
+    return Math.ceil(Math.max(0, treatmentPrice - promoDiscount) * 25) / 100;
+  }, [form.locationType, treatmentPrice, promoDiscount]);
   const balanceAtDoorstep = Math.max(
     0,
     totalEstimatedAmount - (form.advancePaymentVerified ? advanceRequired : 0)
@@ -677,26 +697,6 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     }));
   };
 
-  const handleCopyUpi = () => {
-    navigator.clipboard.writeText(brand.upiId);
-    setCopiedUpi(true);
-    setTimeout(() => setCopiedUpi(false), 2000);
-  };
-
-  const handleVerifyAdvancePayment = () => {
-    const ref = `ADV-${Math.floor(100000 + Math.random() * 900000)}`;
-    setForm((prev) => ({
-      ...prev,
-      advancePaymentVerified: true,
-      advancePaymentRef: ref,
-    }));
-    setIsPaymentModalOpen(false);
-  };
-
-  /**
-   * Client-side validation. Returns a map of field → message instead of relying
-   * on `alert()` or silently doing nothing, so errors are visible and recoverable.
-   */
   const validateForm = () => {
     const errors: {
       fullName?: string;
@@ -745,12 +745,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
       return;
     }
 
-    if (form.locationType === 'home' && !form.advancePaymentVerified) {
-      setIsPaymentModalOpen(true);
-      return;
-    }
-
-    const randomDigits = Math.floor(1000 + Math.random() * 9000);
+    const randomDigits = Math.floor(10000000 + Math.random() * 90000000);
     const prefix = brand.bookingPrefix || 'BK';
     const ref =
       form.locationType === 'home'
@@ -762,31 +757,33 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     setAttemptCount((n) => n + 1);
 
     try {
-      if (salonSlug) {
-        await api.post('/public/bookings', {
-          slug: salonSlug,
-          fullName: form.fullName.trim(),
-          phone: form.phone.trim(),
-          service: form.selectedService,
-          serviceCategory: form.serviceCategory,
-          stylist: form.preferredStylist,
-          date: form.appointmentDate,
-          time: form.timeSlot,
-          locationType: form.locationType,
-          branch: form.locationType === 'salon' ? form.selectedBranch : null,
-          address: form.locationType === 'home' ? form.homeAddress.trim() : null,
-          locality: form.locationType === 'home' ? form.locality : null,
-          distanceKm: form.locationType === 'home' ? form.distanceKm : null,
-          bridalTrial: form.bridalTrialRequired,
-          notes: form.specialNotes.trim(),
-          promoCode: appliedPromo?.code || null,
-          estimatedTotal: totalEstimatedAmount,
-          advancePaid: form.locationType === 'home' ? advanceRequired : 0,
-          advanceRef: form.advancePaymentVerified ? form.advancePaymentRef : null,
-          reference: ref,
-        });
-      }
-      setBookingRefCode(ref);
+      const bookingClient = appliedPromo && salonSlug ? customerApi : api;
+      const saved = await bookingClient.post<{ booking: { id: string; reference: string } }>('/public/bookings', {
+        slug: salonSlug || undefined,
+        fullName: form.fullName.trim(),
+        phone: form.phone.trim(),
+        service: form.selectedService,
+        serviceCategory: form.serviceCategory,
+        stylist: form.preferredStylist,
+        date: form.appointmentDate,
+        time: form.timeSlot,
+        locationType: form.locationType,
+        branch: form.locationType === 'salon' ? form.selectedBranch : null,
+        address: form.locationType === 'home' ? form.homeAddress.trim() : null,
+        locality: form.locationType === 'home' ? form.locality : null,
+        distanceKm: form.locationType === 'home' ? form.distanceKm : null,
+        bridalTrial: form.bridalTrialRequired,
+        notes: form.specialNotes.trim(),
+        promoCode: salonSlug ? appliedPromo?.code || null : null,
+        // Store paise; the browser never claims that an advance has been paid.
+        estimatedTotal: Math.round(totalEstimatedAmount * 100),
+        reference: ref,
+      });
+      setSavedBookingId(saved.booking.id);
+      setBookingRefCode(saved.booking.reference || ref);
+      setPaymentError('');
+      setPaymentMessage('');
+      setForm((prev) => ({ ...prev, advancePaymentVerified: false, advancePaymentRef: '' }));
       setSubmitState('idle');
       setIsSubmitted(true);
       setIsSummaryModalOpen(true);
@@ -798,6 +795,66 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
           ? err.message
           : 'We could not save your booking just now. Please retry — or confirm on WhatsApp.'
       );
+    }
+  };
+
+  const payHomeServiceAdvance = async () => {
+    if (!salonSlug) {
+      setPaymentError('Online advance checkout is available on a published salon website. The BeautyZone team will confirm payment for this general request.');
+      return;
+    }
+    if (!savedBookingId || !bookingRefCode) {
+      setPaymentError('Save your booking request first, then pay the advance.');
+      return;
+    }
+    if (!gatewayEnabled) {
+      setPaymentError('Online payments are not enabled yet. Please confirm the home visit with the salon.');
+      return;
+    }
+    setPaymentWorking(true);
+    setPaymentError('');
+    setPaymentMessage('');
+    try {
+      const order = await api.post<{
+        keyId: string; orderId: string; amount: number; currency: string;
+        paymentRecordId: string; alreadyPaid?: boolean;
+      }>('/public/bookings/' + encodeURIComponent(savedBookingId) + '/payment-order', {
+        reference: bookingRefCode,
+        phone: form.phone.trim(),
+      });
+      if (order.alreadyPaid) {
+        setForm((prev) => ({ ...prev, advancePaymentVerified: true }));
+        setPaymentMessage('The booking advance has already been paid.');
+        return;
+      }
+      const checkout = await openRazorpayCheckout(order, {
+        name: form.fullName.trim(),
+        contact: form.phone.trim(),
+      });
+      const verification = await api.post<{ success: boolean; status: string; paymentId: string }>(
+        '/public/booking-payments/verify',
+        {
+          reference: bookingRefCode,
+          phone: form.phone.trim(),
+          razorpayOrderId: checkout.razorpay_order_id,
+          razorpayPaymentId: checkout.razorpay_payment_id,
+          razorpaySignature: checkout.razorpay_signature,
+        }
+      );
+      if (verification.status === 'captured') {
+        setForm((prev) => ({
+          ...prev,
+          advancePaymentVerified: true,
+          advancePaymentRef: verification.paymentId,
+        }));
+        setPaymentMessage('Razorpay confirmed the advance payment.');
+      } else {
+        setPaymentMessage('Payment response received. Waiting for Razorpay capture confirmation.');
+      }
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : 'Payment could not be completed. You can retry with the same booking reference.');
+    } finally {
+      setPaymentWorking(false);
     }
   };
 
@@ -815,7 +872,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     const locationDetails =
       form.locationType === 'salon'
         ? `Salon Branch: ${form.selectedBranch}`
-        : `Doorstep Home Service (${form.locality}, ~${form.distanceKm} km): ${form.homeAddress} | Travel Fee: ${formatPrice(distanceFee)} | Advance Paid: ${formatPrice(advanceRequired)} (Ref: ${form.advancePaymentRef})`;
+        : `Doorstep Home Service (${form.locality}, ~${form.distanceKm} km): ${form.homeAddress} | Travel Fee: ${formatPrice(distanceFee)} | Advance ${form.advancePaymentVerified ? 'PAID' : 'PENDING'}: ${formatPrice(advanceRequired)}`;
 
     const promoLine = appliedPromo
       ? `\n*Loyalty Voucher:* ${appliedPromo.code} (-${formatPrice(appliedPromo.discountAmount)})`
@@ -1703,20 +1760,15 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                         )}
                       </div>
                       <p className="text-amber-800 text-[11px] leading-relaxed">
-                        To confirm a home visit and reserve your beauty artist, a small token deposit of{' '}
-                        <strong>{formatPrice(advanceRequired)}</strong> is required. The remaining{' '}
-                        <strong>{formatPrice(balanceAtDoorstep)}</strong> is payable after your service.
+                        {salonSlug
+                          ? <>A 25% advance of the approved service amount (<strong>{formatPrice(advanceRequired)}</strong>) is collected after you save the request. The travel fee is included in the remaining balance and is payable after the service.</>
+                          : 'Submit your home-service request first. The BeautyZone team will review the location and confirm any applicable advance before payment.'}
                       </p>
-                      {!form.advancePaymentVerified && (
-                        <button
-                          type="button"
-                          onClick={() => setIsPaymentModalOpen(true)}
-                          className="action-base primary-action action-sm mt-1 cursor-pointer"
-                        >
-                          <CreditCard className="w-3.5 h-3.5" />
-                          <span>Pay Advance Token ({formatPrice(advanceRequired)})</span>
-                        </button>
-                      )}
+                      <p className="text-[11px] text-amber-800">
+                        {salonSlug
+                          ? gatewayEnabled ? 'Razorpay checkout will be available after the booking request is saved.' : 'Online checkout is not configured yet; the salon will confirm your home visit.'
+                          : 'No payment is collected on this general enquiry form.'}
+                      </p>
                     </div>
                   )}
 
@@ -1745,7 +1797,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                           ? '✓ Zero advance needed for salon visits — pay after your service'
                           : form.advancePaymentVerified
                           ? `✓ Advance ${formatPrice(advanceRequired)} verified • Balance ${formatPrice(balanceAtDoorstep)} after service`
-                          : `Requires ${formatPrice(advanceRequired)} advance token to dispatch artist`}
+                          : salonSlug ? `Save request, then pay ${formatPrice(advanceRequired)} advance via Razorpay` : 'Request submitted; the team will confirm any payment required'}
                       </p>
                     </div>
 
@@ -1777,7 +1829,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                             'Join Waitlist'
                           )
                         ) : form.locationType === 'home' && !form.advancePaymentVerified ? (
-                          `Pay ${formatPrice(advanceRequired)} Token & Reserve`
+                          'Save request & continue to payment'
                         ) : (
                           t('bookingConfirmBtn')
                         )}
@@ -1895,142 +1947,6 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
         </div>
       </div>
 
-      {/* UPI / Card Advance Token Modal for Home Service */}
-      {isPaymentModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F172A]/80 backdrop-blur-sm">
-          <div className="bg-white text-[#0F172A] rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl relative border border-[#D09A40]/40">
-            <button
-              type="button"
-              aria-label="Close payment dialog"
-              onClick={() => setIsPaymentModalOpen(false)}
-              className="action-base ghost-action action-sm absolute top-3 right-3"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="text-center mb-5">
-              <div className="w-12 h-12 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center mx-auto mb-3">
-                <ShieldCheck className="w-6 h-6" />
-              </div>
-              <h3 className="font-serif text-2xl font-bold text-[#0F172A]">
-                Pay Home Visit Token
-              </h3>
-              <p className="text-xs text-[#4A4A4A] mt-1">
-                For Doorstep Service in {form.locality} (~{form.distanceKm} km)
-              </p>
-            </div>
-
-            <div className="bg-[#FAF5E5] rounded-2xl p-4 text-xs space-y-1.5 mb-5 border border-[#D09A40]/30">
-              <div className="flex justify-between">
-                <span className="text-[#4A4A4A]">Selected Service:</span>
-                <span className="font-semibold text-right max-w-[200px] truncate">
-                  {form.selectedService}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#4A4A4A]">Travel Charge:</span>
-                <span className="font-semibold">{formatPrice(distanceFee)}</span>
-              </div>
-              <div className="flex justify-between border-t border-[#0F172A]/10 pt-2 font-bold text-[#0F172A]">
-                <span>Advance Token Payable Now:</span>
-                <span className="text-sm text-[#D09A40]">{formatPrice(advanceRequired)}</span>
-              </div>
-            </div>
-
-            {/* Method Toggle */}
-            <div className="grid grid-cols-2 gap-2 mb-4 text-xs">
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, advancePaymentMethod: 'upi' })}
-                className={`py-2 px-3 rounded-xl border font-bold cursor-pointer ${
-                  form.advancePaymentMethod === 'upi'
-                    ? 'bg-[#0F172A] text-[#FAF5E5] border-[#0F172A]'
-                    : 'bg-[#FAF5E5] text-[#0F172A] border-[#0F172A]/15'
-                }`}
-              >
-                UPI / QR Scan
-              </button>
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, advancePaymentMethod: 'card' })}
-                className={`py-2 px-3 rounded-xl border font-bold cursor-pointer ${
-                  form.advancePaymentMethod === 'card'
-                    ? 'bg-[#0F172A] text-[#FAF5E5] border-[#0F172A]'
-                    : 'bg-[#FAF5E5] text-[#0F172A] border-[#0F172A]/15'
-                }`}
-              >
-                Debit / Credit Card
-              </button>
-            </div>
-
-            {form.advancePaymentMethod === 'upi' ? (
-              <div className="space-y-4 text-center">
-                <div className="w-36 h-36 bg-[#FAF5E5] border-2 border-dashed border-[#D09A40] rounded-2xl mx-auto flex flex-col items-center justify-center p-3">
-                  <QrCode className="w-20 h-20 text-[#0F172A]" />
-                  <span className="text-[10px] text-[#4A4A4A] mt-1 font-medium">
-                    GPay • PhonePe • Paytm
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between bg-[#FAF5E5] rounded-xl px-3.5 py-2.5 text-xs border border-[#0F172A]/10">
-                  <span className="font-mono font-semibold text-[#0F172A]">
-                    {brand.upiId}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleCopyUpi}
-                    className="text-xs text-[#D09A40] font-bold flex items-center gap-1 cursor-pointer"
-                  >
-                    {copiedUpi ? (
-                      <Check className="w-3.5 h-3.5 text-[#10B981]" />
-                    ) : (
-                      <Copy className="w-3.5 h-3.5" />
-                    )}
-                    <span>{copiedUpi ? 'Copied' : 'Copy UPI'}</span>
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleVerifyAdvancePayment}
-                  className="w-full py-3.5 px-4 text-xs font-bold text-white bg-[#10B981] hover:bg-[#059669] rounded-xl transition-colors cursor-pointer shadow-md flex items-center justify-center gap-2"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Confirm Token Paid ({formatPrice(advanceRequired)})</span>
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <input
-                  type="text"
-                  placeholder="Card Number (XXXX XXXX XXXX)"
-                  className="w-full px-3.5 py-2.5 text-xs border border-[#0F172A]/20 rounded-xl"
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="text"
-                    placeholder="MM / YY"
-                    className="w-full px-3.5 py-2.5 text-xs border border-[#0F172A]/20 rounded-xl"
-                  />
-                  <input
-                    type="password"
-                    maxLength={3}
-                    placeholder="CVV"
-                    className="w-full px-3.5 py-2.5 text-xs border border-[#0F172A]/20 rounded-xl"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={handleVerifyAdvancePayment}
-                  className="w-full py-3.5 px-4 text-xs font-bold text-white bg-[#10B981] hover:bg-[#059669] rounded-xl transition-colors cursor-pointer"
-                >
-                  Pay {formatPrice(advanceRequired)} & Verify
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
       <BookingSummaryModal
         isOpen={isSummaryModalOpen}
         onClose={() => setIsSummaryModalOpen(false)}
@@ -2038,6 +1954,14 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
         form={form}
         serviceTitle={form.selectedService}
         price={formatPrice(totalEstimatedAmount)}
+        paymentRequired={form.locationType === 'home' && Boolean(salonSlug)}
+        paymentEnabled={gatewayEnabled && Boolean(salonSlug)}
+        paymentBusy={paymentWorking}
+        paymentMessage={paymentMessage}
+        paymentError={paymentError}
+        advanceAmount={formatPrice(advanceRequired)}
+        advancePaid={form.advancePaymentVerified}
+        onPayAdvance={payHomeServiceAdvance}
       />
     </section>
   );

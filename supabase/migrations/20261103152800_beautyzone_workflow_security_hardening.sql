@@ -1,0 +1,6 @@
+-- Migration history placeholder for beautyzone_workflow_security_hardening.
+-- This migration was already applied to the BeautyZone production project before
+-- the SQL source was versioned in this repository. The reproducible schema and
+-- policy baseline is retained in 20261103153907_beautyzone_schema_baseline_replay_check.sql,
+-- and later workflow-specific definitions remain in their timestamped migrations.
+-- Keep this version file so Supabase CLI migration history remains aligned.

@@ -1,4 +1,4 @@
-export type Role = 'super_admin' | 'salon_owner';
+export type Role = 'super_admin' | 'salon_owner' | 'customer';
 
 export interface AuthUser {
   id: string;
@@ -6,7 +6,7 @@ export interface AuthUser {
   name: string;
   role: Role;
   status: 'active' | 'disabled';
-  authProvider: 'password' | 'google';
+  authProvider: 'password' | 'google' | 'phone';
   emailVerified: boolean;
   lastLoginAt: string | null;
   createdAt: string;
@@ -182,7 +182,7 @@ export interface PlatformSettings {
   allowRegistrations: boolean;
   trialDays: number;
   maintenanceMessage: string;
-  defaultPlan: 'trial' | 'starter' | 'pro' | 'elite';
+  defaultPlan: 'trial' | 'starter';
 }
 
 export type TemplateId = 'luxe' | 'minimal' | 'noir' | 'blush';

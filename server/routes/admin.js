@@ -37,6 +37,7 @@ import {
   buildSalonSnapshot,
 } from '../workflow.js';
 import { sendMail, reviewNotificationEmail } from '../mailer.js';
+import { issuePasswordReset } from './auth.js';
 
 export const adminRouter = Router();
 
@@ -194,18 +195,12 @@ adminRouter.post(
   asyncHandler(async (req, res) => {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    const password = req.body?.password;
-    if (typeof password !== 'string' || password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-      throw new ValidationError('Password must be at least 8 characters and include a letter and a number');
+    if (!user.email || !EMAIL_RE.test(user.email)) {
+      throw new ValidationError('This legacy account has no deliverable email address. Ask the user to update their email before requesting password recovery.');
     }
-    db.prepare('UPDATE users SET password_hash = ?, failed_logins = 0, locked_until = NULL, updated_at = ? WHERE id = ?').run(
-      await hashPassword(password),
-      nowIso(),
-      user.id
-    );
-    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
-    audit(req, 'admin.password_reset', 'user', user.id);
-    res.json({ ok: true });
+    await issuePasswordReset(req, user);
+    audit(req, 'admin.password_recovery_requested', 'user', user.id);
+    res.json({ ok: true, message: 'Password recovery email requested.' });
   })
 );
 
