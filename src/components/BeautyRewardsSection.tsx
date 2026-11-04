@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Crown,
   Sparkles,
@@ -55,6 +55,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
     points: number;
   } | null>(null);
   const [calcBillAmount, setCalcBillAmount] = useState<number>(4500);
+  const customerFlowGeneration = useRef(0);
 
   useEffect(() => {
     if (!liveCustomer) saveStoredLoyaltyCustomer(customer);
@@ -101,6 +102,9 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
   const progressStats = getProgressStats();
 
   const handleSelectCustomer = (demoCust: LoyaltyCustomer) => {
+    customerFlowGeneration.current += 1;
+    void customerSupabase.auth.signOut();
+    setRedeemingOfferId(null);
     setCustomer(demoCust);
     setLiveCustomer(false);
     void customerSupabase.auth.signOut();
@@ -171,14 +175,18 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
       return;
     }
     const e164 = digits.length === 10 ? '+91' + digits : '+' + digits;
+    const generation = ++customerFlowGeneration.current;
+    void customerSupabase.auth.signOut();
+    setCustomer(DEMO_CUSTOMERS[0]);
+    setLiveCustomer(false);
+    setOtpPending(false);
+    setRedeemingOfferId(null);
     setOtpBusy(true);
     setLookupError('');
     setLookupNotice('');
     try {
       await customerSupabase.auth.signInWithOtp(e164);
-      // Never leave a previous customer's live balance visible while a new OTP is pending.
-      setCustomer(DEMO_CUSTOMERS[0]);
-      setLiveCustomer(false);
+      if (generation !== customerFlowGeneration.current) return;
       setOtpPhone(e164);
       setOtpCode('');
       setOtpPending(true);
@@ -196,11 +204,16 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
       setLookupError('Enter the 6-digit code sent to your mobile.');
       return;
     }
+    const generation = customerFlowGeneration.current;
     setOtpBusy(true);
     setLookupError('');
     setLookupNotice('');
     try {
       const auth = await customerSupabase.auth.verifyPhoneOtp(otpPhone, otpCode.trim());
+      if (generation !== customerFlowGeneration.current) {
+        await customerSupabase.auth.signOut();
+        return;
+      }
       if (!auth.session?.access_token) throw new Error('Phone verification did not create a secure session.');
       const result = await customerApi.get<{
         account: {
@@ -216,6 +229,10 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
           dateRedeemed: string; validTill: string; used: boolean; status: 'active' | 'used'; discountValue: string;
         }>;
       }>('/public/loyalty?name=' + encodeURIComponent(''));
+      if (generation !== customerFlowGeneration.current) {
+        await customerSupabase.auth.signOut();
+        return;
+      }
       setCustomer(mapLiveCustomer(result));
       setLiveCustomer(true);
       setOtpPending(false);
@@ -237,6 +254,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
 
     if (liveCustomer) {
       if (redeemingOfferId) return;
+      const generation = customerFlowGeneration.current;
       setRedeemingOfferId(offer.id);
       try {
         const result = await customerApi.post<{
@@ -247,6 +265,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
           tier: 'silver' | 'gold' | 'platinum';
           expiresAt?: string;
         }>('/public/loyalty/redeem', { offerId: offer.id });
+        if (generation !== customerFlowGeneration.current) return;
         if (!result.success || !result.voucherCode) throw new Error('The loyalty reward could not be redeemed.');
         const validUntil = result.expiresAt
           ? new Date(result.expiresAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
