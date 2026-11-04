@@ -108,27 +108,14 @@ async function currentSession(): Promise<SupabaseSession | null> {
 
 // Loyalty/customer OTP has an isolated browser session. Verifying a customer phone
 // must never overwrite an authenticated salon-owner or super-admin session.
-const CUSTOMER_SESSION_KEY = 'beautyzone.customer.supabase.session';
 let cachedCustomerSession: SupabaseSession | null = null;
 function readCustomerSession(): SupabaseSession | null {
-  if (cachedCustomerSession) return cachedCustomerSession;
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.localStorage.getItem(CUSTOMER_SESSION_KEY);
-    cachedCustomerSession = raw ? JSON.parse(raw) as SupabaseSession : null;
-    return cachedCustomerSession;
-  } catch {
-    try { window.localStorage.removeItem(CUSTOMER_SESSION_KEY); } catch { /* storage may be blocked */ }
-    return null;
-  }
+  // Customer OTP tokens are deliberately memory-only: an XSS cannot read a
+  // persisted refresh token, and a reload requires the customer to verify again.
+  return cachedCustomerSession;
 }
 function persistCustomerSession(session: SupabaseSession | null): void {
   cachedCustomerSession = session;
-  if (typeof window === 'undefined') return;
-  try {
-    if (session) window.localStorage.setItem(CUSTOMER_SESSION_KEY, JSON.stringify(session));
-    else window.localStorage.removeItem(CUSTOMER_SESSION_KEY);
-  } catch { /* keep the session in memory for this tab */ }
 }
 async function customerAuthRequest<T>(path: string, body?: unknown, method = 'POST', useSession = false): Promise<T> {
   const session = useSession ? readCustomerSession() : null;
