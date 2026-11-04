@@ -3,6 +3,7 @@ import { Check, CreditCard, Mail, ShieldCheck, AlertCircle } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext';
 import { api, errorMessage } from '../../lib/api';
 import { Badge, Button, Card, CardHeader, PageHeader, formatDate, formatCurrency } from '../ui';
+import { openRazorpayCheckout } from '../../lib/razorpay';
 
 const PLAN_FEATURES: Record<string, string[]> = {
   trial: ['1 salon website', 'Up to 10 services', 'Gallery & team pages', 'Publish / unpublish'],
@@ -29,9 +30,8 @@ export const BillingPage: React.FC = () => {
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [paymentsLoading, setPaymentsLoading] = useState(true);
   const [targetPlan, setTargetPlan] = useState<'starter' | 'pro' | 'elite'>(plan === 'pro' || plan === 'elite' ? plan : 'starter');
-  const [provider, setProvider] = useState<'upi' | 'manual'>('upi');
-  const [reference, setReference] = useState('');
   const [requesting, setRequesting] = useState(false);
+  const [gatewayEnabled, setGatewayEnabled] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -48,25 +48,34 @@ export const BillingPage: React.FC = () => {
 
   useEffect(() => { void loadPayments(); }, [loadPayments]);
 
-  const submitPaymentReference = async (event: React.FormEvent) => {
-    event.preventDefault();
+  useEffect(() => {
+    api.get<{ enabled: boolean }>('/salon/subscription/payment-config')
+      .then(result => setGatewayEnabled(Boolean(result.enabled)))
+      .catch(() => setGatewayEnabled(false));
+  }, []);
+
+  const startCheckout = async () => {
     setError('');
     setNotice('');
-    if (!reference.trim()) {
-      setError('Enter the UPI or bank transaction reference before submitting.');
-      return;
-    }
     setRequesting(true);
     try {
-      await api.post('/salon/subscription/payments', {
-        provider,
-        providerReference: reference.trim(),
-        plan: targetPlan,
-        amountPaise: PLAN_PRICE_PAISE[targetPlan],
-        metadata: { submissionSource: 'salon_billing_page' },
-      });
-      setReference('');
-      setNotice('Payment reference submitted. Your plan will update after BeautyZone verifies the transaction.');
+      const order = await api.post<{
+        keyId: string; orderId: string; amount: number; currency: string;
+        paymentRecordId: string; description: string;
+      }>('/salon/subscription/checkout', { plan: targetPlan });
+      const response = await openRazorpayCheckout(order);
+      const result = await api.post<{ success: boolean; status: string; paymentId: string }>(
+        '/salon/subscription/verify',
+        {
+          paymentRecordId: order.paymentRecordId,
+          razorpayOrderId: response.razorpay_order_id,
+          razorpayPaymentId: response.razorpay_payment_id,
+          razorpaySignature: response.razorpay_signature,
+        }
+      );
+      setNotice(result.status === 'verified'
+        ? 'Payment captured successfully. Your subscription is activated.'
+        : 'Payment received. Subscription status is being confirmed by the Razorpay webhook.');
       setPaymentsLoading(true);
       await loadPayments();
     } catch (err) {
@@ -83,7 +92,7 @@ export const BillingPage: React.FC = () => {
       <PageHeader
         eyebrow="Billing"
         title="Subscription & plan"
-        description="View your current plan and submit a payment reference for manual verification."
+        description="View your current plan and pay securely through Razorpay."
       />
 
       {error && <div role="alert" className="flex gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"><AlertCircle className="h-4 w-4 shrink-0" />{error}</div>}
@@ -119,9 +128,9 @@ export const BillingPage: React.FC = () => {
             </ul>
 
             <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-sm font-medium text-slate-800">Need to upgrade or change plan?</p>
+              <p className="text-sm font-medium text-slate-800">Secure online subscription payment</p>
               <p className="mt-1 text-xs text-slate-500">
-                Contact support for the current UPI or bank payment instructions. This page records a payment reference only; it does not collect money or activate your plan automatically.
+                Payments are verified by Razorpay on the server. Your plan changes only after the payment is confirmed.
               </p>
               <div className="mt-3">
                 <a href="mailto:support@beautyzone.app?subject=Salon%20plan%20change">
@@ -149,8 +158,8 @@ export const BillingPage: React.FC = () => {
       </div>
 
       <Card>
-        <CardHeader title="Submit payment reference" description="Use after making a payment with details supplied by BeautyZone support." />
-        <form onSubmit={submitPaymentReference} className="grid gap-4 p-5 md:grid-cols-2">
+        <CardHeader title="Upgrade your plan" description="Choose a subscription and pay securely with Razorpay Checkout." />
+        <div className="grid gap-4 p-5 md:grid-cols-[1fr_auto] md:items-end">
           <label className="text-sm font-medium text-slate-700">
             Requested plan
             <select value={targetPlan} onChange={e=>setTargetPlan(e.target.value as 'starter'|'pro'|'elite')} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5">
@@ -159,32 +168,29 @@ export const BillingPage: React.FC = () => {
               <option value="elite">Elite — ₹5,999 / month</option>
             </select>
           </label>
-          <label className="text-sm font-medium text-slate-700">
-            Payment method
-            <select value={provider} onChange={e=>setProvider(e.target.value as 'upi'|'manual')} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5">
-              <option value="upi">UPI / bank transfer</option>
-              <option value="manual">Other offline payment</option>
-            </select>
-          </label>
-          <label className="text-sm font-medium text-slate-700 md:col-span-2">
-            UPI / bank transaction reference
-            <input value={reference} onChange={e=>setReference(e.target.value)} required maxLength={150} placeholder="Enter transaction ID / UTR after payment" className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5" />
-          </label>
-          <div className="flex flex-wrap items-center justify-between gap-3 md:col-span-2">
-            <p className="text-xs text-slate-500">Amount to be checked: {formatCurrency(PLAN_PRICE_PAISE[targetPlan])}. Activation requires admin verification.</p>
-            <Button type="submit" variant="gold" loading={requesting}>Submit payment reference</Button>
-          </div>
-        </form>
+          <Button type="button" variant="gold" loading={requesting} disabled={!gatewayEnabled||requesting} onClick={startCheckout}>
+            <CreditCard className="h-4 w-4" /> Pay {formatCurrency(PLAN_PRICE_PAISE[targetPlan])}
+          </Button>
+          {!gatewayEnabled && (
+            <p className="text-xs text-amber-700 md:col-span-2">
+              Online payments are not enabled yet. BeautyZone needs to configure Razorpay API keys and webhook secret.
+            </p>
+          )}
+          <p className="text-xs text-slate-500 md:col-span-2">
+            Razorpay handles the payment. BeautyZone activates your plan only after server-side payment confirmation.
+          </p>
+        </div>
       </Card>
 
+
       <Card>
-        <CardHeader title="Payment history" description="Payment references remain pending until the BeautyZone team verifies them." />
+        <CardHeader title="Payment history" description="Razorpay checkout and webhook payment status." />
         {paymentsLoading ? <p className="p-5 text-sm text-slate-500">Loading payment history…</p> : payments.length===0 ? (
           <p className="p-5 text-sm text-slate-500">No payment references submitted yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[650px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Plan</th><th className="px-5 py-3">Reference</th><th className="px-5 py-3">Amount</th><th className="px-5 py-3">Status</th></tr></thead>
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Plan</th><th className="px-5 py-3">Payment ID</th><th className="px-5 py-3">Amount</th><th className="px-5 py-3">Status</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {payments.map(p=><tr key={p.id}>
                   <td className="px-5 py-3 text-xs text-slate-500">{formatDate(p.created_at)}</td>
