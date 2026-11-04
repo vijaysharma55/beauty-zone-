@@ -28,6 +28,8 @@ addColumn('users', 'email_verification_token_hash', 'TEXT');
 addColumn('users', 'email_verification_expires', 'TEXT');
 addColumn('users', 'password_reset_token_hash', 'TEXT');
 addColumn('users', 'password_reset_expires', 'TEXT');
+addColumn('users', 'supabase_id', 'TEXT');
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_supabase_id ON users(supabase_id) WHERE supabase_id IS NOT NULL');
 
 /* Legacy accounts predate email verification, so treat them as trusted and
    let owners resend/verify from their dashboard if they prefer. */

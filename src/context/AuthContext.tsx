@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import type { AuthResponse, AuthUser, MembershipPlan, Salon, SalonWorkflow } from '../types/auth';
 
 interface AuthContextValue {
@@ -11,7 +12,8 @@ interface AuthContextValue {
   isAdmin: boolean;
   isOwner: boolean;
   login: (email: string, password: string) => Promise<AuthResponse>;
-  register: (name: string, email: string, password: string) => Promise<AuthResponse>;
+  /** Resolves to null when Supabase requires the user to confirm their email first. */
+  register: (name: string, email: string, password: string) => Promise<AuthResponse | null>;
   loginWithGoogle: (credential: string) => Promise<AuthResponse>;
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
@@ -72,6 +74,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = useCallback(
     async (email: string, password: string) => {
+      if (supabase) {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+          throw new ApiError(
+            error.status ?? 400,
+            /email not confirmed/i.test(error.message)
+              ? 'Please confirm your email first — check your inbox for the confirmation link.'
+              : /invalid login credentials/i.test(error.message)
+                ? 'Incorrect email or password.'
+                : error.message
+          );
+        }
+        const data = await api.get<AuthResponse>('/auth/me');
+        if (!data.user) throw new ApiError(401, 'Could not start your session. Please try again.');
+        apply(data);
+        return data;
+      }
       const data = await api.post<AuthResponse>('/auth/login', { email, password });
       apply(data);
       return data;
@@ -81,6 +100,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const register = useCallback(
     async (name: string, email: string, password: string) => {
+      if (supabase) {
+        const { data: signUp, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { name }, emailRedirectTo: `${window.location.origin}/login` },
+        });
+        if (error) throw new ApiError(error.status ?? 400, error.message);
+        // Supabase returns an obfuscated user with no identities for an already-registered email.
+        if (signUp.user && signUp.user.identities?.length === 0) {
+          throw new ApiError(409, 'An account with this email already exists. Please sign in instead.');
+        }
+        if (!signUp.session) return null; // email confirmation required
+        const data = await api.get<AuthResponse>('/auth/me');
+        apply(data);
+        return data;
+      }
       const data = await api.post<AuthResponse>('/auth/register', { name, email, password });
       apply(data);
       return data;
@@ -99,6 +134,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = useCallback(async () => {
     try {
+      if (supabase) await supabase.auth.signOut();
       await api.post('/auth/logout');
     } finally {
       apply(null);
@@ -107,6 +143,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logoutAll = useCallback(async () => {
     try {
+      if (supabase) await supabase.auth.signOut({ scope: 'global' });
       await api.post('/auth/logout-all');
     } finally {
       apply(null);

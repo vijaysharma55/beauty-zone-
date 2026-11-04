@@ -25,6 +25,7 @@ export const RegisterPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [confirmationSent, setConfirmationSent] = useState(false);
 
   if (user) {
     return <Navigate to={user.role === 'super_admin' ? '/admin' : '/dashboard'} replace />;
@@ -44,6 +45,10 @@ export const RegisterPage: React.FC = () => {
     setLoading(true);
     try {
       const data = await register(name.trim(), email.trim(), password);
+      if (!data) {
+        setConfirmationSent(true);
+        return;
+      }
       navigate(data.salon ? '/dashboard' : '/dashboard/onboarding', { replace: true });
     } catch (err) {
       setError(errorMessage(err));
@@ -64,6 +69,25 @@ export const RegisterPage: React.FC = () => {
       setLoading(false);
     }
   };
+
+  if (confirmationSent) {
+    return (
+      <AuthLayout
+        title="Check your inbox"
+        subtitle={`We sent a confirmation link to ${email.trim()}.`}
+        footer={
+          <Link to="/login" className="font-semibold text-[#8a641f] hover:underline">
+            Back to sign in
+          </Link>
+        }
+      >
+        <p className="text-sm text-slate-700">
+          Click the link in the email to activate your account, then sign in. The email can take a minute to
+          arrive — check your spam folder too.
+        </p>
+      </AuthLayout>
+    );
+  }
 
   return (
     <AuthLayout

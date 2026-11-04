@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, ArrowUp, Palette, Image as ImageIcon, RefreshCw } from 'lucide-react';
+import { ArrowUp, Image as ImageIcon, RefreshCw } from 'lucide-react';
 import { WhatsAppIcon } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
 
@@ -8,8 +8,10 @@ interface FloatingActionsProps {
   onOpenBranding?: () => void;
 }
 
-export const FloatingActions: React.FC<FloatingActionsProps> = ({ onBookClick, onOpenBranding }) => {
-  const { brand, setIsCustomizerOpen } = useBrand();
+// `onBookClick` is kept for API compatibility: booking is reachable from the Navbar,
+// Hero and mobile bottom dock, so the floating stack no longer repeats it.
+export const FloatingActions: React.FC<FloatingActionsProps> = ({ onOpenBranding }) => {
+  const { brand } = useBrand();
   const [showScrollTop, setShowScrollTop] = useState(false);
 
   useEffect(() => {
@@ -67,16 +69,6 @@ export const FloatingActions: React.FC<FloatingActionsProps> = ({ onBookClick, o
         <span className="hidden sm:inline">Reload Images</span>
       </button>
 
-      {/* White-Label Brand Studio Floating Trigger */}
-      <button
-        onClick={() => setIsCustomizerOpen(true)}
-        className="flex items-center gap-2 bg-[#0F172A] hover:bg-slate-800 text-[#FAF5E5] border border-[#D09A40]/50 font-bold text-xs px-3.5 py-2.5 rounded-full shadow-xl transition-all hover:scale-105 cursor-pointer"
-        title="Open White-Label Brand Studio"
-      >
-        <Palette className="w-4 h-4 text-[#D09A40]" />
-        <span className="hidden sm:inline">White-Label Studio</span>
-      </button>
-
       {/* Founder Branding Edit */}
       <button
         onClick={onOpenBranding}
@@ -100,14 +92,6 @@ export const FloatingActions: React.FC<FloatingActionsProps> = ({ onBookClick, o
         <span className="hidden sm:inline">WhatsApp Us</span>
       </a>
 
-      {/* Quick Book Button (Mobile Sticky Helper) */}
-      <button
-        onClick={onBookClick}
-        className="sm:hidden flex items-center gap-2 bg-[#D09A40] text-[#0F172A] font-bold text-xs px-4 py-3 rounded-full shadow-xl border border-[#0F172A]/10"
-      >
-        <Calendar className="w-4 h-4" />
-        <span>Book Now</span>
-      </button>
     </div>
   );
 };

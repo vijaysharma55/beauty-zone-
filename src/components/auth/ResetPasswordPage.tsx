@@ -19,6 +19,8 @@ import { Button, Field, Input } from '../ui';
 import { useAuth } from '../../context/AuthContext';
 import { api, errorMessage } from '../../lib/api';
 import { homeForUser } from './LoginPage';
+import { supabaseEnabled } from '../../lib/supabase';
+import { SupabaseResetPassword } from './SupabaseResetPassword';
 import type { AuthResponse } from '../../types/auth';
 
 const SPECIAL_CHAR_REGEX = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/;
@@ -29,7 +31,9 @@ interface RequirementItem {
   met: boolean;
 }
 
-export const ResetPasswordPage: React.FC = () => {
+export const ResetPasswordPage: React.FC = () => (supabaseEnabled ? <SupabaseResetPassword /> : <LegacyResetPasswordPage />);
+
+const LegacyResetPasswordPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { setSession } = useAuth();

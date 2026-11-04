@@ -4,6 +4,7 @@ import { AlertCircle, ArrowLeft, CheckCircle2, Copy, ExternalLink, Mail, Sparkle
 import { AuthLayout } from './AuthLayout';
 import { Button, Field, Input } from '../ui';
 import { api, errorMessage } from '../../lib/api';
+import { supabase } from '../../lib/supabase';
 
 interface ForgotPasswordResponse {
   ok: boolean;
@@ -29,6 +30,14 @@ export const ForgotPasswordPage: React.FC = () => {
     setError('');
     setLoading(true);
     try {
+      if (supabase) {
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+        if (resetError) throw new Error(resetError.message);
+        setSuccess({ ok: true, message: 'Reset email sent.' });
+        return;
+      }
       const res = await api.post<ForgotPasswordResponse>('/auth/forgot-password', {
         email: email.trim(),
       });

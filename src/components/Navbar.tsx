@@ -213,14 +213,6 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Action Buttons */}
         <div className="hidden sm:flex items-center gap-2.5">
           <button
-            onClick={() => setIsCustomizerOpen(true)}
-            className="lg:hidden flex items-center gap-1.5 border border-[#D09A40]/50 text-[#D09A40] hover:bg-[#D09A40]/15 font-semibold text-xs px-3 py-2.5 rounded-full transition-all cursor-pointer"
-          >
-            <Palette className="w-3.5 h-3.5" />
-            <span>Brand Studio</span>
-          </button>
-
-          <button
             onClick={() => handleLinkClick('booking')}
             className="flex items-center gap-2 bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A] font-semibold text-sm px-5 py-2.5 rounded-full shadow-lg hover:shadow-[#D09A40]/25 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
           >
@@ -232,13 +224,6 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Mobile Hamburger */}
         <div className="flex items-center gap-2 lg:hidden">
           <LanguageSwitcher variant="dark" compact />
-          <button
-            onClick={() => setIsCustomizerOpen(true)}
-            className="p-2 text-[#D09A40] hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
-            title="White-Label Brand Studio"
-          >
-            <Palette className="w-5 h-5" />
-          </button>
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="p-2 text-[#FAF5E5] hover:text-[#D09A40] transition-colors"
@@ -282,16 +267,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               <LayoutDashboard className="w-4 h-4" />
               <span>{accountLabel}</span>
             </Link>
-            <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                handleLinkClick('booking');
-              }}
-              className="w-full flex items-center justify-center gap-2 bg-[#D09A40] text-[#0F172A] font-bold py-3 rounded-full shadow-md"
-            >
-              <Calendar className="w-4 h-4" />
-              <span>{t('navBookAppointment')}</span>
-            </button>
             <button
               onClick={() => {
                 setMobileMenuOpen(false);
