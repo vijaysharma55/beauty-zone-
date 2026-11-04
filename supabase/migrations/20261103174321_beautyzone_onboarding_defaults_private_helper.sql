@@ -19,7 +19,7 @@ begin
     into v_trial_days from public.platform_settings where key='trialDays';
   select coalesce(value #>> '{}','starter')
     into v_default_plan from public.platform_settings where key='defaultPlan';
-  if v_default_plan not in ('trial','starter','pro','elite') then v_default_plan:='starter'; end if;
+  if v_default_plan not in ('trial','starter') then v_default_plan:='starter'; end if;
   return jsonb_build_object('trialDays',coalesce(v_trial_days,14),'defaultPlan',v_default_plan);
 end;
 $$;
