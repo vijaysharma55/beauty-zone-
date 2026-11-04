@@ -37,15 +37,20 @@ export function safeEqualHex(actual,expected) {
   const a=Buffer.from(actual,'hex'),b=Buffer.from(expected,'hex');
   return a.length===b.length&&crypto.timingSafeEqual(a,b);
 }
+export function hmacSha256Hex(secret,value){
+  return crypto.createHmac('sha256',secret).update(value).digest('hex');
+}
+export function verifyHmacSha256Hex(secret,value,signature){
+  if(!secret||typeof value!=='string'||typeof signature!=='string')return false;
+  return safeEqualHex(hmacSha256Hex(secret,value),signature);
+}
 export function verifyCheckoutSignature(orderId,paymentId,signature) {
   if(!RAZORPAY_KEY_SECRET||!orderId||!paymentId||!signature)return false;
-  const expected=crypto.createHmac('sha256',RAZORPAY_KEY_SECRET).update(String(orderId)+'|'+String(paymentId)).digest('hex');
-  return safeEqualHex(signature,expected);
+  return verifyHmacSha256Hex(RAZORPAY_KEY_SECRET,String(orderId)+'|'+String(paymentId),signature);
 }
 export function verifyWebhookSignature(rawBody,signature) {
   if(!RAZORPAY_WEBHOOK_SECRET||!Buffer.isBuffer(rawBody)||!signature)return false;
-  const expected=crypto.createHmac('sha256',RAZORPAY_WEBHOOK_SECRET).update(rawBody).digest('hex');
-  return safeEqualHex(signature,expected);
+  return verifyHmacSha256Hex(RAZORPAY_WEBHOOK_SECRET,rawBody.toString('utf8'),signature);
 }
 
 export async function fetchCapturedPayment(paymentId,expectedOrderId,expectedAmount) {
