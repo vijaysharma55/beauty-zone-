@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { db, findSalonBySlug, serializeSalon, newId, nowIso } from '../db.js';
+import { db, findSalonBySlug, getStaffForSalon, serializeSalon, serializeStaff, newId, nowIso } from '../db.js';
 import { getLiveContent, hasLiveApproval } from '../workflow.js';
 import { rateLimit } from '../security.js';
 import { tenantInfoFromReq } from '../subdomain.js';
@@ -85,23 +85,12 @@ function livePayload(salon) {
       advancePercent: service.advancePercent ?? null,
       advanceFixedPaise: service.advanceFixedPaise ?? null,
     }));
-  const staff = (live.staff || [])
-    .filter((member) => member.active)
-    .map((member) => ({
-      id: member.id,
-      salonId: salon.id,
-      name: member.name,
-      roleTitle: member.roleTitle,
-      bio: member.bio,
-      photoUrl: member.photoUrl,
-      specialties: Array.isArray(member.specialties) ? member.specialties : [],
-      rating: Number.isFinite(Number(member.rating)) && member.rating !== null ? Number(member.rating) : null,
-      reviewCount: Number(member.reviewCount) || 0,
-      experience: member.experience || '',
-      active: true,
-      bookingEnabled: member.bookingEnabled !== false,
-      sortOrder: member.sortOrder,
-    }));
+  // Staff roster is read live from the owning salon's database scope so
+  // dashboard additions, edits, consent changes and removals appear
+  // automatically across all booking templates without manual template edits.
+  const staff = getStaffForSalon(salon.id, { onlyActive: true }).map((row) =>
+    serializeStaff(row, { publicView: true })
+  );
   return { salon: merged, services, staff };
 }
 
@@ -364,24 +353,48 @@ publicRouter.post(
   '/stylist-inquiry',
   rateLimit({ windowMs: 60_000, max: 10, key: 'stylist-inquiry' }),
   (req, res) => {
-    const { salonId, stylistId, stylistName, userName, userPhone, message } = req.body;
+    const body = req.body || {};
+    const salonId = body.salonId;
+    const stylistId = body.stylistId;
+    const stylistName = body.stylistName;
+    const userName = body.userName ?? body.senderName;
+    const userPhone = body.userPhone ?? body.senderPhone;
+    const message = body.message;
+
+    if (/^demo[-_:]/i.test(String(stylistId || '').trim()) || body.isDemo === true) {
+      return res.status(400).json({
+        error: 'Demo staff profiles are for preview only and cannot receive inquiries.',
+        code: 'DEMO_STAFF_NOT_AVAILABLE',
+      });
+    }
+
+    if (salonId) {
+      const salonCheck =
+        db.prepare('SELECT * FROM salons WHERE id = ?').get(String(salonId)) ||
+        db.prepare('SELECT * FROM salons WHERE slug = ? COLLATE NOCASE').get(String(salonId));
+      if (salonCheck && (!salonCheck.website_published || !hasLiveApproval(salonCheck))) {
+        return res.status(403).json({
+          error: 'Inquiries are disabled until this salon website is published.',
+          code: 'WEBSITE_NOT_PUBLISHED',
+        });
+      }
+    }
 
     if (!salonId || !stylistId || !stylistName || !userName || !userPhone || !message) {
       return res.status(400).json({ error: 'All fields are required.' });
     }
 
     try {
-      // Resolve slug to ID if needed (salonId might be a slug from frontend)
-      let actualSalonId = salonId;
-      if (salonId.length < 30) { // Slugs are usually short, IDs are UUIDs
-        const salon = db.prepare('SELECT id FROM salons WHERE slug = ? COLLATE NOCASE').get(salonId);
-        if (salon) actualSalonId = salon.id;
-      }
+      const salon =
+        db.prepare('SELECT * FROM salons WHERE id = ?').get(String(salonId)) ||
+        db.prepare('SELECT * FROM salons WHERE slug = ? COLLATE NOCASE').get(String(salonId));
+
+      const actualSalonId = salon ? salon.id : null;
 
       db.prepare(
         `INSERT INTO stylist_inquiries (id, salon_id, stylist_id, stylist_name, user_name, user_phone, message, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(newId(), actualSalonId, stylistId, stylistName, userName, userPhone, message, nowIso());
+      ).run(newId(), actualSalonId, String(stylistId), String(stylistName), String(userName), String(userPhone), String(message), nowIso());
 
       res.status(201).json({ success: true, message: 'Inquiry sent successfully.' });
     } catch (err) {

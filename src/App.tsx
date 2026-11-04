@@ -31,6 +31,8 @@ import { getStoredServices, saveStoredServices } from './data/servicesStore';
 import { loadSiteSection, saveSiteSection } from './lib/sectionStore';
 import { useBrand } from './context/BrandContext';
 import { useAuth } from './context/AuthContext';
+import { api, ApiError } from './lib/api';
+import type { PublicSalonResponse, SalonStaff } from './types/auth';
 import { LoginPage } from './components/auth/LoginPage';
 import { RegisterPage } from './components/auth/RegisterPage';
 import { ForgotPasswordPage } from './components/auth/ForgotPasswordPage';
@@ -69,6 +71,28 @@ function MarketingSite() {
   const [packages, setPackages] = useState<SalonPackage[]>(() => getStoredPackages());
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>(() => getStoredGallery());
   const [videos, setVideos] = useState<VideoItem[]>(() => getStoredVideos());
+  const [liveStaff, setLiveStaff] = useState<SalonStaff[] | null>(null);
+  const [flagshipPublished, setFlagshipPublished] = useState<boolean>(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<PublicSalonResponse>('/public/salons/lumina-luxe')
+      .then((res) => {
+        if (cancelled) return;
+        setLiveStaff(res.staff);
+        setFlagshipPublished(Boolean(res.salon?.published && !res.salon?.suspended));
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.status === 404) {
+          setFlagshipPublished(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // Pull the signed-in owner's published content from Supabase; localStorage remains a fallback cache.
   useEffect(() => {
     let cancelled = false;
@@ -306,6 +330,9 @@ function MarketingSite() {
             preselectedBranch={preselectedBranch}
             preselectedStylistName={preselectedStylistName}
             preselectedPromoCode={preselectedPromoCode}
+            salonSlug="lumina-luxe"
+            liveStaff={liveStaff}
+            websitePublished={flagshipPublished}
           />
         )}
 
@@ -326,6 +353,8 @@ function MarketingSite() {
             onBookWithStylist={handleSelectStylistForBooking}
             galleryItems={galleryItems}
             onUpdateGallery={handleUpdateGallery}
+            liveStaff={liveStaff}
+            websitePublished={flagshipPublished}
           />
         )}
 

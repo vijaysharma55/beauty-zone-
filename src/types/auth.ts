@@ -142,6 +142,11 @@ export interface SalonService {
   updatedAt: string;
 }
 
+export interface StaffWorkPhoto {
+  url: string;
+  caption?: string;
+}
+
 export interface SalonStaff {
   id: string;
   salonId: string;
@@ -150,13 +155,18 @@ export interface SalonStaff {
   bio: string;
   photoUrl: string;
   specialties: string[];
+  qualifications?: string[];
+  workPhotos?: StaffWorkPhoto[];
+  workPhotosConsent?: boolean;
   active: boolean;
   /** When false the specialist is listed but cannot be booked online. */
   bookingEnabled?: boolean;
-  /** Optional reputation fields shown in the booking picker when provided. */
+  /** Optional reputation fields shown in the booking picker when genuine rating data is available. */
   rating?: number | null;
   reviewCount?: number | null;
   experience?: string;
+  /** True only for client-side preview demo staff on unpublished websites (never persisted). */
+  isDemo?: boolean;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;

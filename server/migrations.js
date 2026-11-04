@@ -61,11 +61,18 @@ addColumn('salons', 'owner_phone', "TEXT NOT NULL DEFAULT ''");
 addColumn('staff', 'booking_enabled', 'INTEGER NOT NULL DEFAULT 1');
 db.prepare('UPDATE staff SET booking_enabled = 1 WHERE booking_enabled IS NULL').run();
 
-/* Staff: optional reputation + experience shown on the public booking cards
-   and inside the full stylist profile modal. */
+/* Staff: optional reputation + experience + rich profile details (qualifications
+   and consented work photos) shown on public booking cards and inside the full
+   staff profile modal. */
 addColumn('staff', 'rating', 'REAL');
 addColumn('staff', 'review_count', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('staff', 'experience', "TEXT NOT NULL DEFAULT ''");
+addColumn('staff', 'qualifications_json', "TEXT NOT NULL DEFAULT '[]'");
+addColumn('staff', 'work_photos_json', "TEXT NOT NULL DEFAULT '[]'");
+addColumn('staff', 'work_photos_consent', 'INTEGER NOT NULL DEFAULT 0');
+db.prepare("UPDATE staff SET qualifications_json = '[]' WHERE qualifications_json IS NULL OR qualifications_json = ''").run();
+db.prepare("UPDATE staff SET work_photos_json = '[]' WHERE work_photos_json IS NULL OR work_photos_json = ''").run();
+db.prepare('UPDATE staff SET work_photos_consent = 0 WHERE work_photos_consent IS NULL').run();
 
 /* Submitted / reviewed website versions (snapshot of the working content) */
 db.exec(`

@@ -1,6 +1,23 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Stylist, GalleryItem } from '../types';
-import { Award, Star, MapPin, Calendar, Sparkles, CheckCircle2, X, Eye, Plus, Camera, ImagePlus, Loader2, Trash2, MessageCircle, Briefcase, Heart, UserPlus } from 'lucide-react';
+import type { SalonStaff, StaffWorkPhoto } from '../types/auth';
+import { DEMO_SALON_STAFF } from '../data/demoStaffData';
+import { StylistProfileModal, type StylistProfile } from './StylistProfileModal';
+import {
+  Award,
+  Star,
+  MapPin,
+  Calendar,
+  Sparkles,
+  Eye,
+  Plus,
+  Camera,
+  Loader2,
+  MessageCircle,
+  Heart,
+  UserPlus,
+  Lock,
+} from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
 import { SmartImage } from './crud/SmartImage';
 import { ItemActions } from './crud/ItemActions';
@@ -9,13 +26,60 @@ import { CrudToast, ManageControls, ManageHint } from './crud/ManageControls';
 import { useCardCollection } from './crud/useCardCollection';
 import { optimizeImageFile } from '../lib/imageUtils';
 import { StylistChatModal } from './StylistChatModal';
-import { GALLERY_CATEGORIES, GALLERY_SERVICES } from '../data/galleryData';
 
 interface StylistsSectionProps {
   onBookWithStylist: (stylistName: string, branchName: string) => void;
   galleryItems?: GalleryItem[];
   onUpdateGallery?: (items: GalleryItem[]) => void;
+  liveStaff?: SalonStaff[] | null;
+  websitePublished?: boolean;
 }
+
+interface DisplayStylist extends Stylist {
+  isDemo?: boolean;
+  bookingEnabled?: boolean;
+  workPhotos?: StaffWorkPhoto[];
+  workPhotosConsent?: boolean;
+}
+
+const inferCategory = (member: SalonStaff): Stylist['category'] => {
+  const haystack = `${member.roleTitle} ${(member.specialties || []).join(' ')}`.toLowerCase();
+  if (haystack.includes('nail')) return 'nails';
+  if (haystack.includes('skin') || haystack.includes('facial') || haystack.includes('aesthetic')) return 'skin';
+  if (haystack.includes('hair') || haystack.includes('color') || haystack.includes('balayage')) return 'hair';
+  return 'bridal';
+};
+
+const salonStaffToDisplay = (member: SalonStaff, defaultBranch: string): DisplayStylist => {
+  const consented = Boolean(member.workPhotosConsent);
+  const workPhotos = consented && Array.isArray(member.workPhotos) ? member.workPhotos : [];
+  return {
+    id: member.id,
+    name: member.name,
+    role: member.roleTitle || '',
+    category: inferCategory(member),
+    branch: defaultBranch,
+    experience: member.experience || '',
+    ratings:
+      member.rating !== null && member.rating !== undefined && Number(member.rating) > 0
+        ? Number(member.rating)
+        : 0,
+    reviewCount: Number(member.reviewCount) || 0,
+    bio: member.bio || '',
+    avatar: member.photoUrl || '',
+    specialties: Array.isArray(member.specialties) ? member.specialties : [],
+    certifications: Array.isArray(member.qualifications) ? member.qualifications : [],
+    portfolio: workPhotos.map((p) => ({
+      image: p.url,
+      title: p.caption || `${member.name} work`,
+      description: '',
+    })),
+    workPhotos,
+    workPhotosConsent: consented,
+    isDemo: Boolean(member.isDemo),
+    bookingEnabled: member.bookingEnabled !== false && !member.isDemo,
+  };
+};
 
 const STYLIST_CATEGORY_OPTIONS = [
   { value: 'bridal', label: 'Bridal makeup' },
@@ -34,7 +98,7 @@ const buildStylistEditorFields = (branches: string[]): EditorField[] => [
     help: 'Portrait cards crop with object-fit: cover and object-top, so faces stay in frame at every width.',
   },
   { key: 'name', type: 'text', label: 'Full name', span: 2, required: true },
-  { key: 'role', type: 'text', label: 'Role / title', span: 2, required: true },
+  { key: 'role', type: 'text', label: 'Designation / job title', span: 2, required: true },
   { key: 'category', type: 'select', label: 'Specialty', options: STYLIST_CATEGORY_OPTIONS, required: true },
   {
     key: 'branch',
@@ -50,20 +114,20 @@ const buildStylistEditorFields = (branches: string[]): EditorField[] => [
   {
     key: 'specialties',
     type: 'tags',
-    label: 'Specialties',
+    label: 'Skills & specialties',
     span: 2,
     rows: 3,
     separator: 'comma',
-    help: 'Separate specialties with commas. The first three appear on the card.',
+    help: 'Separate specialties with commas.',
   },
   {
     key: 'certifications',
     type: 'tags',
-    label: 'Certifications',
+    label: 'Qualifications & certifications',
     span: 2,
     rows: 3,
     separator: 'newline',
-    help: 'One certification per line.',
+    help: 'One qualification per line.',
   },
 ];
 
@@ -73,8 +137,8 @@ const emptyStylistValues = (branch: string): Record<string, any> => ({
   role: '',
   category: 'bridal',
   branch,
-  experience: '5+ Years',
-  ratings: 5,
+  experience: '',
+  ratings: 0,
   reviewCount: 0,
   bio: '',
   specialties: [],
@@ -98,10 +162,7 @@ const stylistToEditorValues = (stylist?: Stylist, branch = ''): Record<string, a
   };
 };
 
-const normalizeStylistValues = (
-  values: Record<string, any>,
-  base?: Stylist
-): Stylist => ({
+const normalizeStylistValues = (values: Record<string, any>, base?: Stylist): Stylist => ({
   ...(base || {
     id: `stylist-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     name: '',
@@ -109,7 +170,7 @@ const normalizeStylistValues = (
     category: 'bridal',
     branch: '',
     experience: '',
-    ratings: 5,
+    ratings: 0,
     reviewCount: 0,
     bio: '',
     avatar: '',
@@ -131,13 +192,14 @@ const normalizeStylistValues = (
   portfolio: base?.portfolio || [],
 });
 
-export const StylistsSection: React.FC<StylistsSectionProps> = ({ 
+export const StylistsSection: React.FC<StylistsSectionProps> = ({
   onBookWithStylist,
-  galleryItems = [],
-  onUpdateGallery
+  liveStaff = null,
+  websitePublished = true,
 }) => {
   const { brand, t, updateBrand } = useBrand();
-  const [selectedStylist, setSelectedStylist] = useState<Stylist | null>(null);
+  // Full Profile Modal is strictly closed by default on page load.
+  const [selectedStylist, setSelectedStylist] = useState<DisplayStylist | null>(null);
   const [chatWithStylist, setChatWithStylist] = useState<Stylist | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'bridal' | 'hair' | 'skin' | 'nails'>('all');
   const [followedStylists, setFollowedStylists] = useState<string[]>(() => {
@@ -149,11 +211,33 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
     }
   });
 
+  const defaultBranch = brand.branches[0]?.name || `${brand.cityName} Flagship Salon`;
+
   const manager = useCardCollection<Stylist>(
     brand.stylists,
     (next) => updateBrand({ stylists: next }),
     'Stylist'
   );
+
+  const sourceStylists: DisplayStylist[] = useMemo(() => {
+    if (!websitePublished) {
+      return DEMO_SALON_STAFF.map((member) => salonStaffToDisplay(member, defaultBranch));
+    }
+    if (liveStaff !== null) {
+      return liveStaff
+        .filter((member) => member.active && !member.isDemo)
+        .map((member) => salonStaffToDisplay(member, defaultBranch));
+    }
+    return brand.stylists.map((s) => ({
+      ...s,
+      workPhotos: (s.portfolio || []).map((p) => ({ url: p.image, caption: p.title })),
+      workPhotosConsent: Boolean(s.portfolio && s.portfolio.length > 0),
+      bookingEnabled: true,
+      isDemo: false,
+    }));
+  }, [websitePublished, liveStaff, brand.stylists, defaultBranch]);
+
+  const usingDbStaff = !websitePublished || liveStaff !== null;
 
   const toggleFollow = (stylistId: string, name: string) => {
     setFollowedStylists((prev) => {
@@ -168,28 +252,17 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
   };
 
   const filteredStylists =
-    activeFilter === 'all'
-      ? brand.stylists
-      : brand.stylists.filter((s) => s.category === activeFilter);
+    activeFilter === 'all' ? sourceStylists : sourceStylists.filter((s) => s.category === activeFilter);
 
   const [uploadingStylistId, setUploadingStylistId] = useState<string | null>(null);
-  const [addingPortfolio, setAddingPortfolio] = useState(false);
 
-  const handleQuickImageUpload = async (
-    stylistId: string,
-    file: File | undefined
-  ) => {
-    if (!file) return;
+  const handleQuickImageUpload = async (stylistId: string, file: File | undefined) => {
+    if (!file || usingDbStaff) return;
     setUploadingStylistId(stylistId);
     try {
       const dataUrl = await optimizeImageFile(file);
-      const updatedStylists = brand.stylists.map((s) =>
-        s.id === stylistId ? { ...s, avatar: dataUrl } : s
-      );
+      const updatedStylists = brand.stylists.map((s) => (s.id === stylistId ? { ...s, avatar: dataUrl } : s));
       updateBrand({ stylists: updatedStylists });
-      if (selectedStylist && selectedStylist.id === stylistId) {
-        setSelectedStylist((current) => (current ? { ...current, avatar: dataUrl } : null));
-      }
       manager.notify('Stylist profile photo updated!');
     } catch (err) {
       console.error('[stylist photo upload]', err);
@@ -198,58 +271,31 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
     }
   };
 
-  const handleAddPortfolioImage = async (file: File | undefined) => {
-    if (!file || !selectedStylist || !onUpdateGallery) return;
-    setAddingPortfolio(true);
-    try {
-      const dataUrl = await optimizeImageFile(file);
-      const newGalleryItem: GalleryItem = {
-        id: `gal-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        type: 'photo',
-        title: `${selectedStylist.name.split(' ')[0]}'s Work`,
-        description: `Stunning transformation work by our specialist ${selectedStylist.name}.`,
-        category: GALLERY_CATEGORIES[0],
-        service: GALLERY_SERVICES[0],
-        image: dataUrl,
-        sort_order: 1,
-        featured: false,
-        active: true,
-        created_at: new Date().toISOString().slice(0, 10),
-        artist: selectedStylist.name
-      };
-      
-      const updatedGallery = [newGalleryItem, ...galleryItems];
-      onUpdateGallery(updatedGallery);
-      manager.notify('Added transformation photo to gallery portfolio!');
-    } catch (err) {
-      console.error('[portfolio photo upload]', err);
-    } finally {
-      setAddingPortfolio(false);
-    }
-  };
-
-  const stylistGalleryItems = selectedStylist 
-    ? galleryItems.filter(item => 
-        item.artist?.toLowerCase().includes(selectedStylist.name.toLowerCase()) ||
-        selectedStylist.name.toLowerCase().includes(item.artist?.toLowerCase() || '')
-      )
-    : [];
-
-  const combinedPortfolio = selectedStylist 
-    ? [
-        ...(selectedStylist.portfolio || []),
-        ...stylistGalleryItems.map(item => ({
-          image: item.image,
-          title: item.title,
-          description: item.description
-        }))
-      ]
-    : [];
-
   const removeStylist = (id: string) => {
     setSelectedStylist((current) => (current?.id === id ? null : current));
     manager.removeItem(id);
   };
+
+  const modalProfile: StylistProfile | null = useMemo(() => {
+    if (!selectedStylist) return null;
+    return {
+      id: selectedStylist.id,
+      name: selectedStylist.name,
+      role: selectedStylist.role,
+      branch: selectedStylist.branch,
+      experience: selectedStylist.experience,
+      rating: Number(selectedStylist.ratings) > 0 ? Number(selectedStylist.ratings) : null,
+      reviewCount: Number(selectedStylist.reviewCount) || 0,
+      bio: selectedStylist.bio,
+      avatar: selectedStylist.avatar,
+      specialties: selectedStylist.specialties,
+      qualifications: selectedStylist.certifications,
+      workPhotos: selectedStylist.workPhotos || [],
+      workPhotosConsent: Boolean(selectedStylist.workPhotosConsent),
+      bookingEnabled: selectedStylist.bookingEnabled !== false && !selectedStylist.isDemo,
+      isDemo: Boolean(selectedStylist.isDemo),
+    };
+  }, [selectedStylist]);
 
   return (
     <section id="stylists" className="py-20 lg:py-28 bg-[#FAF5E5] border-t border-[#0F172A]/10 relative">
@@ -258,24 +304,33 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
         <div className="text-center max-w-3xl mx-auto mb-12 space-y-3">
           <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-[#D09A40]/15 text-[#0F172A] text-xs font-semibold uppercase tracking-widest border border-[#D09A40]/30">
             <Sparkles className="w-3.5 h-3.5 text-[#D09A40]" />
-            <span>{t('stylistsOverline')}</span>
+            <span>{!websitePublished ? 'Sample Specialists Preview' : t('stylistsOverline')}</span>
           </span>
           <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold text-[#0F172A] tracking-tight">
             {t('stylistsTitle')}
           </h2>
-          <p className="text-base text-[#4A4A4A]">
-            {t('stylistsSubtitle')}
-          </p>
+          <p className="text-base text-[#4A4A4A]">{t('stylistsSubtitle')}</p>
 
-          <div className="flex justify-center pt-1">
-            <ManageControls
-              isManaging={manager.isManaging}
-              onToggle={manager.toggleManaging}
-              onAdd={manager.openCreate}
-              addLabel="Add Stylist"
-            />
-          </div>
-          <ManageHint isManaging={manager.isManaging} noun="stylist" />
+          {!websitePublished && (
+            <p className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-4 py-1.5 text-xs font-semibold text-amber-900">
+              <Lock className="h-3.5 w-3.5" />
+              Showing sample demo profiles while website is unpublished (not bookable).
+            </p>
+          )}
+
+          {!usingDbStaff && (
+            <>
+              <div className="flex justify-center pt-1">
+                <ManageControls
+                  isManaging={manager.isManaging}
+                  onToggle={manager.toggleManaging}
+                  onAdd={manager.openCreate}
+                  addLabel="Add Stylist"
+                />
+              </div>
+              <ManageHint isManaging={manager.isManaging} noun="stylist" />
+            </>
+          )}
         </div>
 
         {/* Specialty Filter Pills */}
@@ -301,212 +356,242 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
           ))}
         </div>
 
-        {/* Stylists Cards Grid — identical dimensions in every column */}
+        {/* Stylists Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
-          {filteredStylists.map((stylist) => (
-            <div
-              key={stylist.id}
-              className="relative w-full bg-white rounded-3xl overflow-hidden border border-[#0F172A]/10 elevation-subtle flex flex-col justify-between group h-full transition-all duration-500 hover:scale-[1.02] hover:shadow-2xl hover:border-[#D09A40]/40"
-            >
-              {/* Glass-morphism Hover Overlay */}
-              <div className="absolute inset-0 z-20 bg-white/10 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none ring-1 ring-white/20 inset-0" />
+          {filteredStylists.map((stylist) => {
+            const hasGenuineRating = Number(stylist.ratings) > 0;
+            const canBook = websitePublished && !stylist.isDemo && stylist.bookingEnabled !== false;
 
-              {manager.canManage && (
-                <ItemActions
-                  itemLabel="stylist"
-                  alwaysVisible={manager.isManaging}
-                  onEdit={() => manager.openEdit(stylist)}
-                  onReplace={() => manager.openReplace(stylist)}
-                  onDelete={() => removeStylist(stylist.id)}
-                />
-              )}
-              <div className="relative z-30 flex flex-col h-full pointer-events-none">
-                {/* Portrait Header */}
-                <div className="relative h-80 w-full overflow-hidden bg-[#0F172A] pointer-events-auto">
-                  <SmartImage
-                    src={stylist.avatar}
-                    alt={stylist.name}
-                    className="h-full w-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
+            return (
+              <div
+                key={stylist.id}
+                className="relative w-full bg-white rounded-3xl overflow-hidden border border-[#0F172A]/10 elevation-subtle flex flex-col justify-between group h-full transition-all duration-500 hover:scale-[1.01] hover:shadow-2xl hover:border-[#D09A40]/40"
+              >
+                {!usingDbStaff && manager.canManage && (
+                  <ItemActions
+                    itemLabel="stylist"
+                    alwaysVisible={manager.isManaging}
+                    onEdit={() => manager.openEdit(stylist)}
+                    onReplace={() => manager.openReplace(stylist)}
+                    onDelete={() => removeStylist(stylist.id)}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A] via-transparent to-transparent opacity-85" />
-
-                  {/* Experience Pill */}
-                  <div className="absolute top-3.5 left-3.5 bg-[#0F172A]/85 backdrop-blur-md text-[#FAF5E5] border border-[#D09A40]/40 text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1">
-                    <Award className="w-3 h-3 text-[#D09A40]" />
-                    <span>{stylist.experience} Exp</span>
-                  </div>
-
-                  {/* Quick Photo Upload Button */}
-                  <div className="absolute top-3.5 right-3 z-10">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      id={`card-upload-stylist-${stylist.id}`}
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleQuickImageUpload(stylist.id, file);
-                        e.target.value = '';
-                      }}
+                )}
+                <div className="relative z-30 flex flex-col h-full pointer-events-none">
+                  {/* Portrait Header */}
+                  <div className="relative h-80 w-full overflow-hidden bg-[#0F172A] pointer-events-auto">
+                    <SmartImage
+                      src={stylist.avatar}
+                      alt={stylist.name}
+                      className="h-full w-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
                     />
-                    <label
-                      htmlFor={`card-upload-stylist-${stylist.id}`}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/95 hover:bg-white text-[#0F172A] text-[11px] font-bold border border-[#D09A40]/40 shadow-md transition-all cursor-pointer hover:scale-105"
-                      title="Upload / Change Photo for this specialist"
-                    >
-                      {uploadingStylistId === stylist.id ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-[#D09A40]" />
-                      ) : (
-                        <Camera className="w-3.5 h-3.5 text-[#D09A40]" />
-                      )}
-                      <span className="hidden sm:inline">
-                        {uploadingStylistId === stylist.id ? 'Uploading…' : 'Photo'}
-                      </span>
-                    </label>
-                  </div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A] via-transparent to-transparent opacity-85" />
 
-                  {/* Name & Title Overlay */}
-                  <div className="absolute bottom-3.5 left-4 right-4 text-[#FAF5E5]">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-[11px] uppercase tracking-wider text-[#D09A40] font-bold">
-                        {stylist.role}
-                      </p>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleFollow(stylist.id, stylist.name);
-                        }}
-                        className={`p-1.5 rounded-full backdrop-blur-md border transition-all ${
-                          followedStylists.includes(stylist.id)
-                            ? 'bg-red-500 border-red-500 text-white scale-110'
-                            : 'bg-white/10 border-white/20 text-white hover:bg-white/20 hover:scale-105'
-                        }`}
-                        title={followedStylists.includes(stylist.id) ? 'Unfollow' : 'Follow for updates'}
-                      >
-                        <Heart className={`w-3.5 h-3.5 ${followedStylists.includes(stylist.id) ? 'fill-current' : ''}`} />
-                      </button>
-                    </div>
-                    <h3 className="font-serif text-xl font-bold leading-snug mt-0.5">
-                      {stylist.name}
-                    </h3>
-                    <p className="text-[11px] text-[#FAF5E5]/80 flex items-center gap-1 mt-1">
-                      <MapPin className="w-3 h-3 text-[#D09A40]" />
-                      <span>{stylist.branch}</span>
-                    </p>
-                    
-                    {/* Star Rating */}
-                    <div className="flex items-center gap-1.5 mt-2">
-                      <div className="flex items-center gap-0.5">
-                        {[...Array(5)].map((_, i) => (
-                          <Star 
-                            key={i} 
-                            className={`w-3 h-3 ${
-                              i < Math.floor(stylist.ratings) 
-                                ? 'fill-[#D09A40] text-[#D09A40]' 
-                                : i < stylist.ratings 
-                                  ? 'fill-[#D09A40]/50 text-[#D09A40]' 
-                                  : 'text-white/30'
-                            }`} 
-                          />
-                        ))}
-                      </div>
-                      <span className="text-[10px] font-bold text-[#FAF5E5]">
-                        {(stylist.ratings ?? 5).toFixed(1)}
-                      </span>
-                      <span className="text-[9px] text-[#FAF5E5]/60 font-medium">
-                        ({stylist.reviewCount})
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Bio & Specialties */}
-                <div className="p-5 space-y-4 pointer-events-auto">
-                  <p className="text-xs text-[#4A4A4A] leading-relaxed line-clamp-3">
-                    {stylist.bio}
-                  </p>
-
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider font-bold text-[#0F172A]/60 mb-1.5">
-                      Specialties
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {stylist.specialties.slice(0, 3).map((spec, i) => (
-                        <span
-                          key={i}
-                          className="text-[11px] bg-[#FAF5E5] text-[#0F172A] px-2.5 py-1 rounded-lg border border-[#D09A40]/25 font-medium"
-                        >
-                          {spec}
+                    {/* Top Left Pill: Demo or Experience */}
+                    <div className="absolute top-3.5 left-3.5 flex flex-wrap gap-1.5">
+                      {stylist.isDemo && (
+                        <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
+                          Demo Profile
                         </span>
-                      ))}
+                      )}
+                      {stylist.experience && (
+                        <div className="bg-[#0F172A]/85 backdrop-blur-md text-[#FAF5E5] border border-[#D09A40]/40 text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1">
+                          <Award className="w-3 h-3 text-[#D09A40]" />
+                          <span>{stylist.experience}</span>
+                        </div>
+                      )}
                     </div>
+
+                    {/* Quick Photo Upload Button (local brand mode only) */}
+                    {!usingDbStaff && (
+                      <div className="absolute top-3.5 right-3 z-10">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          id={`card-upload-stylist-${stylist.id}`}
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleQuickImageUpload(stylist.id, file);
+                            e.target.value = '';
+                          }}
+                        />
+                        <label
+                          htmlFor={`card-upload-stylist-${stylist.id}`}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/95 hover:bg-white text-[#0F172A] text-[11px] font-bold border border-[#D09A40]/40 shadow-md transition-all cursor-pointer hover:scale-105"
+                          title="Upload / Change Photo for this specialist"
+                        >
+                          {uploadingStylistId === stylist.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-[#D09A40]" />
+                          ) : (
+                            <Camera className="w-3.5 h-3.5 text-[#D09A40]" />
+                          )}
+                          <span className="hidden sm:inline">
+                            {uploadingStylistId === stylist.id ? 'Uploading…' : 'Photo'}
+                          </span>
+                        </label>
+                      </div>
+                    )}
+
+                    {/* Name & Title Overlay */}
+                    <div className="absolute bottom-3.5 left-4 right-4 text-[#FAF5E5]">
+                      <div className="flex items-center justify-between gap-2">
+                        {stylist.role ? (
+                          <p className="text-[11px] uppercase tracking-wider text-[#D09A40] font-bold">
+                            {stylist.role}
+                          </p>
+                        ) : (
+                          <span />
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleFollow(stylist.id, stylist.name);
+                          }}
+                          className={`p-1.5 rounded-full backdrop-blur-md border transition-all ${
+                            followedStylists.includes(stylist.id)
+                              ? 'bg-red-500 border-red-500 text-white scale-110'
+                              : 'bg-white/10 border-white/20 text-white hover:bg-white/20 hover:scale-105'
+                          }`}
+                          title={followedStylists.includes(stylist.id) ? 'Unfollow' : 'Follow for updates'}
+                        >
+                          <Heart
+                            className={`w-3.5 h-3.5 ${followedStylists.includes(stylist.id) ? 'fill-current' : ''}`}
+                          />
+                        </button>
+                      </div>
+                      <h3 className="font-serif text-xl font-bold leading-snug mt-0.5">{stylist.name}</h3>
+                      {stylist.branch && (
+                        <p className="text-[11px] text-[#FAF5E5]/80 flex items-center gap-1 mt-1">
+                          <MapPin className="w-3 h-3 text-[#D09A40]" />
+                          <span>{stylist.branch}</span>
+                        </p>
+                      )}
+
+                      {/* Genuine Star Rating ONLY */}
+                      {hasGenuineRating && (
+                        <div className="flex items-center gap-1.5 mt-2">
+                          <div className="flex items-center gap-0.5">
+                            {[...Array(5)].map((_, i) => (
+                              <Star
+                                key={i}
+                                className={`w-3 h-3 ${
+                                  i < Math.floor(stylist.ratings)
+                                    ? 'fill-[#D09A40] text-[#D09A40]'
+                                    : i < stylist.ratings
+                                      ? 'fill-[#D09A40]/50 text-[#D09A40]'
+                                      : 'text-white/30'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <span className="text-[10px] font-bold text-[#FAF5E5]">{stylist.ratings.toFixed(1)}</span>
+                          {stylist.reviewCount > 0 && (
+                            <span className="text-[9px] text-[#FAF5E5]/60 font-medium">({stylist.reviewCount})</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Bio & Specialties (rendered only when non-empty) */}
+                  {(stylist.bio || stylist.specialties.length > 0) && (
+                    <div className="p-5 space-y-4 pointer-events-auto">
+                      {stylist.bio && (
+                        <p className="text-xs text-[#4A4A4A] leading-relaxed line-clamp-3">{stylist.bio}</p>
+                      )}
+
+                      {stylist.specialties.length > 0 && (
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wider font-bold text-[#0F172A]/60 mb-1.5">
+                            Skills & specialties
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {stylist.specialties.slice(0, 3).map((spec, i) => (
+                              <span
+                                key={i}
+                                className="text-[11px] bg-[#FAF5E5] text-[#0F172A] px-2.5 py-1 rounded-lg border border-[#D09A40]/25 font-medium"
+                              >
+                                {spec}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Card Footer CTAs */}
+                <div className="px-5 pb-5 pt-2 space-y-2 relative z-30">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStylist(stylist)}
+                      className="py-2.5 px-3 rounded-xl border border-[#0F172A]/15 bg-[#FAF5E5]/60 hover:bg-[#0F172A]/5 text-[#0F172A] font-semibold text-[11px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-[#D09A40]" />
+                      <span>View Full Profile</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!canBook}
+                      onClick={() => {
+                        if (canBook) setChatWithStylist(stylist);
+                      }}
+                      className="py-2.5 px-3 rounded-xl border border-[#D09A40]/30 bg-[#D09A40]/5 hover:bg-[#D09A40]/10 text-[#0F172A] font-semibold text-[11px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5 text-[#D09A40]" />
+                      <span>Inquiry</span>
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleFollow(stylist.id, stylist.name)}
+                      className={`py-2.5 px-3 rounded-xl border font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                        followedStylists.includes(stylist.id)
+                          ? 'bg-red-50 border-red-200 text-red-600'
+                          : 'bg-[#0F172A]/5 border-[#0F172A]/10 text-[#0F172A] hover:bg-[#0F172A]/10'
+                      }`}
+                    >
+                      {followedStylists.includes(stylist.id) ? (
+                        <>
+                          <Heart className="w-3.5 h-3.5 fill-current" />
+                          <span>Following</span>
+                        </>
+                      ) : (
+                        <>
+                          <UserPlus className="w-3.5 h-3.5" />
+                          <span>Follow</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!canBook}
+                      onClick={() => {
+                        if (canBook) onBookWithStylist(stylist.name, stylist.branch);
+                      }}
+                      className="py-2.5 px-3 rounded-xl bg-[#0F172A] hover:bg-[#D09A40] text-[#FAF5E5] hover:text-[#0F172A] font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {canBook ? <Calendar className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                      <span>{canBook ? 'Book Now' : 'Preview Only'}</span>
+                    </button>
                   </div>
                 </div>
               </div>
-
-              {/* Card Footer CTAs */}
-              <div className="px-5 pb-5 pt-2 space-y-2 relative z-30">
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setSelectedStylist(stylist)}
-                    className="py-2.5 px-3 rounded-xl border border-[#0F172A]/15 bg-[#FAF5E5]/60 hover:bg-[#0F172A]/5 text-[#0F172A] font-semibold text-[11px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <Briefcase className="w-3.5 h-3.5 text-[#D09A40]" />
-                    <span>View Portfolio</span>
-                  </button>
-                  <button
-                    onClick={() => setChatWithStylist(stylist)}
-                    className="py-2.5 px-3 rounded-xl border border-[#D09A40]/30 bg-[#D09A40]/5 hover:bg-[#D09A40]/10 text-[#0F172A] font-semibold text-[11px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5 text-[#D09A40]" />
-                    <span>Inquiry</span>
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => toggleFollow(stylist.id, stylist.name)}
-                    className={`py-2.5 px-3 rounded-xl border font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      followedStylists.includes(stylist.id)
-                        ? 'bg-red-50 border-red-200 text-red-600'
-                        : 'bg-[#0F172A]/5 border-[#0F172A]/10 text-[#0F172A] hover:bg-[#0F172A]/10'
-                    }`}
-                  >
-                    {followedStylists.includes(stylist.id) ? (
-                      <>
-                        <Heart className="w-3.5 h-3.5 fill-current" />
-                        <span>Following</span>
-                      </>
-                    ) : (
-                      <>
-                        <UserPlus className="w-3.5 h-3.5" />
-                        <span>Follow</span>
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => onBookWithStylist(stylist.name, stylist.branch)}
-                    className="py-2.5 px-3 rounded-xl bg-[#0F172A] hover:bg-[#D09A40] text-[#FAF5E5] hover:text-[#0F172A] font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
-                  >
-                    <Calendar className="w-3.5 h-3.5" />
-                    <span>Book Now</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {filteredStylists.length === 0 && (
           <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-[#0F172A]/20 bg-white/70 px-6 py-14 text-center">
             <Sparkles className="h-10 w-10 text-neutral-300" />
-            <h3 className="mt-3 font-serif text-lg font-bold text-[#0F172A]">
-              No specialists in this view
-            </h3>
+            <h3 className="mt-3 font-serif text-lg font-bold text-[#0F172A]">No specialists in this view</h3>
             <p className="mt-1 max-w-md text-xs text-[#4A4A4A]">
-              Choose another specialty filter, or add a stylist to the team. Portraits stay
-              perfectly cropped in the fixed 3:4 frame.
+              Choose another specialty filter to browse available salon artists.
             </p>
-            {manager.canManage && (
+            {!usingDbStaff && manager.canManage && (
               <button
                 type="button"
                 onClick={manager.openCreate}
@@ -520,210 +605,26 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
         )}
       </div>
 
-      {/* Stylist Full Profile & Portfolio Modal */}
-      {selectedStylist && (
-        <div
-          className="fixed inset-0 z-50 bg-[#0F172A]/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
-          onClick={() => setSelectedStylist(null)}
-        >
-          <div
-            className="bg-white rounded-3xl max-w-3xl w-full overflow-hidden shadow-2xl border border-[#D09A40]/30 my-8"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Top Header */}
-            <div className="bg-[#0F172A] text-[#FAF5E5] p-6 sm:p-8 relative flex flex-col sm:flex-row items-start sm:items-center gap-5">
-              <button
-                onClick={() => setSelectedStylist(null)}
-                className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-[#FAF5E5] flex items-center justify-center transition-colors cursor-pointer"
-                aria-label="Close modal"
-              >
-                <X className="w-5 h-5" />
-              </button>
+      {/* Shared Full Profile Modal (closed by default on page load) */}
+      <StylistProfileModal
+        profile={modalProfile}
+        websitePublished={websitePublished}
+        onClose={() => setSelectedStylist(null)}
+        onSelect={(profile) => {
+          if (!websitePublished || profile.isDemo) return;
+          const branch = selectedStylist?.branch || defaultBranch;
+          setSelectedStylist(null);
+          onBookWithStylist(profile.name, branch);
+        }}
+      />
 
-              <div className="relative group shrink-0">
-                <img
-                  src={selectedStylist.avatar}
-                  alt={selectedStylist.name}
-                  className="w-24 h-24 rounded-2xl object-cover border-2 border-[#D09A40]"
-                />
-                <input
-                  type="file"
-                  accept="image/*"
-                  id={`modal-upload-stylist-${selectedStylist.id}`}
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleQuickImageUpload(selectedStylist.id, file);
-                    e.target.value = '';
-                  }}
-                />
-                <label
-                  htmlFor={`modal-upload-stylist-${selectedStylist.id}`}
-                  className="absolute inset-0 bg-black/60 rounded-2xl opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-[10px] font-bold transition-opacity cursor-pointer p-1 text-center"
-                >
-                  <Camera className="w-4 h-4 text-[#D09A40] mb-0.5" />
-                  <span>{uploadingStylistId === selectedStylist.id ? 'Uploading...' : 'Change Photo'}</span>
-                </label>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] uppercase tracking-widest bg-[#D09A40] text-[#0F172A] font-bold px-2.5 py-0.5 rounded-full">
-                    {selectedStylist.role}
-                  </span>
-                  <span className="text-xs text-[#FAF5E5]/80 flex items-center gap-1">
-                    <Star className="w-3.5 h-3.5 fill-[#D09A40] text-[#D09A40]" />
-                    <strong>{(selectedStylist.ratings ?? 5).toFixed(1)}</strong> ({selectedStylist.reviewCount} Client Reviews)
-                  </span>
-                </div>
-                <h3 className="font-serif text-2xl sm:text-3xl font-bold text-[#FAF5E5]">
-                  {selectedStylist.name}
-                </h3>
-                <p className="text-xs text-[#FAF5E5]/70 flex items-center gap-2">
-                  <MapPin className="w-3.5 h-3.5 text-[#D09A40]" />
-                  <span>{selectedStylist.branch}</span>
-                  <span>•</span>
-                  <span>{selectedStylist.experience} Experience</span>
-                </p>
-              </div>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-6 sm:p-8 space-y-6 max-h-[75vh] overflow-y-auto">
-              <div>
-                <h4 className="text-xs uppercase tracking-wider font-bold text-[#4A4A4A] mb-2">
-                  About the Specialist
-                </h4>
-                <p className="text-sm text-[#0F172A] leading-relaxed">
-                  {selectedStylist.bio}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="bg-[#FAF5E5] p-4 rounded-2xl border border-[#0F172A]/10">
-                  <h4 className="text-xs uppercase tracking-wider font-bold text-[#0F172A] mb-2.5 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-[#D09A40]" />
-                    <span>Signature Services</span>
-                  </h4>
-                  <ul className="space-y-1.5">
-                    {selectedStylist.specialties.map((spec, idx) => (
-                      <li key={idx} className="text-xs text-[#0F172A] flex items-center gap-2">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-[#10B981] shrink-0" />
-                        <span>{spec}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="bg-[#FAF5E5] p-4 rounded-2xl border border-[#0F172A]/10">
-                  <h4 className="text-xs uppercase tracking-wider font-bold text-[#0F172A] mb-2.5 flex items-center gap-1.5">
-                    <Award className="w-3.5 h-3.5 text-[#D09A40]" />
-                    <span>Academy & Certifications</span>
-                  </h4>
-                  <ul className="space-y-1.5">
-                    {selectedStylist.certifications.map((cert, idx) => (
-                      <li key={idx} className="text-xs text-[#0F172A] flex items-center gap-2">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-[#D09A40] shrink-0" />
-                        <span>{cert}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-
-              <div>
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3">
-                  <h4 className="text-xs uppercase tracking-wider font-bold text-[#4A4A4A]">
-                    Recent Client Transformations by {selectedStylist.name.split(' ')[0]}
-                  </h4>
-                  <div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      id={`upload-portfolio-${selectedStylist.id}`}
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleAddPortfolioImage(file);
-                        e.target.value = '';
-                      }}
-                    />
-                    <label
-                      htmlFor={`upload-portfolio-${selectedStylist.id}`}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0F172A] hover:bg-[#D09A40] text-white hover:text-[#0F172A] text-xs font-bold transition-colors cursor-pointer shadow-2xs"
-                    >
-                      {addingPortfolio ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <ImagePlus className="w-3.5 h-3.5 text-[#D09A40]" />
-                      )}
-                      <span>{addingPortfolio ? 'Uploading...' : '+ Add Photo'}</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {combinedPortfolio.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className="rounded-2xl overflow-hidden border border-[#0F172A]/10 bg-[#FAF5E5]"
-                    >
-                      <img
-                        src={item.image}
-                        alt={item.title}
-                        className="w-full h-36 object-cover"
-                      />
-                      <div className="p-3">
-                        <p className="font-serif font-bold text-xs text-[#0F172A] truncate">
-                          {item.title}
-                        </p>
-                        <p className="text-[11px] text-[#4A4A4A] mt-0.5 leading-snug line-clamp-2">
-                          {item.description}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                  {combinedPortfolio.length === 0 && (
-                    <div className="col-span-full py-12 flex flex-col items-center justify-center text-center bg-[#FAF5E5]/40 rounded-2xl border border-dashed border-[#0F172A]/10">
-                      <ImagePlus className="w-8 h-8 text-neutral-300 mb-2" />
-                      <p className="text-xs text-[#4A4A4A]">No transformations added yet.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-[#0F172A]/10 flex flex-col sm:flex-row items-center justify-end gap-3">
-                <button
-                  onClick={() => setChatWithStylist(selectedStylist)}
-                  className="w-full sm:w-auto border border-[#0F172A]/20 hover:bg-[#0F172A]/5 text-[#0F172A] font-bold text-xs sm:text-sm px-6 py-3 rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                >
-                  <MessageCircle className="w-4 h-4 text-[#D09A40]" />
-                  <span>Send Inquiry</span>
-                </button>
-                <button
-                  onClick={() => {
-                    const stylist = selectedStylist;
-                    setSelectedStylist(null);
-                    onBookWithStylist(stylist.name, stylist.branch);
-                  }}
-                  className="w-full sm:w-auto bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A] font-bold text-xs sm:text-sm px-6 py-3 rounded-xl flex items-center justify-center gap-2 shadow-md cursor-pointer transition-all"
-                >
-                  <Calendar className="w-4 h-4" />
-                  <span>Book Appointment with {selectedStylist.name}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {manager.editorState && (
+      {!usingDbStaff && manager.editorState && (
         <CardEditorModal
           key={manager.editorState.mode === 'edit' ? manager.editorState.item?.id : 'new-stylist'}
           title={manager.editorState.mode === 'edit' ? 'Edit stylist' : 'Add a stylist'}
           description={
             manager.editorState.mode === 'edit'
-              ? `Update “${manager.editorState.item?.name || 'this stylist'}”. The portrait is cropped to the card frame with object-fit: cover.`
+              ? `Update “${manager.editorState.item?.name || 'this stylist'}”.`
               : 'Add a specialist with a portrait, role, branch and specialties.'
           }
           fields={buildStylistEditorFields([
@@ -741,17 +642,10 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
           submitLabel={manager.editorState.mode === 'edit' ? 'Save stylist' : 'Add stylist'}
           focusImage={manager.editorState.focusImage}
           onClose={manager.closeEditor}
-          onSubmit={(values) =>
-            manager.saveItem(normalizeStylistValues(values, manager.editorState?.item))
-          }
+          onSubmit={(values) => manager.saveItem(normalizeStylistValues(values, manager.editorState?.item))}
         />
       )}
-      {chatWithStylist && (
-        <StylistChatModal
-          stylist={chatWithStylist}
-          onClose={() => setChatWithStylist(null)}
-        />
-      )}
+      {chatWithStylist && <StylistChatModal stylist={chatWithStylist} onClose={() => setChatWithStylist(null)} />}
       <CrudToast message={manager.notice} />
     </section>
   );
