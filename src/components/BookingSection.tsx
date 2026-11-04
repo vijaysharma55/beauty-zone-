@@ -15,10 +15,8 @@ import {
   MessageSquare,
   Navigation,
   ShieldCheck,
-  QrCode,
+  Lock,
   Check,
-  Copy,
-  CreditCard,
   X,
   UserCheck,
   Tag,
@@ -38,6 +36,16 @@ import { BookingSummaryModal } from './BookingSummaryModal';
 import { useBrand } from '../context/BrandContext';
 import { api } from '../lib/api';
 import { useAvailability, FALLBACK_SLOTS } from '../hooks/useAvailability';
+import { PaymentCheckout } from './payment/PaymentCheckout';
+import {
+  computeAdvancePreviewPaise,
+  formatPaise,
+  getPaymentConfig,
+  type BookingCreationResponse,
+  type CheckoutBooking,
+  type PaymentConfig,
+  type PaymentResponse,
+} from '../lib/payments';
 
 declare global {
   interface Window {
@@ -229,8 +237,17 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [bookingRefCode, setBookingRefCode] = useState('');
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [copiedUpi, setCopiedUpi] = useState(false);
+
+  // Payment lifecycle. `payConfig` is served by the API; the browser never
+  // decides the amount, the advance percentage or whether a booking is paid.
+  const [payConfig, setPayConfig] = useState<PaymentConfig | null>(null);
+  const [checkoutBooking, setCheckoutBooking] = useState<
+    (CheckoutBooking & { salonName?: string; locationLabel?: string }) | null
+  >(null);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [paymentState, setPaymentState] = useState<'idle' | 'pending' | 'failed' | 'cancelled' | 'confirmed'>('idle');
+  const [serverBooking, setServerBooking] = useState<CheckoutBooking | null>(null);
+  const [paymentNotice, setPaymentNotice] = useState('');
 
   // Loyalty Voucher & Gift Card Promo Code State
   const [promoCodeInput, setPromoCodeInput] = useState('');
@@ -655,18 +672,40 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     return form.locationType === 'home' ? calculateDistanceFee(form.distanceKm) : 0;
   }, [form.locationType, form.distanceKm, brand.homeServiceBaseFee, brand.homeServicePerKmRate]);
 
-  const advanceRequired = useMemo(() => {
-    if (form.locationType !== 'home') return 0;
-    const pct = (brand.advancePercentage || 20) / 100;
-    return Math.max(500, Math.round((treatmentPrice * pct) / 50) * 50);
-  }, [form.locationType, treatmentPrice, brand.advancePercentage]);
+  // Load the server payment configuration (mode, advance percentage, hold time).
+  useEffect(() => {
+    let active = true;
+    getPaymentConfig()
+      .then((config) => {
+        if (active) setPayConfig(config);
+      })
+      .catch(() => {
+        if (active) setPayConfig(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const promoDiscount = appliedPromo ? appliedPromo.discountAmount : 0;
   const totalEstimatedAmount = Math.max(0, treatmentPrice + distanceFee - promoDiscount);
-  const balanceAtDoorstep = Math.max(
-    0,
-    totalEstimatedAmount - (form.advancePaymentVerified ? advanceRequired : 0)
-  );
+
+  const advancePercent = payConfig?.advancePercent ?? brand.advancePercentage ?? 25;
+  const paymentAvailable = Boolean(payConfig?.available);
+  const paymentRequired = Boolean(payConfig?.available && payConfig?.advanceRequired && totalEstimatedAmount > 0);
+
+  /**
+   * Preview of the advance due now. The server recomputes this from the
+   * published service price; the preview only keeps the wizard honest before
+   * the booking exists.
+   */
+  const advanceRequired = useMemo(() => {
+    if (!paymentRequired) return 0;
+    return computeAdvancePreviewPaise(Math.round(totalEstimatedAmount * 100), advancePercent) / 100;
+  }, [paymentRequired, totalEstimatedAmount, advancePercent]);
+
+  const paymentConfirmedHere = paymentState === 'confirmed' || Boolean(serverBooking?.confirmed);
+  const balanceAtDoorstep = Math.max(0, totalEstimatedAmount - (paymentConfirmedHere ? advanceRequired : 0));
 
   const handleLocalityChange = (locName: string) => {
     const found = brand.localities.find((l) => l.name === locName);
@@ -675,22 +714,6 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
       locality: locName,
       distanceKm: found ? found.distanceKm : prev.distanceKm,
     }));
-  };
-
-  const handleCopyUpi = () => {
-    navigator.clipboard.writeText(brand.upiId);
-    setCopiedUpi(true);
-    setTimeout(() => setCopiedUpi(false), 2000);
-  };
-
-  const handleVerifyAdvancePayment = () => {
-    const ref = `ADV-${Math.floor(100000 + Math.random() * 900000)}`;
-    setForm((prev) => ({
-      ...prev,
-      advancePaymentVerified: true,
-      advancePaymentRef: ref,
-    }));
-    setIsPaymentModalOpen(false);
   };
 
   /**
@@ -728,9 +751,11 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   };
 
   /**
-   * Creates the booking. The request is recorded server-side when a salon is
-   * known; failures never block the flow — we surface a retryable error state
-   * and keep the WhatsApp confirmation path available as a manual fallback.
+   * Creates the booking, then hands the visitor to the payment screen.
+   *
+   * The booking is persisted server-side as `pending_payment`; the confirmation
+   * dialog and every "confirmed" affordance stay locked until the payment
+   * verification endpoint says otherwise.
    */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -745,48 +770,69 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
       return;
     }
 
-    if (form.locationType === 'home' && !form.advancePaymentVerified) {
-      setIsPaymentModalOpen(true);
-      return;
-    }
-
-    const randomDigits = Math.floor(1000 + Math.random() * 9000);
-    const prefix = brand.bookingPrefix || 'BK';
-    const ref =
-      form.locationType === 'home'
-        ? `${prefix}-HOME-${randomDigits}`
-        : `${prefix}-SALON-${randomDigits}`;
-
     setSubmitState('submitting');
     // Track retries so the recovery copy can change after the first failure.
     setAttemptCount((n) => n + 1);
 
     try {
-      if (salonSlug) {
-        await api.post('/public/bookings', {
-          slug: salonSlug,
-          fullName: form.fullName.trim(),
-          phone: form.phone.trim(),
-          service: form.selectedService,
-          serviceCategory: form.serviceCategory,
-          stylist: form.preferredStylist,
-          date: form.appointmentDate,
-          time: form.timeSlot,
-          locationType: form.locationType,
-          branch: form.locationType === 'salon' ? form.selectedBranch : null,
-          address: form.locationType === 'home' ? form.homeAddress.trim() : null,
-          locality: form.locationType === 'home' ? form.locality : null,
-          distanceKm: form.locationType === 'home' ? form.distanceKm : null,
-          bridalTrial: form.bridalTrialRequired,
-          notes: form.specialNotes.trim(),
-          promoCode: appliedPromo?.code || null,
-          estimatedTotal: totalEstimatedAmount,
-          advancePaid: form.locationType === 'home' ? advanceRequired : 0,
-          advanceRef: form.advancePaymentVerified ? form.advancePaymentRef : null,
-          reference: ref,
+      const created = await api.post<BookingCreationResponse>('/public/bookings', {
+        slug: salonSlug || undefined,
+        fullName: form.fullName.trim(),
+        phone: form.phone.trim(),
+        service: form.selectedService,
+        serviceCategory: form.serviceCategory,
+        stylist: form.preferredStylist,
+        date: form.appointmentDate,
+        time: form.timeSlot,
+        locationType: form.locationType,
+        branch: form.locationType === 'salon' ? form.selectedBranch : null,
+        address: form.locationType === 'home' ? form.homeAddress.trim() : null,
+        locality: form.locationType === 'home' ? form.locality : null,
+        distanceKm: form.locationType === 'home' ? form.distanceKm : null,
+        bridalTrial: form.bridalTrialRequired,
+        notes: form.specialNotes.trim(),
+        promoCode: appliedPromo?.code || null,
+        // The server re-derives this from the salon's published price.
+        estimatedTotal: totalEstimatedAmount,
+      });
+
+      const booking = created.booking as CheckoutBooking;
+      setBookingRefCode(booking.reference || '');
+      setServerBooking(booking);
+
+      if (created.payment?.required) {
+        if (!payConfig) {
+          try {
+            setPayConfig(await getPaymentConfig());
+          } catch {
+            // The checkout still works from the order's own provider details.
+          }
+        }
+        const locationLabel =
+          form.locationType === 'salon'
+            ? form.selectedBranch
+            : `${form.locality} (home visit, ~${form.distanceKm} km)`;
+        setCheckoutBooking({
+          ...booking,
+          salonName: created.salon?.name || brand.brandName,
+          locationLabel,
         });
+        setPaymentState('pending');
+        setPaymentNotice(
+          `Your slot is held. Pay ${formatPaise(created.payment.advancePaise)} now to confirm — the remaining ${formatPaise(
+            created.payment.remainingPaise
+          )} is payable at the salon.`
+        );
+        setSubmitState('idle');
+        setIsSubmitted(true);
+        setIsSummaryModalOpen(false);
+        setIsCheckoutOpen(true);
+        return;
       }
-      setBookingRefCode(ref);
+
+      // No advance is configured: the booking is a request the salon confirms.
+      setPaymentState('pending');
+      setPaymentNotice('Your request is saved. The salon will confirm your appointment.');
       setSubmitState('idle');
       setIsSubmitted(true);
       setIsSummaryModalOpen(true);
@@ -801,6 +847,38 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     }
   };
 
+  /** Only called after the server verified the payment. */
+  const handlePaymentConfirmed = (result: PaymentResponse) => {
+    const booking = (result.booking as CheckoutBooking | undefined) || serverBooking;
+    if (booking) setServerBooking(booking);
+    setPaymentState('confirmed');
+    setPaymentNotice('Payment verified. Your appointment is confirmed.');
+    setIsCheckoutOpen(false);
+    setIsSubmitted(true);
+    setIsSummaryModalOpen(true);
+    setSubmitState('idle');
+  };
+
+  const handleCheckoutClose = (reason: 'dismissed' | 'cancelled') => {
+    setIsCheckoutOpen(false);
+    if (paymentState !== 'confirmed') {
+      setPaymentState(reason === 'cancelled' ? 'cancelled' : 'pending');
+      setPaymentNotice(
+        reason === 'cancelled'
+          ? 'Payment cancelled — your booking is not confirmed. You can retry the payment any time before the hold expires.'
+          : 'Payment not completed yet — your booking stays unconfirmed until the advance is verified.'
+      );
+      setIsSubmitted(true);
+      setIsSummaryModalOpen(true);
+    }
+  };
+
+  const retryPayment = () => {
+    if (!serverBooking?.id) return;
+    setIsSummaryModalOpen(false);
+    setIsCheckoutOpen(true);
+  };
+
   const handleFinalAction = (e: React.FormEvent) => {
     e.preventDefault();
     if (isSlotFull) {
@@ -812,10 +890,13 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   };
 
   const buildWhatsAppBookingUrl = () => {
+    const paidRef = paymentConfirmedHere ? serverBooking?.advanceRef || serverBooking?.reference || '' : '';
     const locationDetails =
       form.locationType === 'salon'
         ? `Salon Branch: ${form.selectedBranch}`
-        : `Doorstep Home Service (${form.locality}, ~${form.distanceKm} km): ${form.homeAddress} | Travel Fee: ${formatPrice(distanceFee)} | Advance Paid: ${formatPrice(advanceRequired)} (Ref: ${form.advancePaymentRef})`;
+        : `Doorstep Home Service (${form.locality}, ~${form.distanceKm} km): ${form.homeAddress} | Travel Fee: ${formatPrice(distanceFee)} | Advance ${
+            paymentConfirmedHere ? `Paid: ${formatPrice(advanceRequired)} (Ref: ${paidRef})` : 'Pending'
+          }`;
 
     const promoLine = appliedPromo
       ? `\n*Loyalty Voucher:* ${appliedPromo.code} (-${formatPrice(appliedPromo.discountAmount)})`
@@ -881,14 +962,20 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                   </span>
                   <span className="font-serif font-bold text-sm text-[#0F172A]">
                     {isSubmitted
-                      ? 'Appointment Confirmed!'
+                      ? paymentConfirmedHere
+                        ? 'Appointment Confirmed!'
+                        : 'Awaiting Payment'
                       : BOOKING_STEPS.find((s) => s.id === currentStep)?.title}
                   </span>
                 </div>
 
                 <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
                   <span className="text-xs font-mono font-bold text-[#D09A40]">
-                    {isSubmitted ? '100% Completed' : `${Math.round(((currentStep - 1) / 3) * 100)}% Completed`}
+                    {isSubmitted
+                      ? paymentConfirmedHere
+                        ? '100% Completed'
+                        : 'Payment pending'
+                      : `${Math.round(((currentStep - 1) / 3) * 100)}% Completed`}
                   </span>
 
                   {!isSubmitted && (
@@ -909,7 +996,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                 <div
                   className="h-full bg-gradient-to-r from-[#D09A40] via-amber-400 to-[#DCA54A] transition-all duration-500 rounded-full shadow-xs"
                   style={{
-                    width: `${isSubmitted ? 100 : Math.max(8, Math.round(((currentStep - 1) / 3) * 100))}%`,
+                    width: `${isSubmitted ? (paymentConfirmedHere ? 100 : 90) : Math.max(8, Math.round(((currentStep - 1) / 3) * 100))}%`,
                   }}
                 />
               </div>
@@ -1681,42 +1768,40 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                     )}
                   </div>
 
-                  {/* Home Service Advance Token Policy Card */}
-                  {form.locationType === 'home' && (
+                  {/* Advance payment summary (the real checkout opens after booking) */}
+                  {paymentRequired && (
                     <div className="p-4 rounded-2xl border bg-amber-50/80 border-amber-200 text-xs text-[#0F172A] space-y-2">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <ShieldCheck className="w-4 h-4 text-amber-700" />
                           <span className="font-bold text-amber-900">
-                            Advance Token Deposit for Home Visit
+                            {advancePercent}% advance confirms your slot
                           </span>
                         </div>
-                        {form.advancePaymentVerified ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full">
-                            <Check className="w-3.5 h-3.5" />
-                            Token Paid (Ref: {form.advancePaymentRef})
-                          </span>
-                        ) : (
-                          <span className="text-[11px] font-semibold text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full">
-                            Advance Token Required: {formatPrice(advanceRequired)}
-                          </span>
-                        )}
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full">
+                          <Lock className="w-3.5 h-3.5" />
+                          Verified checkout
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="rounded-xl bg-white/80 border border-amber-200 px-2 py-2">
+                          <span className="block text-[10px] uppercase tracking-wider text-[#4A4A4A]">Total</span>
+                          <strong className="text-sm">{formatPrice(totalEstimatedAmount)}</strong>
+                        </div>
+                        <div className="rounded-xl bg-white/80 border border-amber-300 px-2 py-2">
+                          <span className="block text-[10px] uppercase tracking-wider text-[#4A4A4A]">Pay now</span>
+                          <strong className="text-sm text-[#B45309]">{formatPrice(advanceRequired)}</strong>
+                        </div>
+                        <div className="rounded-xl bg-white/80 border border-amber-200 px-2 py-2">
+                          <span className="block text-[10px] uppercase tracking-wider text-[#4A4A4A]">Balance</span>
+                          <strong className="text-sm">{formatPrice(balanceAtDoorstep)}</strong>
+                        </div>
                       </div>
                       <p className="text-amber-800 text-[11px] leading-relaxed">
-                        To confirm a home visit and reserve your beauty artist, a small token deposit of{' '}
-                        <strong>{formatPrice(advanceRequired)}</strong> is required. The remaining{' '}
-                        <strong>{formatPrice(balanceAtDoorstep)}</strong> is payable after your service.
+                        Press <strong>Pay &amp; Confirm</strong> to reserve this slot. The secure checkout opens next;
+                        your booking is confirmed only after the payment is verified on the server.
+                        {payConfig?.mock ? ' Test mode is active — no real money is charged.' : ''}
                       </p>
-                      {!form.advancePaymentVerified && (
-                        <button
-                          type="button"
-                          onClick={() => setIsPaymentModalOpen(true)}
-                          className="action-base primary-action action-sm mt-1 cursor-pointer"
-                        >
-                          <CreditCard className="w-3.5 h-3.5" />
-                          <span>Pay Advance Token ({formatPrice(advanceRequired)})</span>
-                        </button>
-                      )}
                     </div>
                   )}
 
@@ -1741,11 +1826,15 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                         )}
                       </div>
                       <p className="text-[11px] text-[#10B981] font-semibold mt-0.5">
-                        {form.locationType === 'salon'
-                          ? '✓ Zero advance needed for salon visits — pay after your service'
-                          : form.advancePaymentVerified
-                          ? `✓ Advance ${formatPrice(advanceRequired)} verified • Balance ${formatPrice(balanceAtDoorstep)} after service`
-                          : `Requires ${formatPrice(advanceRequired)} advance token to dispatch artist`}
+                        {paymentConfirmedHere
+                          ? `✓ Advance ${formatPrice(advanceRequired)} verified by the server • Balance ${formatPrice(
+                              balanceAtDoorstep
+                            )} payable at the salon`
+                          : paymentRequired
+                            ? `Pay ${formatPrice(advanceRequired)} now (${advancePercent}% advance) to confirm • Balance ${formatPrice(
+                                balanceAtDoorstep
+                              )} at the salon`
+                            : '✓ No advance configured — your request will be confirmed by the salon'}
                       </p>
                     </div>
 
@@ -1768,7 +1857,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                       >
                         {submitState === 'submitting' ? (
                           <>
-                            <Loader2 className="w-4 h-4 animate-spin" /> Confirming…
+                            <Loader2 className="w-4 h-4 animate-spin" /> Reserving slot…
                           </>
                         ) : isSlotFull ? (
                           waitlistStatus === 'success' ? (
@@ -1776,8 +1865,8 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                           ) : (
                             'Join Waitlist'
                           )
-                        ) : form.locationType === 'home' && !form.advancePaymentVerified ? (
-                          `Pay ${formatPrice(advanceRequired)} Token & Reserve`
+                        ) : paymentRequired ? (
+                          `Pay ${formatPrice(advanceRequired)} & Confirm`
                         ) : (
                           t('bookingConfirmBtn')
                         )}
@@ -1823,10 +1912,14 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
               )}
             </form>
           ) : (
-            /* Confirmation State */
+            /* Confirmation / pending-payment state */
             <div className="p-8 sm:p-12 text-center space-y-6">
-              <div className="w-16 h-16 rounded-full bg-[#10B981]/15 text-[#10B981] flex items-center justify-center mx-auto">
-                <CheckCircle2 className="w-10 h-10" />
+              <div
+                className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto ${
+                  paymentConfirmedHere ? 'bg-[#10B981]/15 text-[#10B981]' : 'bg-amber-100 text-amber-600'
+                }`}
+              >
+                {paymentConfirmedHere ? <CheckCircle2 className="w-10 h-10" /> : <Clock className="w-10 h-10" />}
               </div>
 
               <div className="space-y-2">
@@ -1834,13 +1927,31 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                   Booking Reference: #{bookingRefCode}
                 </span>
                 <h3 className="font-serif text-3xl font-bold text-[#0F172A]">
-                  Thank You, {form.fullName}!
+                  {paymentConfirmedHere ? `Booking Confirmed! Thank You, ${form.fullName}!` : `Almost there, ${form.fullName}!`}
                 </h3>
                 <p className="text-sm text-[#4A4A4A] max-w-md mx-auto">
-                  Your appointment request for <strong>{form.selectedService}</strong> on{' '}
-                  <strong>{form.appointmentDate}</strong> at <strong>{form.timeSlot}</strong> is ready.
+                  {paymentConfirmedHere ? (
+                    <>
+                      Your appointment for <strong>{form.selectedService}</strong> on{' '}
+                      <strong>{form.appointmentDate}</strong> at <strong>{form.timeSlot}</strong> is confirmed and the
+                      advance payment has been verified.
+                    </>
+                  ) : (
+                    <>
+                      Your slot for <strong>{form.selectedService}</strong> on{' '}
+                      <strong>{form.appointmentDate}</strong> at <strong>{form.timeSlot}</strong> is held, but the
+                      booking is <strong>not confirmed</strong> until the advance payment is verified.
+                    </>
+                  )}
                 </p>
               </div>
+
+              {!paymentConfirmedHere && paymentNotice && (
+                <div className="mx-auto flex max-w-md items-start gap-2 rounded-2xl border border-amber-300 bg-amber-50 p-3.5 text-left text-xs text-amber-900">
+                  <Lock className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{paymentNotice}</span>
+                </div>
+              )}
 
               <div className="bg-[#FAF5E5] rounded-2xl p-5 max-w-md mx-auto text-left text-xs space-y-2 border border-[#0F172A]/10">
                 <div className="flex justify-between">
@@ -1871,166 +1982,110 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                   <span>Total Amount:</span>
                   <span>{formatPrice(totalEstimatedAmount)}</span>
                 </div>
+                {paymentRequired && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-[#4A4A4A]">Advance {paymentConfirmedHere ? 'paid' : 'due now'}:</span>
+                      <span className="font-semibold text-[#D09A40]">{formatPrice(advanceRequired)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#4A4A4A]">Remaining balance:</span>
+                      <span className="font-semibold">{formatPrice(balanceAtDoorstep)}</span>
+                    </div>
+                  </>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-[#4A4A4A]">Payment status:</span>
+                  <span
+                    className={`font-bold ${
+                      paymentConfirmedHere ? 'text-emerald-700' : 'text-amber-700'
+                    }`}
+                  >
+                    {paymentConfirmedHere
+                      ? 'Advance verified'
+                      : serverBooking?.paymentStatus || paymentState || 'pending'}
+                  </span>
+                </div>
               </div>
 
               <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-4">
-                <a
-                  href={buildWhatsAppBookingUrl()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#10B981] hover:bg-[#059669] text-white font-bold text-sm px-7 py-4 rounded-xl shadow-lg transition-all"
-                >
-                  <WhatsAppIcon className="w-4 h-4" />
-                  <span>Send Booking on WhatsApp for Instant Slot Lock</span>
-                </a>
-                <button
-                  onClick={() => setIsSubmitted(false)}
-                  className="action-base secondary-action action-lg w-full sm:w-auto"
-                >
-                  Modify Details
-                </button>
+                {paymentConfirmedHere ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsSummaryModalOpen(true)}
+                      className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#0F172A] hover:bg-[#1E293B] text-[#FAF5E5] font-bold text-sm px-7 py-4 rounded-xl shadow-lg transition-all"
+                    >
+                      <Calendar className="w-4 h-4" />
+                      <span>View confirmation &amp; calendar</span>
+                    </button>
+                    <a
+                      href={buildWhatsAppBookingUrl()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#10B981] hover:bg-[#059669] text-white font-bold text-sm px-7 py-4 rounded-xl shadow-lg transition-all"
+                    >
+                      <WhatsAppIcon className="w-4 h-4" />
+                      <span>Send confirmation on WhatsApp</span>
+                    </a>
+                  </>
+                ) : (
+                  <>
+                    {paymentRequired && (
+                      <button
+                        type="button"
+                        onClick={retryPayment}
+                        className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#D09A40] hover:bg-[#B3822F] text-[#0F172A] font-bold text-sm px-7 py-4 rounded-xl shadow-lg transition-all"
+                      >
+                        <Lock className="w-4 h-4" />
+                        <span>Pay {formatPrice(advanceRequired)} now</span>
+                      </button>
+                    )}
+                    {paymentRequired && (
+                      <button
+                        type="button"
+                        onClick={() => setIsSummaryModalOpen(true)}
+                        className="action-base secondary-action action-lg w-full sm:w-auto"
+                      >
+                        View booking status
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSubmitted(false);
+                        setPaymentState('idle');
+                        setPaymentNotice('');
+                        setServerBooking(null);
+                      }}
+                      className="action-base secondary-action action-lg w-full sm:w-auto"
+                    >
+                      Modify Details
+                    </button>
+                  </>
+                )}
               </div>
+
+              {!paymentConfirmedHere && (
+                <p className="mx-auto max-w-md text-[11px] leading-relaxed text-[#4A4A4A]">
+                  Calendar downloads, confirmation notifications and the WhatsApp fast-lane unlock automatically once
+                  the payment is verified.
+                  {payConfig?.mock ? ' This environment is running the mock (test) payment provider.' : ''}
+                </p>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* UPI / Card Advance Token Modal for Home Service */}
-      {isPaymentModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F172A]/80 backdrop-blur-sm">
-          <div className="bg-white text-[#0F172A] rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl relative border border-[#D09A40]/40">
-            <button
-              type="button"
-              aria-label="Close payment dialog"
-              onClick={() => setIsPaymentModalOpen(false)}
-              className="action-base ghost-action action-sm absolute top-3 right-3"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="text-center mb-5">
-              <div className="w-12 h-12 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center mx-auto mb-3">
-                <ShieldCheck className="w-6 h-6" />
-              </div>
-              <h3 className="font-serif text-2xl font-bold text-[#0F172A]">
-                Pay Home Visit Token
-              </h3>
-              <p className="text-xs text-[#4A4A4A] mt-1">
-                For Doorstep Service in {form.locality} (~{form.distanceKm} km)
-              </p>
-            </div>
-
-            <div className="bg-[#FAF5E5] rounded-2xl p-4 text-xs space-y-1.5 mb-5 border border-[#D09A40]/30">
-              <div className="flex justify-between">
-                <span className="text-[#4A4A4A]">Selected Service:</span>
-                <span className="font-semibold text-right max-w-[200px] truncate">
-                  {form.selectedService}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#4A4A4A]">Travel Charge:</span>
-                <span className="font-semibold">{formatPrice(distanceFee)}</span>
-              </div>
-              <div className="flex justify-between border-t border-[#0F172A]/10 pt-2 font-bold text-[#0F172A]">
-                <span>Advance Token Payable Now:</span>
-                <span className="text-sm text-[#D09A40]">{formatPrice(advanceRequired)}</span>
-              </div>
-            </div>
-
-            {/* Method Toggle */}
-            <div className="grid grid-cols-2 gap-2 mb-4 text-xs">
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, advancePaymentMethod: 'upi' })}
-                className={`py-2 px-3 rounded-xl border font-bold cursor-pointer ${
-                  form.advancePaymentMethod === 'upi'
-                    ? 'bg-[#0F172A] text-[#FAF5E5] border-[#0F172A]'
-                    : 'bg-[#FAF5E5] text-[#0F172A] border-[#0F172A]/15'
-                }`}
-              >
-                UPI / QR Scan
-              </button>
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, advancePaymentMethod: 'card' })}
-                className={`py-2 px-3 rounded-xl border font-bold cursor-pointer ${
-                  form.advancePaymentMethod === 'card'
-                    ? 'bg-[#0F172A] text-[#FAF5E5] border-[#0F172A]'
-                    : 'bg-[#FAF5E5] text-[#0F172A] border-[#0F172A]/15'
-                }`}
-              >
-                Debit / Credit Card
-              </button>
-            </div>
-
-            {form.advancePaymentMethod === 'upi' ? (
-              <div className="space-y-4 text-center">
-                <div className="w-36 h-36 bg-[#FAF5E5] border-2 border-dashed border-[#D09A40] rounded-2xl mx-auto flex flex-col items-center justify-center p-3">
-                  <QrCode className="w-20 h-20 text-[#0F172A]" />
-                  <span className="text-[10px] text-[#4A4A4A] mt-1 font-medium">
-                    GPay • PhonePe • Paytm
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between bg-[#FAF5E5] rounded-xl px-3.5 py-2.5 text-xs border border-[#0F172A]/10">
-                  <span className="font-mono font-semibold text-[#0F172A]">
-                    {brand.upiId}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleCopyUpi}
-                    className="text-xs text-[#D09A40] font-bold flex items-center gap-1 cursor-pointer"
-                  >
-                    {copiedUpi ? (
-                      <Check className="w-3.5 h-3.5 text-[#10B981]" />
-                    ) : (
-                      <Copy className="w-3.5 h-3.5" />
-                    )}
-                    <span>{copiedUpi ? 'Copied' : 'Copy UPI'}</span>
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleVerifyAdvancePayment}
-                  className="w-full py-3.5 px-4 text-xs font-bold text-white bg-[#10B981] hover:bg-[#059669] rounded-xl transition-colors cursor-pointer shadow-md flex items-center justify-center gap-2"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Confirm Token Paid ({formatPrice(advanceRequired)})</span>
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <input
-                  type="text"
-                  placeholder="Card Number (XXXX XXXX XXXX)"
-                  className="w-full px-3.5 py-2.5 text-xs border border-[#0F172A]/20 rounded-xl"
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="text"
-                    placeholder="MM / YY"
-                    className="w-full px-3.5 py-2.5 text-xs border border-[#0F172A]/20 rounded-xl"
-                  />
-                  <input
-                    type="password"
-                    maxLength={3}
-                    placeholder="CVV"
-                    className="w-full px-3.5 py-2.5 text-xs border border-[#0F172A]/20 rounded-xl"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={handleVerifyAdvancePayment}
-                  className="w-full py-3.5 px-4 text-xs font-bold text-white bg-[#10B981] hover:bg-[#059669] rounded-xl transition-colors cursor-pointer"
-                >
-                  Pay {formatPrice(advanceRequired)} & Verify
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <PaymentCheckout
+        open={isCheckoutOpen && Boolean(checkoutBooking)}
+        booking={checkoutBooking}
+        config={payConfig}
+        theme={{ accent: '#D09A40', primary: '#0F172A', background: '#FAF5E5', surface: '#FFFFFF' }}
+        onClose={handleCheckoutClose}
+        onConfirmed={handlePaymentConfirmed}
+      />
       <BookingSummaryModal
         isOpen={isSummaryModalOpen}
         onClose={() => setIsSummaryModalOpen(false)}
@@ -2038,6 +2093,13 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
         form={form}
         serviceTitle={form.selectedService}
         price={formatPrice(totalEstimatedAmount)}
+        confirmed={paymentConfirmedHere}
+        paymentStatus={serverBooking?.paymentStatus || paymentState}
+        salonName={payConfig?.mock ? `${brand.brandName} (test payments)` : brand.brandName}
+        amountPaise={serverBooking?.amountPaise ?? Math.round(totalEstimatedAmount * 100)}
+        advancePaise={serverBooking?.advancePaise ?? Math.round(advanceRequired * 100)}
+        remainingPaise={serverBooking?.remainingPaise ?? Math.round(balanceAtDoorstep * 100)}
+        onRetryPayment={retryPayment}
       />
     </section>
   );

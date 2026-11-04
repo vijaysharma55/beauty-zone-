@@ -9,7 +9,7 @@ export function securityHeaders(req, res, next) {
   res.set('Permissions-Policy', 'camera=(), microphone=(self), geolocation=()');
   res.set(
     'Content-Security-Policy',
-    "default-src 'self' 'unsafe-inline' data: blob: https:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://accounts.google.com/gsi/client; frame-src 'self' https: https://accounts.google.com; connect-src 'self' https: wss:; base-uri 'self'; form-action 'self'; frame-ancestors 'self' https://*.google.com https://*.run.app https://*.aistudio.google https://*.cloud.google.com https://localhost.corp.google.com:26001;"
+    "default-src 'self' 'unsafe-inline' data: blob: https:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://accounts.google.com/gsi/client https://checkout.razorpay.com; frame-src 'self' https: https://accounts.google.com https://api.razorpay.com https://checkout.razorpay.com; connect-src 'self' https: wss:; base-uri 'self'; form-action 'self'; frame-ancestors 'self' https://*.google.com https://*.run.app https://*.aistudio.google https://*.cloud.google.com https://localhost.corp.google.com:26001;"
   );
   if (process.env.NODE_ENV === 'production') {
     res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
@@ -175,6 +175,7 @@ export function errorHandler(err, req, res, _next) {
   if (res.headersSent) return;
   res.status(status).json({
     error: status >= 500 ? 'Something went wrong. Please try again.' : err.message,
+    ...(err.code ? { code: err.code } : {}),
   });
 }
 

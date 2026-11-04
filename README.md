@@ -96,16 +96,40 @@ cookies automatically gain the `Secure` flag when `NODE_ENV=production`.
 ### Tests
 
 ```bash
-npm run verify      # lint (tsc --noEmit) → 52 tests → production build
-npm run test:unit   # 11 unit tests: subdomain parsing + slot generation
-npm run test:api    # 40 end-to-end API tests (boots a real server on a temp DB)
-npm run lint        # TypeScript check
+npm run verify        # lint (tsc --noEmit) → all tests → production build
+npm run test:unit     # unit tests: subdomain parsing, slot generation, payments
+npm run test:api      # end-to-end API tests (boots a real server on a temp DB)
+npm run test:payments # mock + Razorpay payment tests (boots three real servers)
+npm run lint          # TypeScript check
 ```
 
 The suite covers the full approval lifecycle (email verification, submit, request changes, resubmit,
 approve, publish, rejected sites, suspension), snapshot isolation for unapproved edits, role gates,
 tenant isolation, CSRF blocking, admin self-protection, password rotation, subdomain tenant
-resolution, availability/slot generation, the booking lifecycle and AI fallback behaviour.
+resolution, availability/slot generation, the booking lifecycle, AI fallback behaviour and the
+payment lifecycle (mock success/failure/pending/cancel, invalid transactions, wrong amounts,
+production blocking, Razorpay signatures and idempotent webhooks).
+
+### Payments (mock test mode by default)
+
+Bookings require a **server-verified advance** (25% by default) before they are confirmed. Local
+development runs a built-in **mock payment provider** — no real money, no Razorpay keys needed, and
+no real UPI/card/bank traffic.
+
+| Test UPI ID | Outcome |
+| --- | --- |
+| `success@mockupi` | Payment succeeds → booking confirmed |
+| `failure@mockupi` | Payment fails → booking stays unconfirmed |
+| `pending@mockupi` | Payment pending → booking stays unconfirmed |
+| `cancel@mockupi` | Payment cancelled → booking stays unconfirmed |
+
+Test cards: `4111111111111111` (success), `4000000000000002` (failure),
+`4000000000000006` (pending). Net banking and wallets use `test_success`,
+`test_failure`, `test_pending`.
+
+Set `PAYMENT_MODE=razorpay` with `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET`
+to switch to Razorpay. Mock mode is blocked when `NODE_ENV=production`. Full setup, API reference,
+security guarantees and test-mode instructions: **[docs/PAYMENTS.md](docs/PAYMENTS.md)**.
 
 ### Email delivery
 
@@ -233,7 +257,14 @@ Staff accept `bookingEnabled` — when `false` the specialist is still shown on 
 `GET /salons` (live only), `GET /salons/:slug` (approved snapshot only), `GET /slug-available?slug=…`,
 `GET /templates`, `GET /tenant` (subdomain → salon resolution),
 `GET /availability?date=YYYY-MM-DD[&slug=…][&duration=60][&slot=30][&tzOffset=…]`,
-`POST /bookings` (create an appointment request).
+`POST /bookings` (create an appointment request — starts as `pending_payment` when an advance is
+due), `GET /bookings/:id` (public status), `GET /bookings/:id/confirmation` (calendar/notification
+payload, `409` until the payment is verified), `POST /waitlist`.
+
+Payment endpoints are mounted at `/api/public/payments` and `/api/payments`:
+`GET /config`, `POST /orders`, `GET /orders/:id`, `POST /mock/checkout`, `POST /mock/complete`,
+`POST /mock/cancel`, `POST /razorpay/verify`, `POST /razorpay/webhook`. See
+[docs/PAYMENTS.md](docs/PAYMENTS.md).
 
 `GET /availability` always answers `200`. Slots are generated from the approved snapshot's opening
 hours, filtered by the service duration and today's lead time, and capped at 48:
@@ -285,6 +316,12 @@ failure is logged with the `[ai]` prefix.
   email is required for submitting and publishing (Google accounts are verified by Google).
 - **Audit log:** registrations, logins, email verifications, submissions, approval decisions,
   suspensions, salon/service/staff changes, publishes, admin actions and settings edits.
+- **Payments:** a booking is only confirmed by a verified payment. Amounts and the advance are
+  computed server-side from the published price; client-supplied payment flags are ignored. Mock
+  transactions must exist in the server ledger for the exact order, with matching amount/currency,
+  and mock mode is rejected when `NODE_ENV=production`. Razorpay checkout responses and webhooks are
+  verified with timing-safe HMAC-SHA256; webhook deliveries are recorded per event id so retries are
+  idempotent, and a unique slot guard prevents two confirmed bookings for the same appointment.
 
 ---
 
@@ -307,23 +344,34 @@ server/
     salon.js        Owner dashboard API (tenant-scoped) + submit/publish
     admin.js        Super admin API + approval review + suspension
     public.js       Approved salon websites, tenant, availability, booking intake
-    bookings.js     Public booking intake + owner inbox (tenant-scoped)
+    bookings.js     Public booking intake + payment-gated confirmation payloads + owner inbox
+    payments.js     Checkout APIs (mock + Razorpay order/verify/webhook)
     ai.js           AI assist endpoints with deterministic fallbacks
+  payments/
+    config.js       PAYMENT_MODE resolution, advance %, test instruments, production blocking
+    amounts.js      Advance/balance maths + mock instrument → outcome mapping
+    service.js      Payment orders, mock ledger, booking confirmation (idempotent), webhooks
+    razorpay.js     Razorpay orders/payment lookup + HMAC signature verification
   tests/api.test.js End-to-end API, RBAC, booking & approval-workflow tests
+  tests/payments.test.js End-to-end mock + Razorpay payment tests
+  tests/payment-unit.test.js Payment config/amount/instrument/signature unit tests
   tests/unit.test.js Subdomain parsing + slot-generation unit tests
 src/
   components/auth/       Login, register, route protection
   components/dashboard/  Owner dashboard pages (incl. bookings, approval status & history)
   components/admin/      Super admin console pages
+  components/payment/    Booking checkout (mock UPI/card/net-banking/wallet + Razorpay)
   components/site/       Public salon website renderer + subdomain resolution + booking panel
   hooks/useTenant.ts     Client-side tenant resolution
   hooks/useAvailability.ts Slot loading with retry + graceful fallback
   context/AuthContext.tsx
   lib/api.ts             Fetch wrapper (ApiError, typed methods)
+  lib/payments.ts        Checkout config/order/verify helpers, paise formatting, Razorpay loader
   lib/supabase.ts        Supabase Auth, PostgREST and Storage client
   lib/sectionStore.ts    Owner-scoped Supabase website content sync
   lib/ai.ts              AI helpers with local fallbacks
 data/                    SQLite database + uploads (gitignored)
+docs/PAYMENTS.md         Mock payment + Razorpay setup, test IDs and API reference
 docs/SUPABASE_RLS.md     Current Supabase RLS, workflow and migration boundary
 AUDIT.md                 End-to-end gap audit & remediation log
 ```

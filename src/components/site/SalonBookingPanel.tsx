@@ -1,8 +1,30 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CalendarDays, CheckCircle2, Clock, Loader2, RefreshCw, Scissors, User as UserIcon } from 'lucide-react';
+import {
+  AlertTriangle,
+  CalendarDays,
+  CheckCircle2,
+  Clock,
+  Download,
+  Loader2,
+  Lock,
+  RefreshCw,
+  Scissors,
+  User as UserIcon,
+} from 'lucide-react';
 import { api, errorMessage } from '../../lib/api';
 import { useAvailability, type Slot } from '../../hooks/useAvailability';
 import type { Salon, SalonService, SalonStaff } from '../../types/auth';
+import { PaymentCheckout } from '../payment/PaymentCheckout';
+import {
+  formatPaise,
+  getBookingConfirmation,
+  getPaymentConfig,
+  type BookingCreationResponse,
+  type CheckoutBooking,
+  type ConfirmationPayload,
+  type PaymentConfig,
+  type PaymentResponse,
+} from '../../lib/payments';
 
 interface SalonBookingPanelProps {
   salon: Salon;
@@ -15,6 +37,7 @@ interface SalonBookingPanelProps {
 }
 
 type SubmitState = 'idle' | 'submitting' | 'done' | 'failed';
+type PaymentState = 'idle' | 'pending' | 'failed' | 'cancelled' | 'confirmed' | 'not_required';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -61,6 +84,27 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
   const [submitError, setSubmitError] = useState('');
   const [reference, setReference] = useState('');
+
+  // Payment state — the server, never this component, decides confirmation.
+  const [payConfig, setPayConfig] = useState<PaymentConfig | null>(null);
+  const [serverBooking, setServerBooking] = useState<CheckoutBooking | null>(null);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [paymentState, setPaymentState] = useState<PaymentState>('idle');
+  const [paymentNotice, setPaymentNotice] = useState('');
+  const [confirmation, setConfirmation] = useState<ConfirmationPayload | null>(null);
+  const [confirmationError, setConfirmationError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    getPaymentConfig()
+      .then((config) => {
+        if (active) setPayConfig(config);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const selectedService = useMemo(
     () => bookableServices.find((s) => s.name === serviceName) || bookableServices[0],
@@ -123,7 +167,16 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
     setErrors({});
     setSubmitState('idle');
     setSubmitError('');
+    setServerBooking(null);
+    setPaymentState('idle');
+    setPaymentNotice('');
+    setConfirmation(null);
+    setConfirmationError('');
+    setCheckoutOpen(false);
   };
+
+  const paymentRequired = Boolean(payConfig?.available && payConfig?.advanceRequired && selectedService?.price);
+  const advancePercent = payConfig?.advancePercent ?? 25;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,7 +192,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
 
     setSubmitState('submitting');
     try {
-      const res = await api.post<{ booking: { reference: string } }>('/public/bookings', {
+      const res = await api.post<BookingCreationResponse>('/public/bookings', {
         slug: salon.slug,
         fullName: fullName.trim(),
         phone: phone.trim(),
@@ -151,15 +204,92 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
         locationType: 'salon',
         branch: salon.city || '',
         notes: notes.trim(),
-        estimatedTotal: selectedService ? Math.round(selectedService.price * 100) : 0,
+        // The server overrides this with the salon's published price.
+        amountPaise: selectedService ? Math.round(selectedService.price * 100) : 0,
       });
-      setReference(res.booking?.reference || '');
+
+      const booking = res.booking as CheckoutBooking;
+      setReference(booking.reference || '');
+      setServerBooking(booking);
       setSubmitState('done');
+
+      if (res.payment?.required) {
+        if (!payConfig) {
+          try {
+            setPayConfig(await getPaymentConfig());
+          } catch {
+            // The checkout can still render from the order itself.
+          }
+        }
+        setPaymentState('pending');
+        setPaymentNotice(
+          `Pay ${formatPaise(res.payment.advancePaise)} now to confirm. The remaining ${formatPaise(
+            res.payment.remainingPaise
+          )} is payable at the salon.`
+        );
+        setCheckoutOpen(true);
+      } else {
+        setPaymentState('not_required');
+        setPaymentNotice('Your request is saved. The salon will confirm your appointment.');
+      }
     } catch (err) {
       console.error('[salon booking] failed', err);
       setSubmitState('failed');
       setSubmitError(errorMessage(err));
     }
+  };
+
+  const handlePaymentConfirmed = (result: PaymentResponse) => {
+    const booking = (result.booking as CheckoutBooking | undefined) || serverBooking;
+    if (booking) setServerBooking(booking);
+    setPaymentState('confirmed');
+    setCheckoutOpen(false);
+    setPaymentNotice('Payment verified. Your appointment is confirmed.');
+  };
+
+  const handleCheckoutClose = (reason: 'dismissed' | 'cancelled') => {
+    setCheckoutOpen(false);
+    setPaymentState(reason === 'cancelled' ? 'cancelled' : 'pending');
+    setPaymentNotice(
+      reason === 'cancelled'
+        ? 'Payment cancelled — the booking is not confirmed. You can retry the payment while the slot is held.'
+        : 'Payment not completed — the booking stays unconfirmed until the advance is verified.'
+    );
+  };
+
+  // Calendar / confirmation details come from the server, which refuses to
+  // return them for an unpaid booking.
+  useEffect(() => {
+    if (submitState !== 'done' || !serverBooking?.confirmed) return;
+    let active = true;
+    getBookingConfirmation(serverBooking.id)
+      .then((data) => {
+        if (active) {
+          setConfirmation(data);
+          setConfirmationError('');
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          setConfirmation(null);
+          setConfirmationError(errorMessage(err));
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [submitState, serverBooking?.confirmed, serverBooking?.id]);
+
+  const downloadIcs = () => {
+    const ics = confirmation?.calendar?.ics;
+    if (!ics) return;
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = window.URL.createObjectURL(blob);
+    link.setAttribute('download', `booking-${serverBooking?.reference || 'appointment'}.ics`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const inputStyle: React.CSSProperties = {
@@ -185,48 +315,156 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
   if (bookableServices.length === 0) return null;
 
   if (submitState === 'done') {
+    const confirmed = paymentState === 'confirmed' && Boolean(serverBooking?.confirmed);
+    const pending = !confirmed;
     return (
       <section id="book" className="scroll-mt-24 py-16" style={{ backgroundColor: `${accent}12` }}>
         <div className="mx-auto max-w-2xl px-4 sm:px-6">
           <div
             className="rounded-2xl border p-8 text-center"
-            style={{ borderColor: `${accent}44`, backgroundColor: surface }}
+            style={{ borderColor: confirmed ? `${accent}44` : '#fcd34d', backgroundColor: surface }}
           >
             <div
               className="mx-auto flex h-14 w-14 items-center justify-center rounded-full"
-              style={{ backgroundColor: 'rgba(16,185,129,0.14)', color: '#047857' }}
+              style={
+                confirmed
+                  ? { backgroundColor: 'rgba(16,185,129,0.14)', color: '#047857' }
+                  : { backgroundColor: 'rgba(245,158,11,0.16)', color: '#b45309' }
+              }
             >
-              <CheckCircle2 className="h-7 w-7" />
+              {confirmed ? <CheckCircle2 className="h-7 w-7" /> : <Clock className="h-7 w-7" />}
             </div>
             <h2 className="mt-4 font-serif text-2xl font-bold" style={{ color: primary }}>
-              Request received
+              {confirmed ? 'Booking Confirmed!' : 'Awaiting payment'}
             </h2>
             <p className="mt-2 text-sm" style={{ color: `${primary}AA` }}>
-              Thanks {fullName.trim()}! {salon.name} will confirm your appointment for{' '}
-              <strong>{serviceName}</strong> on <strong>{date}</strong> at <strong>{time}</strong>.
+              {confirmed ? (
+                <>
+                  Thanks {fullName.trim()}! {salon.name} has your appointment for{' '}
+                  <strong>{serviceName}</strong> on <strong>{date}</strong> at <strong>{time}</strong>.
+                </>
+              ) : (
+                <>
+                  Your slot for <strong>{serviceName}</strong> on <strong>{date}</strong> at{' '}
+                  <strong>{time}</strong> is held, but the booking is <strong>not confirmed</strong> until
+                  the advance payment is verified.
+                </>
+              )}
             </p>
             {reference && (
               <p className="mt-3 text-xs font-mono font-semibold" style={{ color: accent }}>
                 Reference: {reference}
               </p>
             )}
+
+            {pending && paymentNotice && (
+              <div
+                className="mx-auto mt-4 flex max-w-md items-start gap-2 rounded-xl border px-3.5 py-2.5 text-left text-xs"
+                style={{ borderColor: '#fcd34d', backgroundColor: '#fffbeb', color: '#92400e' }}
+              >
+                <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>{paymentNotice}</span>
+              </div>
+            )}
+
+            {confirmed && (
+              <div className="mx-auto mt-4 max-w-md rounded-xl border px-4 py-3 text-left text-xs" style={{ borderColor: `${primary}18`, backgroundColor: background }}>
+                <div className="flex justify-between">
+                  <span style={{ color: `${primary}99` }}>Advance paid</span>
+                  <span className="font-semibold" style={{ color: primary }}>
+                    {formatPaise(serverBooking?.advancePaise || 0)}
+                  </span>
+                </div>
+                <div className="mt-1 flex justify-between">
+                  <span style={{ color: `${primary}99` }}>Balance at salon</span>
+                  <span className="font-semibold" style={{ color: primary }}>
+                    {formatPaise(serverBooking?.remainingPaise || 0)}
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="mt-6 flex flex-wrap justify-center gap-2">
-              {whatsappUrl && (
+              {confirmed && confirmation?.calendar?.googleUrl && (
                 <a
-                  href={whatsappUrl}
+                  href={confirmation.calendar.googleUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="action-base primary-action action-md"
                 >
-                  Send on WhatsApp too
+                  <CalendarDays className="h-4 w-4" /> Add to Google Calendar
                 </a>
               )}
+              {confirmed && confirmation?.calendar?.ics && (
+                <button type="button" onClick={downloadIcs} className="action-base secondary-action action-md">
+                  <Download className="h-4 w-4" /> Download iCal
+                </button>
+              )}
+              {!confirmed && selectedService && (
+                <button
+                  type="button"
+                  onClick={() => setCheckoutOpen(true)}
+                  className="action-base primary-action action-md"
+                >
+                  <Lock className="h-4 w-4" /> Pay{' '}
+                  {formatPaise(
+                    serverBooking?.advancePaise ??
+                      Math.round((selectedService.price * 100 * advancePercent) / 100)
+                  )}{' '}
+                  now
+                </button>
+              )}
+              {confirmed &&
+                (confirmation?.calendar?.whatsappUrl ? (
+                  <a
+                    href={confirmation.calendar.whatsappUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="action-base secondary-action action-md"
+                  >
+                    Send confirmation on WhatsApp
+                  </a>
+                ) : whatsappUrl ? (
+                  <a href={whatsappUrl} target="_blank" rel="noreferrer" className="action-base secondary-action action-md">
+                    Send on WhatsApp
+                  </a>
+                ) : null)}
               <button type="button" onClick={reset} className="action-base secondary-action action-md">
                 Book another service
               </button>
             </div>
+
+            {confirmationError && (
+              <p className="mt-3 text-[11px]" style={{ color: '#b45309' }}>
+                {confirmationError}
+              </p>
+            )}
+            {pending && (
+              <p className="mx-auto mt-4 max-w-md text-[11px] leading-relaxed" style={{ color: `${primary}77` }}>
+                Calendar downloads and confirmation notifications unlock automatically after the server verifies
+                the payment.
+                {payConfig?.mock ? ' Test mode is active — no real money is charged.' : ''}
+              </p>
+            )}
           </div>
         </div>
+
+        <PaymentCheckout
+          open={checkoutOpen && Boolean(serverBooking)}
+          booking={
+            serverBooking
+              ? {
+                  ...serverBooking,
+                  salonName: salon.name,
+                  locationLabel: salon.city || salon.addressLine || '',
+                }
+              : null
+          }
+          config={payConfig}
+          theme={{ accent, primary, background, surface }}
+          onClose={handleCheckoutClose}
+          onConfirmed={handlePaymentConfirmed}
+        />
       </section>
     );
   }
@@ -445,10 +683,34 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
           </div>
 
           {selectedService && (
-            <p className="mt-4 text-sm" style={{ color: `${primary}AA` }}>
-              Estimated total{' '}
-              <strong style={{ color: primary }}>{money(selectedService.price)}</strong> · {duration} minutes
-            </p>
+            <div className="mt-4 rounded-xl border px-3.5 py-3 text-sm" style={{ borderColor: `${accent}33`, backgroundColor: background, color: `${primary}AA` }}>
+              <p>
+                Estimated total{' '}
+                <strong style={{ color: primary }}>{money(selectedService.price)}</strong> · {duration} minutes
+              </p>
+              {paymentRequired && (
+                <p className="mt-1 text-xs">
+                  Advance to confirm:{' '}
+                  <strong style={{ color: primary }}>
+                    {formatPaise(
+                      Math.min(
+                        Math.round(selectedService.price * 100),
+                        Math.max(
+                          Math.min(1000, Math.round(selectedService.price * 100)),
+                          Math.round((selectedService.price * 100 * advancePercent) / 100)
+                        )
+                      )
+                    )}
+                  </strong>{' '}
+                  ({advancePercent}%) · balance at the salon
+                </p>
+              )}
+              {payConfig?.mock && (
+                <p className="mt-1 text-[11px] font-semibold" style={{ color: '#b45309' }}>
+                  TEST MODE — No real money will be charged.
+                </p>
+              )}
+            </div>
           )}
 
           {submitState === 'failed' && submitError && (
@@ -489,7 +751,9 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
               )}
             </button>
             <p className="text-xs" style={{ color: `${primary}88` }}>
-              No payment needed now — pay at the salon.
+              {paymentRequired
+                ? `You will pay the ${advancePercent}% advance on the next step.`
+                : 'No online payment is configured — the salon will confirm your request.'}
             </p>
           </div>
         </form>
