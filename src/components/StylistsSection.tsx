@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Stylist, GalleryItem } from '../types';
-import { Award, Star, MapPin, Calendar, Sparkles, CheckCircle2, X, Eye, Plus, Camera, ImagePlus, Loader2, Trash2, MessageCircle, Briefcase } from 'lucide-react';
+import { Award, Star, MapPin, Calendar, Sparkles, CheckCircle2, X, Eye, Plus, Camera, ImagePlus, Loader2, Trash2, MessageCircle, Briefcase, Heart, UserPlus } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
 import { SmartImage } from './crud/SmartImage';
 import { ItemActions } from './crud/ItemActions';
@@ -140,12 +140,32 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
   const [selectedStylist, setSelectedStylist] = useState<Stylist | null>(null);
   const [chatWithStylist, setChatWithStylist] = useState<Stylist | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'bridal' | 'hair' | 'skin' | 'nails'>('all');
+  const [followedStylists, setFollowedStylists] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('followed_stylists');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const manager = useCardCollection<Stylist>(
     brand.stylists,
     (next) => updateBrand({ stylists: next }),
     'Stylist'
   );
+
+  const toggleFollow = (stylistId: string, name: string) => {
+    setFollowedStylists((prev) => {
+      const isFollowing = prev.includes(stylistId);
+      const next = isFollowing ? prev.filter((id) => id !== stylistId) : [...prev, stylistId];
+      localStorage.setItem('followed_stylists', JSON.stringify(next));
+      if (!isFollowing) {
+        manager.notify(`You're now following ${name.split(' ')[0]} for special offers!`);
+      }
+      return next;
+    });
+  };
 
   const filteredStylists =
     activeFilter === 'all'
@@ -286,8 +306,11 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
           {filteredStylists.map((stylist) => (
             <div
               key={stylist.id}
-              className="relative w-full bg-white rounded-3xl overflow-hidden border border-[#0F172A]/10 elevation-subtle card-lift flex flex-col justify-between group h-full"
+              className="relative w-full bg-white rounded-3xl overflow-hidden border border-[#0F172A]/10 elevation-subtle flex flex-col justify-between group h-full transition-all duration-500 hover:scale-[1.02] hover:shadow-2xl hover:border-[#D09A40]/40"
             >
+              {/* Glass-morphism Hover Overlay */}
+              <div className="absolute inset-0 z-20 bg-white/10 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none ring-1 ring-white/20 inset-0" />
+
               {manager.canManage && (
                 <ItemActions
                   itemLabel="stylist"
@@ -297,9 +320,9 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
                   onDelete={() => removeStylist(stylist.id)}
                 />
               )}
-              <div>
+              <div className="relative z-30 flex flex-col h-full pointer-events-none">
                 {/* Portrait Header */}
-                <div className="relative h-80 w-full overflow-hidden bg-[#0F172A]">
+                <div className="relative h-80 w-full overflow-hidden bg-[#0F172A] pointer-events-auto">
                   <SmartImage
                     src={stylist.avatar}
                     alt={stylist.name}
@@ -344,9 +367,25 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
 
                   {/* Name & Title Overlay */}
                   <div className="absolute bottom-3.5 left-4 right-4 text-[#FAF5E5]">
-                    <p className="text-[11px] uppercase tracking-wider text-[#D09A40] font-bold">
-                      {stylist.role}
-                    </p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[11px] uppercase tracking-wider text-[#D09A40] font-bold">
+                        {stylist.role}
+                      </p>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFollow(stylist.id, stylist.name);
+                        }}
+                        className={`p-1.5 rounded-full backdrop-blur-md border transition-all ${
+                          followedStylists.includes(stylist.id)
+                            ? 'bg-red-500 border-red-500 text-white scale-110'
+                            : 'bg-white/10 border-white/20 text-white hover:bg-white/20 hover:scale-105'
+                        }`}
+                        title={followedStylists.includes(stylist.id) ? 'Unfollow' : 'Follow for updates'}
+                      >
+                        <Heart className={`w-3.5 h-3.5 ${followedStylists.includes(stylist.id) ? 'fill-current' : ''}`} />
+                      </button>
+                    </div>
                     <h3 className="font-serif text-xl font-bold leading-snug mt-0.5">
                       {stylist.name}
                     </h3>
@@ -382,7 +421,7 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
                 </div>
 
                 {/* Bio & Specialties */}
-                <div className="p-5 space-y-4">
+                <div className="p-5 space-y-4 pointer-events-auto">
                   <p className="text-xs text-[#4A4A4A] leading-relaxed line-clamp-3">
                     {stylist.bio}
                   </p>
@@ -406,7 +445,7 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
               </div>
 
               {/* Card Footer CTAs */}
-              <div className="px-5 pb-5 pt-2 space-y-2">
+              <div className="px-5 pb-5 pt-2 space-y-2 relative z-30">
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => setSelectedStylist(stylist)}
@@ -423,13 +462,35 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
                     <span>Inquiry</span>
                   </button>
                 </div>
-                <button
-                  onClick={() => onBookWithStylist(stylist.name, stylist.branch)}
-                  className="w-full py-2.5 px-3 rounded-xl bg-[#0F172A] hover:bg-[#D09A40] text-[#FAF5E5] hover:text-[#0F172A] font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
-                >
-                  <Calendar className="w-3.5 h-3.5" />
-                  <span>Book with {stylist.name.split(' ')[0]}</span>
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => toggleFollow(stylist.id, stylist.name)}
+                    className={`py-2.5 px-3 rounded-xl border font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      followedStylists.includes(stylist.id)
+                        ? 'bg-red-50 border-red-200 text-red-600'
+                        : 'bg-[#0F172A]/5 border-[#0F172A]/10 text-[#0F172A] hover:bg-[#0F172A]/10'
+                    }`}
+                  >
+                    {followedStylists.includes(stylist.id) ? (
+                      <>
+                        <Heart className="w-3.5 h-3.5 fill-current" />
+                        <span>Following</span>
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="w-3.5 h-3.5" />
+                        <span>Follow</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => onBookWithStylist(stylist.name, stylist.branch)}
+                    className="py-2.5 px-3 rounded-xl bg-[#0F172A] hover:bg-[#D09A40] text-[#FAF5E5] hover:text-[#0F172A] font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>Book Now</span>
+                  </button>
+                </div>
               </div>
             </div>
           ))}
