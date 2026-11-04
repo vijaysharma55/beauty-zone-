@@ -100,10 +100,21 @@ function encryptedExport(value,passphrase){
   const cipher=crypto.createCipheriv('aes-256-gcm',key,iv);
   const encrypted=Buffer.concat([cipher.update(JSON.stringify(value),'utf8'),cipher.final()]);
   const tag=cipher.getAuthTag();
-  return ['BZEXPORT1',salt.toString('base64'),iv.toString('base64'),tag.toString('base64'),encrypted.toString('base64')].join('\\n')+'\\n';
+  return ['BZEXPORT1',salt.toString('base64'),iv.toString('base64'),tag.toString('base64'),encrypted.toString('base64')].join(String.fromCharCode(10))+String.fromCharCode(10);
 }
 async function listAuthUsers(){const byEmail=new Map();let page=1;for(;;){const data=await supa('/auth/v1/admin/users?page='+page+'&per_page=500');const users=Array.isArray(data?.users)?data.users:[];for(const u of users)if(u.email)byEmail.set(cleanEmail(u.email),u);if(users.length<500)break;page++;}return byEmail;}
 async function upsertTable(name,rows){if(!rows.length)return {source:0,inserted:0};let inserted=0;for(const batch of chunks(rows,100)){const data=await supa('/rest/v1/'+name+'?on_conflict='+(name==='platform_settings'?'key':'id'),{method:'POST',headers:{Prefer:'resolution=ignore-duplicates,return=representation'},body:JSON.stringify(batch)});inserted+=Array.isArray(data)?data.length:0;}return {source:rows.length,inserted,skipped:rows.length-inserted};}
+async function reconcileTable(name,rows,key='id'){
+  if(!rows.length)return {expected:0,found:0,missing:0};
+  let found=0;
+  const values=[...new Set(rows.map(x=>x[key]).filter(Boolean).map(String))];
+  for(const batch of chunks(values,80)){
+    const filter=batch.join(',');
+    const result=await supa('/rest/v1/'+name+'?select='+key+'&'+key+'=in.('+encodeURIComponent(filter)+')',{method:'GET'});
+    found+=Array.isArray(result)?result.length:0;
+  }
+  return {expected:values.length,found,missing:Math.max(0,values.length-found)};
+}
 
 export async function runMigration({apply=false,sendRecovery=false,exportPath=null}={}){
   if(!fs.existsSync(SQLITE_PATH))throw new Error('SQLite database not found at '+SQLITE_PATH);
@@ -138,7 +149,15 @@ export async function runMigration({apply=false,sendRecovery=false,exportPath=nu
     for(const table of order){try{report.imported[table]=await upsertTable(table,importRows[table]);}catch(error){report.imported[table]={source:importRows[table].length,error:error.message};report.failedTable=table;break;}}
     report.identity.needsGoogleProviderLink=report.legacyGoogleCount;
     report.reconciliation.legacyGoogleAccountsNeedProviderRelink=report.legacyGoogleCount;
-    report.reconciliation={profilesExpected:plan.profiles.length,profilesMapped:profileMap.size,foreignKeysMappedByStableIds:true,passwordHashesMigrated:false,sessionsMigrated:false};
+    const reconciliation={};
+    const profileRows=plan.profiles.map(p=>({legacy_user_id:p.legacyId}));
+    reconciliation.profiles=await reconcileTable('profiles',profileRows,'legacy_user_id');
+    for(const table of order) reconciliation[table]=await reconcileTable(table,importRows[table]);
+    report.reconciliation={
+      profilesExpected:plan.profiles.length,profilesMapped:profileMap.size,tables:reconciliation,
+      foreignKeysEnforcedByPostgres:true,passwordHashesMigrated:false,sessionsMigrated:false,
+      legacyGoogleAccountsNeedProviderRelink:report.legacyGoogleCount,
+    };
     return report;
   }finally{db.close();}
 }
