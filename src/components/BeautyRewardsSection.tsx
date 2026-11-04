@@ -103,6 +103,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
   const handleSelectCustomer = (demoCust: LoyaltyCustomer) => {
     setCustomer(demoCust);
     setLiveCustomer(false);
+    void customerSupabase.auth.signOut();
     setPhoneNumberInput('');
     setOtpPhone('');
     setOtpCode('');
@@ -265,6 +266,8 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
         setLookupNotice('Reward redeemed successfully. Your voucher is saved to your account.');
       } catch (error) {
         alert(error instanceof Error ? error.message : 'Could not redeem this reward.');
+      } finally {
+        setRedeemingOfferId(null);
       }
       return;
     }
