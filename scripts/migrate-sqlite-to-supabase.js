@@ -135,11 +135,13 @@ export async function runMigration({apply=false,sendRecovery=false,exportPath=nu
       let created=false;
       if(!user){
         const password=crypto.randomBytes(48).toString('base64url')+'Aa1!';
-        user=await supa('/auth/v1/admin/users',{method:'POST',body:JSON.stringify({
+        const createdUser=await supa('/auth/v1/admin/users',{method:'POST',body:JSON.stringify({
           email:p.email,password,email_confirm:p.email_verified,
           user_metadata:{name:p.name,legacy_user_id:p.legacyId,legacy_auth_provider:p.legacy_provider},
           app_metadata:{beautyzone_legacy_migration:true},
         })});
+        user=createdUser?.user||createdUser;
+        if(!user?.id)throw new Error('Supabase Auth Admin API did not return the created user ID for '+p.email);
         report.identity.created++;
         created=true;
       }else report.identity.matched++;
