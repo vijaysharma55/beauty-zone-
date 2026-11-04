@@ -34,6 +34,8 @@ export const FoundersNote: React.FC<FoundersNoteProps> = ({ onBookBridalConsult 
                   <img
                     src={brand.founderImage}
                     alt={`${brand.founderName} — ${brand.founderRole}`}
+                    loading="lazy"
+                    decoding="async"
                     referrerPolicy="no-referrer"
                     className="w-full h-64 sm:h-80 object-cover object-center aspect-[4/3]"
                   />
