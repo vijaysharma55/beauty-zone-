@@ -774,6 +774,8 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
                             ? 'Bonus'
                             : act.type === 'referral'
                             ? 'Referral'
+                            : act.type === 'redeem'
+                            ? 'Redemption'
                             : 'Salon Visit'}
                         </span>
                       </div>
@@ -790,7 +792,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
 
                   <div className="text-right sm:shrink-0 w-full sm:w-auto flex sm:flex-col justify-between sm:justify-end items-center sm:items-end">
                     <span className="text-base font-bold text-emerald-700 font-mono">
-                      +{act.pointsEarned} pts
+                      {act.type === 'redeem' ? '−' : '+'}{Math.abs(act.pointsEarned)} pts
                     </span>
                     {act.billAmount > 0 && (
                       <span className="text-[11px] text-[#4A4A4A]">
