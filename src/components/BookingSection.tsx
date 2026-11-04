@@ -30,9 +30,13 @@ import {
   ArrowLeft,
   ChevronRight,
   Sliders,
+  Star,
+  Info,
 } from 'lucide-react';
 import { WhatsAppIcon } from './SocialIcons';
 import { BookingSummaryModal } from './BookingSummaryModal';
+import { StylistSelectGrid, type StylistOption } from './StylistSelectGrid';
+import { StylistProfileModal, type StylistProfile } from './StylistProfileModal';
 import { useBrand } from '../context/BrandContext';
 import { api } from '../lib/api';
 import { useAvailability, FALLBACK_SLOTS } from '../hooks/useAvailability';
@@ -224,7 +228,8 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     distanceKm: defaultLocality.distanceKm,
     serviceCategory: 'bridal',
     selectedService: catalogServices[0]?.title || 'Signature Royal HD Bridal Makeover',
-    preferredStylist: 'Any Senior Specialist',
+    preferredStylist: 'Any Available Stylist',
+    preferredStylistId: '',
     appointmentDate: '',
     timeSlot: '11:30 AM',
     bridalTrialRequired: false,
@@ -279,6 +284,65 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   // Step-by-Step Progress Indicator state
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [viewMode, setViewMode] = useState<'wizard' | 'single'>('wizard');
+
+  // Preferred stylist / staff selection: grid of mini cards + full profile modal.
+  const [profileStylistId, setProfileStylistId] = useState<string | null>(null);
+  const stylistCatalog = brand.stylists || [];
+
+  const stylistOptions: StylistOption[] = useMemo(
+    () =>
+      stylistCatalog.map((stylist) => ({
+        id: stylist.id,
+        name: stylist.name,
+        role: stylist.role,
+        photo: stylist.avatar,
+        specialty: stylist.specialties?.[0] || stylist.role,
+        rating: stylist.ratings,
+        reviewCount: stylist.reviewCount,
+        experience: stylist.experience,
+      })),
+    [stylistCatalog]
+  );
+
+  const selectedStylist = useMemo(
+    () => stylistCatalog.find((stylist) => stylist.id === form.preferredStylistId) || null,
+    [stylistCatalog, form.preferredStylistId]
+  );
+
+  const profileStylist = useMemo(
+    () => stylistCatalog.find((stylist) => stylist.id === profileStylistId) || null,
+    [stylistCatalog, profileStylistId]
+  );
+
+  const profileStylistData: StylistProfile | null = useMemo(
+    () =>
+      profileStylist
+        ? {
+            id: profileStylist.id,
+            name: profileStylist.name,
+            role: profileStylist.role,
+            branch: profileStylist.branch,
+            experience: profileStylist.experience,
+            rating: profileStylist.ratings,
+            reviewCount: profileStylist.reviewCount,
+            bio: profileStylist.bio,
+            avatar: profileStylist.avatar,
+            specialties: profileStylist.specialties,
+            certifications: profileStylist.certifications,
+          }
+        : null,
+    [profileStylist]
+  );
+
+  /** Selects a specialist by id (empty string = any available stylist). */
+  const handleStylistSelect = (stylistId: string) => {
+    const found = stylistCatalog.find((stylist) => stylist.id === stylistId);
+    setForm((prev) => ({
+      ...prev,
+      preferredStylistId: found ? found.id : '',
+      preferredStylist: found ? found.name : 'Any Available Stylist',
+    }));
+  };
 
   const BOOKING_STEPS = useMemo(
     () => [
@@ -421,13 +485,19 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
 
   useEffect(() => {
     if (preselectedStylistName) {
+      const wanted = preselectedStylistName.trim();
+      const matched = (brand.stylists || []).find(
+        (stylist) =>
+          stylist.name.toLowerCase() === wanted.toLowerCase() || stylist.id === preselectedStylistName
+      );
       setForm((prev) => ({
         ...prev,
-        preferredStylist: preselectedStylistName,
+        preferredStylist: matched ? matched.name : preselectedStylistName,
+        preferredStylistId: matched ? matched.id : prev.preferredStylistId,
         locationType: 'salon',
       }));
     }
-  }, [preselectedStylistName]);
+  }, [preselectedStylistName, brand.stylists]);
 
   useEffect(() => {
     if (preselectedPromoCode) {
@@ -782,6 +852,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
         service: form.selectedService,
         serviceCategory: form.serviceCategory,
         stylist: form.preferredStylist,
+        stylistId: form.preferredStylistId || null,
         date: form.appointmentDate,
         time: form.timeSlot,
         locationType: form.locationType,
@@ -1299,27 +1370,64 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                     />
                   </div>
 
-                  {/* Preferred Specialist */}
+                  {/* Preferred Specialist — mini-card grid with profile modals */}
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-3">
-                      {t('bookingSelectStylist')}
-                    </label>
-                    <div className="relative">
-                      <UserCheck className="w-4 h-4 text-[#D09A40] absolute left-4 top-1/2 -translate-y-1/2" />
-                      <select
-                        value={form.preferredStylist}
-                        onChange={(e) => setForm({ ...form, preferredStylist: e.target.value })}
-                        className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-[#FAF5E5] border border-[#0F172A]/15 text-sm font-medium text-[#0F172A] focus:outline-none focus:border-[#D09A40]"
-                      >
-                        <option value="Any Senior Specialist">
-                          Any Available Senior Specialist
-                        </option>
-                        {brand.stylists.map((stylist) => (
-                          <option key={stylist.id} value={stylist.name}>
-                            {stylist.name} — {stylist.role} ({stylist.branch.split(' ')[0]})
-                          </option>
-                        ))}
-                      </select>
+                    <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+                      <div>
+                        <label className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#4A4A4A]">
+                          <UserCheck className="w-4 h-4 text-[#D09A40]" />
+                          <span>{t('bookingSelectStylist')}</span>
+                        </label>
+                        <p className="mt-1 text-[11px] text-[#4A4A4A]/85">
+                          Select Preferred Stylist / Staff — or let us match you with the best available
+                          specialist.
+                        </p>
+                      </div>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[#FAF5E5] border border-[#D09A40]/40 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#0F172A]">
+                        <Star className="w-3 h-3 fill-[#D09A40] text-[#D09A40]" />
+                        {stylistOptions.length} artists
+                      </span>
+                    </div>
+
+                    <StylistSelectGrid
+                      options={stylistOptions}
+                      selectedId={form.preferredStylistId}
+                      onSelect={handleStylistSelect}
+                      onViewProfile={(id) => setProfileStylistId(id)}
+                      emptyMessage="Our specialist roster is being updated — we will assign the best available artist for your appointment."
+                    />
+
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-[#FAF5E5] border border-[#D09A40]/30 px-3.5 py-2.5">
+                      <p className="flex items-center gap-2 text-[11px] text-[#4A4A4A]">
+                        {selectedStylist ? (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
+                            <span>
+                              Locked in:{' '}
+                              <strong className="text-[#0F172A]">{selectedStylist.name}</strong> ·{' '}
+                              {selectedStylist.role}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4 text-[#D09A40]" />
+                            <span>
+                              Any available stylist — we will assign the best match for{' '}
+                              <strong className="text-[#0F172A]">{form.selectedService}</strong>.
+                            </span>
+                          </>
+                        )}
+                      </p>
+                      {selectedStylist && (
+                        <button
+                          type="button"
+                          onClick={() => setProfileStylistId(selectedStylist.id)}
+                          className="inline-flex items-center gap-1 text-[11px] font-bold text-[#0F172A] underline decoration-[#D09A40] decoration-2 underline-offset-2 cursor-pointer"
+                        >
+                          <Info className="w-3.5 h-3.5 text-[#D09A40]" />
+                          View full profile
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -1754,9 +1862,35 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                         <span className="text-[11px] font-semibold text-[#4A4A4A] block">
                           Preferred Artist:
                         </span>
-                        <span className="font-medium text-[#0F172A]">
-                          {form.preferredStylist}
-                        </span>
+                        {selectedStylist ? (
+                          <span className="flex items-center gap-2 font-medium text-[#0F172A]">
+                            {selectedStylist.avatar ? (
+                              <img
+                                src={selectedStylist.avatar}
+                                alt={selectedStylist.name}
+                                className="w-6 h-6 rounded-full object-cover object-top border border-[#D09A40]/50"
+                              />
+                            ) : (
+                              <UserCheck className="w-4 h-4 text-[#D09A40]" />
+                            )}
+                            <span>
+                              {selectedStylist.name}
+                              <span className="text-[10px] text-[#4A4A4A]">
+                                {' '}
+                                · {selectedStylist.role} · ★ {selectedStylist.ratings.toFixed(1)}
+                              </span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setProfileStylistId(selectedStylist.id)}
+                              className="text-[10px] font-bold text-[#0F172A] underline decoration-[#D09A40] underline-offset-2 cursor-pointer"
+                            >
+                              Profile
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="font-medium text-[#0F172A]">{form.preferredStylist}</span>
+                        )}
                       </div>
                     </div>
 
@@ -1970,7 +2104,19 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[#4A4A4A]">Preferred Specialist:</span>
-                  <span className="font-semibold text-right">{form.preferredStylist}</span>
+                  <span className="font-semibold text-right">
+                    {selectedStylist ? (
+                      <button
+                        type="button"
+                        onClick={() => setProfileStylistId(selectedStylist.id)}
+                        className="underline decoration-[#D09A40] underline-offset-2 cursor-pointer"
+                      >
+                        {selectedStylist.name}
+                      </button>
+                    ) : (
+                      form.preferredStylist
+                    )}
+                  </span>
                 </div>
                 {appliedPromo && (
                   <div className="flex justify-between text-emerald-700 font-semibold">
@@ -2099,7 +2245,18 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
         amountPaise={serverBooking?.amountPaise ?? Math.round(totalEstimatedAmount * 100)}
         advancePaise={serverBooking?.advancePaise ?? Math.round(advanceRequired * 100)}
         remainingPaise={serverBooking?.remainingPaise ?? Math.round(balanceAtDoorstep * 100)}
+        stylistName={selectedStylist?.name || form.preferredStylist}
         onRetryPayment={retryPayment}
+      />
+
+      <StylistProfileModal
+        profile={profileStylistData}
+        selected={Boolean(profileStylist && form.preferredStylistId === profileStylist.id)}
+        onClose={() => setProfileStylistId(null)}
+        onSelect={(profile) => {
+          handleStylistSelect(profile.id);
+          setProfileStylistId(null);
+        }}
       />
     </section>
   );

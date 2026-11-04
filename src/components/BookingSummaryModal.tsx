@@ -16,6 +16,8 @@ interface BookingSummaryModalProps {
   confirmed?: boolean;
   paymentStatus?: string;
   salonName?: string;
+  /** Preferred specialist locked into the booking (falls back to the form value). */
+  stylistName?: string;
   amountPaise?: number;
   advancePaise?: number;
   remainingPaise?: number;
@@ -40,6 +42,7 @@ export const BookingSummaryModal: React.FC<BookingSummaryModalProps> = ({
   confirmed = false,
   paymentStatus,
   salonName,
+  stylistName,
   amountPaise,
   advancePaise,
   remainingPaise,
@@ -134,6 +137,12 @@ export const BookingSummaryModal: React.FC<BookingSummaryModalProps> = ({
           <div className="flex justify-between">
             <span className="text-[#4A4A4A]">Service:</span>
             <span className="font-semibold text-right">{serviceTitle}</span>
+          </div>
+          <div className="flex justify-between gap-3">
+            <span className="text-[#4A4A4A]">Specialist:</span>
+            <span className="font-semibold text-right">
+              {stylistName || form.preferredStylist || 'Any available stylist'}
+            </span>
           </div>
           <div className="flex justify-between">
             <span className="text-[#4A4A4A]">Date/Time:</span>

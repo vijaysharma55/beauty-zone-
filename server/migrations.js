@@ -61,6 +61,12 @@ addColumn('salons', 'owner_phone', "TEXT NOT NULL DEFAULT ''");
 addColumn('staff', 'booking_enabled', 'INTEGER NOT NULL DEFAULT 1');
 db.prepare('UPDATE staff SET booking_enabled = 1 WHERE booking_enabled IS NULL').run();
 
+/* Staff: optional reputation + experience shown on the public booking cards
+   and inside the full stylist profile modal. */
+addColumn('staff', 'rating', 'REAL');
+addColumn('staff', 'review_count', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('staff', 'experience', "TEXT NOT NULL DEFAULT ''");
+
 /* Submitted / reviewed website versions (snapshot of the working content) */
 db.exec(`
   CREATE TABLE IF NOT EXISTS salon_versions (
@@ -98,6 +104,7 @@ const BOOKINGS_TABLE_SQL = `
     service TEXT NOT NULL,
     category TEXT NOT NULL DEFAULT '',
     stylist TEXT NOT NULL DEFAULT '',
+    stylist_id TEXT NOT NULL DEFAULT '',
     date TEXT NOT NULL,
     time TEXT NOT NULL,
     location_type TEXT NOT NULL DEFAULT 'salon' CHECK (location_type IN ('salon','home')),
@@ -134,7 +141,7 @@ function bookingsTableSql() {
 }
 
 const BOOKING_COLUMNS = [
-  'id', 'salon_id', 'reference', 'full_name', 'phone', 'service', 'category', 'stylist', 'date',
+  'id', 'salon_id', 'reference', 'full_name', 'phone', 'service', 'category', 'stylist', 'stylist_id', 'date',
   'time', 'location_type', 'branch', 'address', 'locality', 'distance_km', 'bridal_trial', 'notes',
   'promo_code', 'estimated_total', 'advance_paid', 'advance_ref', 'amount_paise', 'advance_paise',
   'payment_status', 'balance_policy', 'payment_method', 'confirmed_at', 'status', 'source', 'created_at', 'updated_at',
@@ -192,6 +199,8 @@ addColumn('bookings', 'payment_status', "TEXT NOT NULL DEFAULT 'not_required'");
 addColumn('bookings', 'balance_policy', "TEXT NOT NULL DEFAULT 'at_salon'");
 addColumn('bookings', 'payment_method', "TEXT NOT NULL DEFAULT ''");
 addColumn('bookings', 'confirmed_at', 'TEXT');
+/* Preferred specialist captured by the booking flow (catalogue or staff id). */
+addColumn('bookings', 'stylist_id', "TEXT NOT NULL DEFAULT ''");
 db.exec('CREATE INDEX IF NOT EXISTS idx_bookings_payment_status ON bookings(payment_status)');
 
 /* Canonical payment status names: the legacy 'unpaid' value becomes 'pending'. */

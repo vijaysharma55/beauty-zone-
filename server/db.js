@@ -150,6 +150,9 @@ db.exec(`
     bio TEXT NOT NULL DEFAULT '',
     photo_url TEXT NOT NULL DEFAULT '',
     specialties_json TEXT NOT NULL DEFAULT '[]',
+    rating REAL,
+    review_count INTEGER NOT NULL DEFAULT 0,
+    experience TEXT NOT NULL DEFAULT '',
     active INTEGER NOT NULL DEFAULT 1,
     booking_enabled INTEGER NOT NULL DEFAULT 1,
     sort_order INTEGER NOT NULL DEFAULT 0,
@@ -515,6 +518,9 @@ export function serializeStaff(row) {
     bio: row.bio,
     photoUrl: row.photo_url,
     specialties: Array.isArray(specialties) ? specialties : [],
+    rating: Number.isFinite(Number(row.rating)) && row.rating !== null ? Number(row.rating) : null,
+    reviewCount: Number(row.review_count) || 0,
+    experience: row.experience || '',
     active: !!row.active,
     bookingEnabled: row.booking_enabled === undefined || row.booking_enabled === null ? true : !!row.booking_enabled,
     sortOrder: row.sort_order,
@@ -784,16 +790,30 @@ export function seedIfEmpty(hashPassword) {
   services.forEach((s, i) => seedService(salonId, s, i));
 
   const staffMembers = [
-    { name: 'Ananya Rathore', role_title: 'Creative Director — Bridal', bio: 'Celebrity bridal artist with 12+ years of editorial and wedding experience.', photo_url: '/images/stylist_bridal_ananya_1790677391838.jpg', specialties: ['HD Bridal', 'Airbrush', 'Draping'] },
-    { name: 'Vikram Singh', role_title: 'Master Hair Stylist', bio: 'Balayage and precision-cut specialist trained in London and Milan.', photo_url: '/images/stylist_hair_vikram_1790677441310.jpg', specialties: ['Balayage', 'Keratin', 'Precision Cuts'] },
-    { name: 'Meera Nair', role_title: 'Senior Skin Therapist', bio: 'Clinical aesthetician focused on evidence-led glow and acne care.', photo_url: '/images/stylist_skin_meera_1790677415028.jpg', specialties: ['HydraFacial', 'Peels', 'Acne Care'] },
-    { name: 'Zoya Khan', role_title: 'Nail Couture Artist', bio: 'Russian manicure and sculpted gel extension specialist.', photo_url: '/images/stylist_nail_zoya_1790677427488.jpg', specialties: ['Gel Extensions', 'Nail Art', 'Spa Manicure'] },
+    { name: 'Ananya Rathore', role_title: 'Creative Director — Bridal', bio: 'Celebrity bridal artist with 12+ years of editorial and wedding experience.', photo_url: '/images/stylist_bridal_ananya_1790677391838.jpg', specialties: ['HD Bridal', 'Airbrush', 'Draping'], rating: 5.0, review_count: 420, experience: '12+ Years' },
+    { name: 'Vikram Singh', role_title: 'Master Hair Stylist', bio: 'Balayage and precision-cut specialist trained in London and Milan.', photo_url: '/images/stylist_hair_vikram_1790677441310.jpg', specialties: ['Balayage', 'Keratin', 'Precision Cuts'], rating: 4.9, review_count: 310, experience: '11+ Years' },
+    { name: 'Meera Nair', role_title: 'Senior Skin Therapist', bio: 'Clinical aesthetician focused on evidence-led glow and acne care.', photo_url: '/images/stylist_skin_meera_1790677415028.jpg', specialties: ['HydraFacial', 'Peels', 'Acne Care'], rating: 5.0, review_count: 285, experience: '9+ Years' },
+    { name: 'Zoya Khan', role_title: 'Nail Couture Artist', bio: 'Russian manicure and sculpted gel extension specialist.', photo_url: '/images/stylist_nail_zoya_1790677427488.jpg', specialties: ['Gel Extensions', 'Nail Art', 'Spa Manicure'], rating: 4.8, review_count: 195, experience: '7+ Years' },
   ];
   staffMembers.forEach((m, i) => {
     db.prepare(
-      `INSERT INTO staff (id, salon_id, name, role_title, bio, photo_url, specialties_json, active, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`
-    ).run(newId(), salonId, m.name, m.role_title, m.bio, m.photo_url, JSON.stringify(m.specialties), i, ts, ts);
+      `INSERT INTO staff (id, salon_id, name, role_title, bio, photo_url, specialties_json, rating, review_count, experience, active, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`
+    ).run(
+      newId(),
+      salonId,
+      m.name,
+      m.role_title,
+      m.bio,
+      m.photo_url,
+      JSON.stringify(m.specialties),
+      m.rating,
+      m.review_count,
+      m.experience,
+      i,
+      ts,
+      ts
+    );
   });
 
   const periodEnd = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();

@@ -24,6 +24,9 @@ interface Draft {
   bio: string;
   photoUrl: string;
   specialties: string;
+  experience: string;
+  rating: string;
+  reviewCount: string;
   active: boolean;
   bookingEnabled: boolean;
 }
@@ -34,6 +37,9 @@ const emptyDraft: Draft = {
   bio: '',
   photoUrl: '',
   specialties: '',
+  experience: '',
+  rating: '',
+  reviewCount: '',
   active: true,
   bookingEnabled: true,
 };
@@ -88,6 +94,9 @@ export const StaffPage: React.FC = () => {
       bio: member.bio,
       photoUrl: member.photoUrl,
       specialties: member.specialties.join(', '),
+      experience: member.experience || '',
+      rating: member.rating != null ? String(member.rating) : '',
+      reviewCount: member.reviewCount != null ? String(member.reviewCount) : '',
       active: member.active,
       bookingEnabled: member.bookingEnabled !== false,
     });
@@ -111,6 +120,9 @@ export const StaffPage: React.FC = () => {
           .map((s) => s.trim())
           .filter(Boolean)
           .slice(0, 20),
+        experience: draft.experience.trim(),
+        rating: draft.rating.trim() === '' ? null : Number(draft.rating),
+        reviewCount: draft.reviewCount.trim() === '' ? 0 : Number(draft.reviewCount),
         active: draft.active,
         bookingEnabled: draft.bookingEnabled,
       };
@@ -325,6 +337,39 @@ export const StaffPage: React.FC = () => {
               placeholder="HD Bridal, Airbrush, Draping"
             />
           </Field>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field label="Experience" htmlFor="staff-experience" hint="Shown in the profile modal.">
+              <Input
+                id="staff-experience"
+                value={draft.experience}
+                onChange={(e) => setDraft({ ...draft, experience: e.target.value })}
+                placeholder="8+ Years"
+              />
+            </Field>
+            <Field label="Rating (0–5)" htmlFor="staff-rating">
+              <Input
+                id="staff-rating"
+                type="number"
+                min={0}
+                max={5}
+                step="0.1"
+                value={draft.rating}
+                onChange={(e) => setDraft({ ...draft, rating: e.target.value })}
+                placeholder="4.9"
+              />
+            </Field>
+            <Field label="Client reviews" htmlFor="staff-reviews">
+              <Input
+                id="staff-reviews"
+                type="number"
+                min={0}
+                step="1"
+                value={draft.reviewCount}
+                onChange={(e) => setDraft({ ...draft, reviewCount: e.target.value })}
+                placeholder="120"
+              />
+            </Field>
+          </div>
           <Field label="Short bio" htmlFor="staff-bio">
             <Textarea
               id="staff-bio"

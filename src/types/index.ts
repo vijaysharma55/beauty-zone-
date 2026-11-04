@@ -365,7 +365,10 @@ export interface BookingFormState {
   distanceKm: number;
   serviceCategory: string;
   selectedService: string;
+  /** Display name of the chosen specialist; “Any Available Stylist” when unset. */
   preferredStylist: string;
+  /** Catalogue/staff id passed to the booking API; empty means no preference. */
+  preferredStylistId: string;
   appointmentDate: string;
   timeSlot: string;
   bridalTrialRequired: boolean;
