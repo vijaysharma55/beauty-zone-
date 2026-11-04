@@ -63,7 +63,7 @@ begin
   if v_user_id is null then raise exception using errcode='42501',message='Sign in before verifying a voucher'; end if;
   select phone into v_phone from auth.users where id=v_user_id and phone_confirmed_at is not null;
   if v_phone is null then raise exception using errcode='42501',message='Verified mobile OTP is required'; end if;
-  v_phone:=regexp_replace(v_phone,'\D','','g');
+  v_phone:=private.normalize_customer_phone(v_phone);
   select lv.* into v_voucher
   from public.loyalty_vouchers lv
   join public.loyalty_accounts la on la.id=lv.account_id
@@ -95,7 +95,7 @@ declare
   v_staff public.staff%rowtype;
   v_booking public.bookings%rowtype;
   v_code text := nullif(upper(trim(coalesce(p_booking->>'promo_code',''))),'');
-  v_phone text := regexp_replace(coalesce(p_booking->>'phone',''),'\D','','g');
+  v_phone text := private.normalize_customer_phone(p_booking->>'phone');
   v_total bigint := greatest(0,coalesce((p_booking->>'estimated_total')::bigint,0));
   v_user_phone text;
   v_discount bigint := 0;
@@ -136,7 +136,7 @@ begin
     if (select auth.uid()) is null then raise exception using errcode='42501',message='Sign in and verify your mobile to use a loyalty voucher'; end if;
     select phone into v_user_phone from auth.users
       where id=(select auth.uid()) and phone_confirmed_at is not null;
-    if v_user_phone is null or regexp_replace(v_user_phone,'\D','','g')<>v_phone then
+    if v_user_phone is null or private.normalize_customer_phone(v_user_phone)<>v_phone then
       raise exception using errcode='42501',message='The booking phone must match your verified mobile number';
     end if;
     select lv.discount_amount into v_discount
@@ -146,7 +146,7 @@ begin
       and la.phone=v_phone and not lv.used and lv.expires_at>v_now
     for update of lv;
     if not found then raise exception using errcode='P0002',message='Invalid, used or expired voucher'; end if;
-    v_total:=greatest(0,v_total-v_discount);
+    v_total:=greatest(0,v_total-(v_discount*100));
   end if;
 
   insert into public.bookings(
@@ -206,22 +206,22 @@ begin
   end if;
 
   if exists(select 1 from public.loyalty_transactions where booking_id=v_booking.id and transaction_type='earn') then
-    select * into v_account from public.loyalty_accounts where phone=regexp_replace(v_booking.phone,'\D','','g');
+    select * into v_account from public.loyalty_accounts where phone=private.normalize_customer_phone(v_booking.phone);
     return jsonb_build_object('booking',to_jsonb(v_booking),'loyaltyReward',null,'alreadyCompleted',true);
   end if;
 
   select * into v_account from public.loyalty_accounts
-    where phone=regexp_replace(v_booking.phone,'\D','','g') for update;
+    where phone=private.normalize_customer_phone(v_booking.phone) for update;
   if not found then
-    v_member_id:='VIP-'||right(regexp_replace(v_booking.phone,'\D','','g'),4)||'-'||upper(substr(encode(gen_random_bytes(3),'hex'),1,6));
+    v_member_id:='VIP-'||right(private.normalize_customer_phone(v_booking.phone),4)||'-'||upper(substr(encode(gen_random_bytes(3),'hex'),1,6));
     insert into public.loyalty_accounts(owner_id,phone,name,member_id,tier,total_points,lifetime_points,visits_count)
-    values(null,regexp_replace(v_booking.phone,'\D','','g'),coalesce(v_booking.full_name,'BeautyZone Guest'),v_member_id,'silver',100,100,0)
+    values(null,private.normalize_customer_phone(v_booking.phone),coalesce(v_booking.full_name,'BeautyZone Guest'),v_member_id,'silver',100,100,0)
     returning * into v_account;
     insert into public.loyalty_transactions(account_id,phone,booking_id,salon_id,service_title,bill_amount,points,transaction_type,type,description)
     values(v_account.id,v_account.phone,null,v_booking.salon_id,'Welcome Loyalty Bonus',0,100,'bonus','bonus','Welcome gift for joining BeautyZone VIP Rewards');
   end if;
 
-  v_base:=greatest(100,round(coalesce(v_booking.estimated_total,1000)::numeric/10)::integer);
+  v_base:=greatest(100,round(coalesce(v_booking.estimated_total,0)::numeric/1000)::integer);
   v_points:=round(v_base * case v_account.tier when 'gold' then 1.25 when 'platinum' then 1.5 else 1.0 end)::integer;
   update public.loyalty_accounts set
     total_points=total_points+v_points,
