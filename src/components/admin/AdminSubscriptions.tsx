@@ -21,7 +21,7 @@ const STATUSES = ['trialing', 'active', 'past_due', 'canceled'] as const;
 
 type AdminPayment = {
   id: string; salon_id: string; subscription_id: string | null; provider: string;
-  provider_reference: string | null; amount_paise: number; status: 'pending'|'verified'|'failed'|'refunded';
+  provider_reference: string | null; provider_order_id?: string | null; amount_paise: number; status: 'pending'|'verified'|'failed'|'refunded';
   plan: string; created_at: string; salons?: { name?: string; slug?: string };
 };
 
