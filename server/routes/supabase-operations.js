@@ -7,7 +7,7 @@ import {
   livePayload, getLiveSalon, isoNow, uuid,
 } from '../supabase-store.js';
 import { generateSlots, FALLBACK_TIMINGS, DEFAULT_SLOT_MINUTES, DEFAULT_LEAD_MINUTES } from '../availability.js';
-import { RAZORPAY_KEY_ID, razorpayEnabled, createRazorpayOrder, verifyCheckoutSignature, fetchCapturedPayment, processRazorpayEvent, readServiceRow, insertServiceRow, patchServiceRow } from '../razorpay.js';
+import { RAZORPAY_KEY_ID, razorpayEnabled, createRazorpayOrder, fetchRazorpayOrder, verifyCheckoutSignature, fetchCapturedPayment, processRazorpayEvent, readServiceRow, insertServiceRow, patchServiceRow } from '../razorpay.js';
 
 export const supabaseOperationsRouter = Router();
 const hasBearer = (req) => /^Bearer\s+\S+/i.test(String(req.get('authorization') || ''));
@@ -307,6 +307,13 @@ supabaseOperationsRouter.post('/salon/subscription/checkout', asyncRoute(async(r
   const plan=s(req.body?.plan,20,true);
   const amount=SUBSCRIPTION_PRICES[plan];
   if(!amount)fail(400,'Choose a valid paid subscription plan.');
+  const existing=await one(req.sb,'subscription_payments','salon_id=eq.'+encodeURIComponent(salon.id)+'&provider=eq.razorpay&status=eq.pending&select=id,plan,amount_paise,provider_order_id&limit=1');
+  if(existing){
+    if(existing.plan!==plan||Number(existing.amount_paise)!==amount)fail(409,'A different subscription payment is already pending. Complete or wait for that payment before starting another.');
+    if(!existing.provider_order_id)fail(409,'A subscription order is already being prepared. Please retry in a moment.');
+    const order=await fetchRazorpayOrder(existing.provider_order_id);
+    return res.json(paymentOrderResponse(order,existing.id));
+  }
   const now=new Date(),periodEnd=new Date(now.getTime()+30*86400000);
   const record=await write(req.sb,'subscription_payments',{
     salon_id:salon.id,subscription_id:(await getSubscription(req.sb,salon.id))?.id||null,
