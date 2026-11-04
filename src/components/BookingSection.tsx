@@ -37,6 +37,7 @@ import { WhatsAppIcon } from './SocialIcons';
 import { BookingSummaryModal } from './BookingSummaryModal';
 import { useBrand } from '../context/BrandContext';
 import { api } from '../lib/api';
+import { openRazorpayCheckout } from '../lib/razorpay';
 import { useAvailability, FALLBACK_SLOTS } from '../hooks/useAvailability';
 
 declare global {
@@ -229,8 +230,11 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [bookingRefCode, setBookingRefCode] = useState('');
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [copiedUpi, setCopiedUpi] = useState(false);
+  const [savedBookingId, setSavedBookingId] = useState('');
+  const [gatewayEnabled, setGatewayEnabled] = useState(false);
+  const [paymentWorking, setPaymentWorking] = useState(false);
+  const [paymentMessage, setPaymentMessage] = useState('');
+  const [paymentError, setPaymentError] = useState('');
 
   // Loyalty Voucher & Gift Card Promo Code State
   const [promoCodeInput, setPromoCodeInput] = useState('');
@@ -418,6 +422,14 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
       validateAndApplyPromo(preselectedPromoCode);
     }
   }, [preselectedPromoCode]);
+
+  useEffect(() => {
+    let active = true;
+    api.get<{ enabled: boolean }>('/public/payments/config')
+      .then((result) => { if (active) setGatewayEnabled(Boolean(result.enabled)); })
+      .catch(() => { if (active) setGatewayEnabled(false); });
+    return () => { active = false; };
+  }, []);
 
   const validateAndApplyPromo = async (codeToTest: string) => {
     const clean = codeToTest.trim().toUpperCase();
@@ -655,14 +667,13 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     return form.locationType === 'home' ? calculateDistanceFee(form.distanceKm) : 0;
   }, [form.locationType, form.distanceKm, brand.homeServiceBaseFee, brand.homeServicePerKmRate]);
 
-  const advanceRequired = useMemo(() => {
-    if (form.locationType !== 'home') return 0;
-    const pct = (brand.advancePercentage || 20) / 100;
-    return Math.max(500, Math.round((treatmentPrice * pct) / 50) * 50);
-  }, [form.locationType, treatmentPrice, brand.advancePercentage]);
-
   const promoDiscount = appliedPromo ? appliedPromo.discountAmount : 0;
   const totalEstimatedAmount = Math.max(0, treatmentPrice + distanceFee - promoDiscount);
+  // UI amounts are rupees; the Supabase booking/payment API stores paise.
+  const advanceRequired = useMemo(() => {
+    if (form.locationType !== 'home') return 0;
+    return Math.ceil(totalEstimatedAmount * 25) / 100;
+  }, [form.locationType, totalEstimatedAmount]);
   const balanceAtDoorstep = Math.max(
     0,
     totalEstimatedAmount - (form.advancePaymentVerified ? advanceRequired : 0)
@@ -677,26 +688,6 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     }));
   };
 
-  const handleCopyUpi = () => {
-    navigator.clipboard.writeText(brand.upiId);
-    setCopiedUpi(true);
-    setTimeout(() => setCopiedUpi(false), 2000);
-  };
-
-  const handleVerifyAdvancePayment = () => {
-    const ref = `ADV-${Math.floor(100000 + Math.random() * 900000)}`;
-    setForm((prev) => ({
-      ...prev,
-      advancePaymentVerified: true,
-      advancePaymentRef: ref,
-    }));
-    setIsPaymentModalOpen(false);
-  };
-
-  /**
-   * Client-side validation. Returns a map of field → message instead of relying
-   * on `alert()` or silently doing nothing, so errors are visible and recoverable.
-   */
   const validateForm = () => {
     const errors: {
       fullName?: string;
@@ -742,11 +733,6 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
       const firstKey = Object.keys(errors)[0];
       const el = document.getElementById(`booking-${firstKey}`);
       el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
-    }
-
-    if (form.locationType === 'home' && !form.advancePaymentVerified) {
-      setIsPaymentModalOpen(true);
       return;
     }
 
