@@ -127,6 +127,9 @@ export const Hero: React.FC<HeroProps> = ({
                 <img
                   src={brand.heroImage}
                   alt={`${brand.brandName} — ${brand.cityName}`}
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
                   className="w-full h-[420px] sm:h-[500px] object-cover object-center transform hover:scale-105 transition-transform duration-700"
                   referrerPolicy="no-referrer"
                 />

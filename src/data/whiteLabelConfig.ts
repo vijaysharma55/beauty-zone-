@@ -246,9 +246,9 @@ export const DEFAULT_WHITE_LABEL_CONFIG: WhiteLabelConfig = {
     faviconUrl: '',
     appleTouchIconUrl: '',
     themeColorHex: '#0F172A',
-    seoTitle: 'Lumina Luxe — Luxury Salon, Bridal Studio & Spa | Metropolitan City',
+    seoTitle: 'Beauty Zone | Premium Salon, Bridal Studio & Academy Services in Jaipur',
     seoDescription:
-      'Book HD Airbrush bridal makeovers, chemical-free Moroccan hair botox, 24K gold facials, and doorstep salon services with certified senior artists.',
+      'Book salon and doorstep home services in Jaipur, including HD bridal makeup, hair botox, 24K gold facials and curated salon packages.',
     seoKeywords:
       'luxury salon, bridal makeup studio, hair botox, hydrafacial, nail art extensions, home salon service',
     canonicalUrl: 'https://beauty-zone-pearl.vercel.app/',

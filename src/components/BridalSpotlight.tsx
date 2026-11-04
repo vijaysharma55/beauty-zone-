@@ -27,6 +27,8 @@ export const BridalSpotlight: React.FC<BridalSpotlightProps> = ({
               <img
                 src={brand.bridalImage}
                 alt={`${brand.brandName} Bridal Makeover — ${brand.cityName}`}
+                loading="lazy"
+                decoding="async"
                 referrerPolicy="no-referrer"
                 className="w-full h-[460px] sm:h-[520px] object-cover object-top hover:scale-105 transition-transform duration-700"
               />
