@@ -48,7 +48,7 @@ export interface Stylist {
   category: 'bridal' | 'hair' | 'skin' | 'nails';
   branch: string;
   experience: string;
-  rating: number;
+  ratings: number;
   reviewCount: number;
   bio: string;
   avatar: string;

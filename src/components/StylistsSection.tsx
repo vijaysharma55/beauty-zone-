@@ -44,7 +44,7 @@ const buildStylistEditorFields = (branches: string[]): EditorField[] => [
     required: true,
   },
   { key: 'experience', type: 'text', label: 'Experience', placeholder: 'e.g. 14+ Years' },
-  { key: 'rating', type: 'number', label: 'Rating (0–5)', min: 0, max: 5, step: 0.1 },
+  { key: 'ratings', type: 'number', label: 'Rating (0–5)', min: 0, max: 5, step: 0.1 },
   { key: 'reviewCount', type: 'number', label: 'Review count', min: 0 },
   { key: 'bio', type: 'textarea', label: 'Bio', span: 2, rows: 4 },
   {
@@ -74,7 +74,7 @@ const emptyStylistValues = (branch: string): Record<string, any> => ({
   category: 'bridal',
   branch,
   experience: '5+ Years',
-  rating: 5,
+  ratings: 5,
   reviewCount: 0,
   bio: '',
   specialties: [],
@@ -90,7 +90,7 @@ const stylistToEditorValues = (stylist?: Stylist, branch = ''): Record<string, a
     category: stylist.category,
     branch: stylist.branch,
     experience: stylist.experience,
-    rating: stylist.rating,
+    ratings: stylist.ratings,
     reviewCount: stylist.reviewCount,
     bio: stylist.bio,
     specialties: stylist.specialties || [],
@@ -109,7 +109,7 @@ const normalizeStylistValues = (
     category: 'bridal',
     branch: '',
     experience: '',
-    rating: 5,
+    ratings: 5,
     reviewCount: 0,
     bio: '',
     avatar: '',
@@ -123,8 +123,8 @@ const normalizeStylistValues = (
   category: String(values.category || 'bridal') as Stylist['category'],
   branch: String(values.branch || '').trim(),
   experience: String(values.experience || '').trim(),
-  rating: Math.min(5, Math.max(0, Number(values.rating) || 0)),
-  reviewCount: Math.max(0, Math.round(Number(values.review_count ?? values.reviewCount) || 0)),
+  ratings: Math.min(5, Math.max(0, Number(values.ratings ?? values.rating) || 0)),
+  reviewCount: Math.max(0, Math.round(Number(values.reviewCount ?? values.review_count) || 0)),
   bio: String(values.bio || '').trim(),
   specialties: Array.isArray(values.specialties) ? values.specialties : [],
   certifications: Array.isArray(values.certifications) ? values.certifications : [],
@@ -354,6 +354,30 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
                       <MapPin className="w-3 h-3 text-[#D09A40]" />
                       <span>{stylist.branch}</span>
                     </p>
+                    
+                    {/* Star Rating */}
+                    <div className="flex items-center gap-1.5 mt-2">
+                      <div className="flex items-center gap-0.5">
+                        {[...Array(5)].map((_, i) => (
+                          <Star 
+                            key={i} 
+                            className={`w-3 h-3 ${
+                              i < Math.floor(stylist.ratings) 
+                                ? 'fill-[#D09A40] text-[#D09A40]' 
+                                : i < stylist.ratings 
+                                  ? 'fill-[#D09A40]/50 text-[#D09A40]' 
+                                  : 'text-white/30'
+                            }`} 
+                          />
+                        ))}
+                      </div>
+                      <span className="text-[10px] font-bold text-[#FAF5E5]">
+                        {(stylist.ratings ?? 5).toFixed(1)}
+                      </span>
+                      <span className="text-[9px] text-[#FAF5E5]/60 font-medium">
+                        ({stylist.reviewCount})
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -488,7 +512,7 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
                   </span>
                   <span className="text-xs text-[#FAF5E5]/80 flex items-center gap-1">
                     <Star className="w-3.5 h-3.5 fill-[#D09A40] text-[#D09A40]" />
-                    <strong>{selectedStylist.rating.toFixed(1)}</strong> ({selectedStylist.reviewCount} Client Reviews)
+                    <strong>{(selectedStylist.ratings ?? 5).toFixed(1)}</strong> ({selectedStylist.reviewCount} Client Reviews)
                   </span>
                 </div>
                 <h3 className="font-serif text-2xl sm:text-3xl font-bold text-[#FAF5E5]">

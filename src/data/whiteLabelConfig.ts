@@ -749,7 +749,10 @@ export function loadWhiteLabelConfig(): WhiteLabelConfig {
           : DEFAULT_WHITE_LABEL_CONFIG.localities,
       stylists:
         Array.isArray(parsed.stylists) && parsed.stylists.length > 0
-          ? parsed.stylists
+          ? parsed.stylists.map((s: any) => ({
+              ...s,
+              ratings: s.ratings ?? s.rating ?? 5,
+            }))
           : DEFAULT_WHITE_LABEL_CONFIG.stylists,
       testimonials:
         Array.isArray(parsed.testimonials) && parsed.testimonials.length > 0
