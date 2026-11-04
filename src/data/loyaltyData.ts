@@ -250,6 +250,7 @@ export const DEMO_CUSTOMERS: LoyaltyCustomer[] = [
 const LOYALTY_STORAGE_KEY = 'whitelabel_loyalty_customer_v2';
 
 export const getStoredLoyaltyCustomer = (): LoyaltyCustomer => {
+  if (typeof localStorage === 'undefined') return DEMO_CUSTOMERS[0];
   try {
     const raw = localStorage.getItem(LOYALTY_STORAGE_KEY);
     if (raw) {

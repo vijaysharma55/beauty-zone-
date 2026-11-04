@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Link, Route, Routes, useNavigate } from 'react-router-dom';
+import { Link, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { TrustHighlightsBar } from './components/TrustHighlightsBar';
@@ -62,6 +62,8 @@ import { ApprovalPage } from './components/dashboard/ApprovalPage';
 import { AdminApprovals } from './components/admin/AdminApprovals';
 import { Button } from './components/ui';
 import { SubdomainAwareHome } from './components/site/SubdomainResolver';
+import { PUBLIC_PATHS } from './publicPaths';
+import { homeStructuredData, SITE_ORIGIN } from './homeMetadata';
 
 function MarketingSite() {
   const { brand, formatPrice } = useBrand();
@@ -436,18 +438,46 @@ const NotFoundPage: React.FC = () => (
   </div>
 );
 
+function HomeMetadata() {
+  const { pathname } = useLocation();
+  const { brand } = useBrand();
+  useEffect(() => {
+    const urlTag = document.querySelector('meta[property="og:url"]');
+    const schemaTag = document.getElementById('home-structured-data');
+    if (pathname !== PUBLIC_PATHS.home) {
+      urlTag?.remove();
+      schemaTag?.remove();
+      return;
+    }
+    if (!urlTag) {
+      const meta = document.createElement('meta');
+      meta.setAttribute('property', 'og:url');
+      meta.content = `${SITE_ORIGIN}/`;
+      document.head.appendChild(meta);
+    }
+    const script = schemaTag || document.createElement('script');
+    script.id = 'home-structured-data';
+    script.setAttribute('type', 'application/ld+json');
+    script.textContent = JSON.stringify(homeStructuredData(brand));
+    if (!schemaTag) document.head.appendChild(script);
+  }, [pathname, brand]);
+  return null;
+}
+
 export function App() {
   return (
+    <>
+    <HomeMetadata />
     <Routes>
       {/* Public marketing site — subdomain-aware: tenant subdomains render the salon site */}
-      <Route path="/" element={<SubdomainAwareHome><MarketingSite /></SubdomainAwareHome>} />
+      <Route path={PUBLIC_PATHS.home} element={<SubdomainAwareHome><MarketingSite /></SubdomainAwareHome>} />
 
       {/* Authentication */}
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
-      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} />
-      <Route path="/verify-email" element={<VerifyEmailPage />} />
+      <Route path={PUBLIC_PATHS.login} element={<LoginPage />} />
+      <Route path={PUBLIC_PATHS.register} element={<RegisterPage />} />
+      <Route path={PUBLIC_PATHS.forgotPassword} element={<ForgotPasswordPage />} />
+      <Route path={PUBLIC_PATHS.resetPassword} element={<ResetPasswordPage />} />
+      <Route path={PUBLIC_PATHS.verifyEmail} element={<VerifyEmailPage />} />
 
       {/* Salon owner dashboard — protected, salon-owner role only */}
       <Route
@@ -489,13 +519,14 @@ export function App() {
       </Route>
 
       {/* Public salon directory and search with city filtering */}
-      <Route path="/salons" element={<SalonDirectoryPage />} />
+      <Route path={PUBLIC_PATHS.salons} element={<SalonDirectoryPage />} />
 
       {/* Public, unauthenticated salon websites with unique URLs */}
       <Route path="/salon/:slug" element={<PublicSalonPage />} />
 
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
+    </>
   );
 }
 

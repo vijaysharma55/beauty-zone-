@@ -237,6 +237,7 @@ export const SalonsLocations: React.FC<SalonsLocationsProps> = ({ onSelectBranch
 
   // Reviews state stored in local storage
   const [reviews, setReviews] = useState<BranchReview[]>(() => {
+    if (typeof localStorage === 'undefined') return INITIAL_BRANCH_REVIEWS;
     try {
       const stored = localStorage.getItem('bz_branch_reviews');
       if (stored) return JSON.parse(stored);

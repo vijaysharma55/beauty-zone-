@@ -458,3 +458,18 @@ matching Google OAuth client/audience used by GOOGLE_CLIENT_ID.
    `APP_URL`. `vercel.json` already handles the `/api` passthrough and SPA fallback.
 7. Optional: set `GEMINI_API_KEY` (and `GEMINI_MODEL`) to enable live AI suggestions. Without it the
    AI endpoints still work, using deterministic local templates.
+
+### Sitemap generation
+
+`npm run build` generates `dist/sitemap.xml` from the static public routes and
+published, non-suspended salons with an approved snapshot. Local builds read the
+server's SQLite database (`DATABASE_PATH`, `DATA_DIR/beautyzone.db`, or
+`./data/beautyzone.db`) without creating or seeding it. If no local database is
+available, the build warns and omits salon profiles. Set `SITEMAP_SALONS_API_URL`
+to the public `/api/public/sitemap-salons` feed to build from another running
+instance instead. On Vercel, absent an explicit source, the build queries the
+production site's paginated feed; on the first deployment it falls back to the
+older directory only when its 60-result cap cannot have truncated the response.
+A configured or production source failure stops the build rather than silently
+publishing an incomplete sitemap. Rebuild and redeploy after salons are published,
+unpublished, or suspended: this sitemap is a build-time snapshot.

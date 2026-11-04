@@ -182,6 +182,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
 
   // Review & Rating Modal State
   const [reviews, setReviews] = useState<ServiceReview[]>(() => {
+    if (typeof localStorage === 'undefined') return INITIAL_SERVICE_REVIEWS;
     try {
       const stored = localStorage.getItem('bz_service_reviews');
       if (stored) {
