@@ -420,12 +420,16 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   }, [preselectedPromoCode]);
 
   useEffect(() => {
+    if (!salonSlug) {
+      setGatewayEnabled(false);
+      return;
+    }
     let active = true;
     api.get<{ enabled: boolean }>('/public/payments/config')
       .then((result) => { if (active) setGatewayEnabled(Boolean(result.enabled)); })
       .catch(() => { if (active) setGatewayEnabled(false); });
     return () => { active = false; };
-  }, []);
+  }, [salonSlug]);
 
   const validateAndApplyPromo = async (codeToTest: string) => {
     const clean = codeToTest.trim().toUpperCase();
@@ -785,6 +789,10 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   };
 
   const payHomeServiceAdvance = async () => {
+    if (!salonSlug) {
+      setPaymentError('Online advance checkout is available on a published salon website. The BeautyZone team will confirm payment for this general request.');
+      return;
+    }
     if (!savedBookingId || !bookingRefCode) {
       setPaymentError('Save your booking request first, then pay the advance.');
       return;
@@ -1742,10 +1750,14 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                         )}
                       </div>
                       <p className="text-amber-800 text-[11px] leading-relaxed">
-                        A 25% advance of <strong>{formatPrice(advanceRequired)}</strong> is collected securely after you save the appointment request. The remaining balance is payable after the service.
+                        {salonSlug
+                          ? <>A 25% advance of <strong>{formatPrice(advanceRequired)}</strong> is collected securely after you save the appointment request. The remaining balance is payable after the service.</>
+                          : 'Submit your home-service request first. The BeautyZone team will review the location and confirm any applicable advance before payment.'}
                       </p>
                       <p className="text-[11px] text-amber-800">
-                        {gatewayEnabled ? 'Razorpay checkout will be available after the booking request is saved.' : 'Online checkout is not configured yet; the salon will confirm your home visit.'}
+                        {salonSlug
+                          ? gatewayEnabled ? 'Razorpay checkout will be available after the booking request is saved.' : 'Online checkout is not configured yet; the salon will confirm your home visit.'
+                          : 'No payment is collected on this general enquiry form.'}
                       </p>
                     </div>
                   )}
@@ -1775,7 +1787,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                           ? '✓ Zero advance needed for salon visits — pay after your service'
                           : form.advancePaymentVerified
                           ? `✓ Advance ${formatPrice(advanceRequired)} verified • Balance ${formatPrice(balanceAtDoorstep)} after service`
-                          : `Save request, then pay ${formatPrice(advanceRequired)} advance via Razorpay`}
+                          : salonSlug ? `Save request, then pay ${formatPrice(advanceRequired)} advance via Razorpay` : 'Request submitted; the team will confirm any payment required'}
                       </p>
                     </div>
 
@@ -1932,8 +1944,8 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
         form={form}
         serviceTitle={form.selectedService}
         price={formatPrice(totalEstimatedAmount)}
-        paymentRequired={form.locationType === 'home'}
-        paymentEnabled={gatewayEnabled}
+        paymentRequired={form.locationType === 'home' && Boolean(salonSlug)}
+        paymentEnabled={gatewayEnabled && Boolean(salonSlug)}
         paymentBusy={paymentWorking}
         paymentMessage={paymentMessage}
         paymentError={paymentError}
