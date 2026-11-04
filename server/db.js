@@ -3,6 +3,9 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { backendIsSupabase } from './store/config.js';
+import { sb } from './store/supabaseAdmin.js';
+import { toRemote } from './store/rowMap.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -525,6 +528,23 @@ export function audit(req, action, targetType = null, targetId = null, meta = nu
   } catch (err) {
     console.error('[audit] failed', err.message);
   }
+  mirrorAuditToSupabase(req, action, targetType, targetId, meta);
+}
+
+/** Phase 1 of the Supabase migration: best-effort, never blocks or fails the request. */
+function mirrorAuditToSupabase(req, action, targetType, targetId, meta) {
+  if (!backendIsSupabase()) return;
+  const row = toRemote('audit_logs', {
+    // Local user ids are not auth uids; only a linked Supabase id is a valid actor.
+    actor_id: req?.user?.supabase_id || null,
+    actor_email: req?.user?.email || null,
+    action,
+    target_type: targetType,
+    target_id: targetId ? String(targetId) : null,
+    meta: meta ? JSON.stringify(meta) : null,
+    ip: req?.ip || null,
+  });
+  sb.insert('audit_logs', [row]).catch((err) => console.error('[audit] supabase mirror failed', err.message));
 }
 
 /* ------------------------------------------------------------------ */

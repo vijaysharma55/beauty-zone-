@@ -1,6 +1,6 @@
 # Supabase RLS mapping (reference only)
 
-**This project does not use Supabase.** Persistence is `node:sqlite`
+**Status: migrating.** Auth is on Supabase; data moves in phases (see `docs/superpowers/specs`). Until `DATA_BACKEND=supabase`, persistence is `node:sqlite`
 (`DatabaseSync`) and tenant isolation is enforced in the application layer
 (`server/middleware.js`, `server/routes/*.js`).
 
