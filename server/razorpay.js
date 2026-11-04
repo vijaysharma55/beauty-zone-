@@ -20,6 +20,10 @@ async function razorpayRequest(path, options={}) {
   return value;
 }
 
+export async function fetchRazorpayOrder(orderId) {
+  return razorpayRequest('/orders/'+encodeURIComponent(orderId));
+}
+
 export async function createRazorpayOrder({amountPaise,receipt,notes}) {
   const amount=Math.round(Number(amountPaise));
   if(!Number.isSafeInteger(amount)||amount<=0||amount>100000000) throw new Error('Payment amount is invalid.');
