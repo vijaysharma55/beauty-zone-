@@ -15,11 +15,7 @@ import {
   MessageSquare,
   Navigation,
   ShieldCheck,
-  QrCode,
   Check,
-  Copy,
-  CreditCard,
-  X,
   UserCheck,
   Tag,
   Gift,
@@ -736,7 +732,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
       return;
     }
 
-    const randomDigits = Math.floor(1000 + Math.random() * 9000);
+    const randomDigits = Math.floor(10000000 + Math.random() * 90000000);
     const prefix = brand.bookingPrefix || 'BK';
     const ref =
       form.locationType === 'home'
