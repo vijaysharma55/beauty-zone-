@@ -617,7 +617,7 @@ supabaseOperationsRouter.patch('/admin/settings', asyncRoute(async(req,res)=>{
   if(b.allowRegistrations!==undefined)patch.allowRegistrations=bool(b.allowRegistrations);
   if(b.trialDays!==undefined)patch.trialDays=num(b.trialDays,0,365);
   if(b.maintenanceMessage!==undefined)patch.maintenanceMessage=s(b.maintenanceMessage,500);
-  if(b.defaultPlan!==undefined){if(!['trial','starter','pro','elite'].includes(b.defaultPlan))fail(400,'Invalid default plan.');patch.defaultPlan=b.defaultPlan;}
+  if(b.defaultPlan!==undefined){if(!['trial','starter'].includes(b.defaultPlan))fail(400,'The onboarding default plan must be Trial or Starter. Pro and Elite are purchased after onboarding.');patch.defaultPlan=b.defaultPlan;}
   const settings=await saveSettings(req.sb,patch);await audit(req.sb,'admin.settings_updated','platform_settings',null,{keys:Object.keys(patch)});
   res.json({settings});
 }));
