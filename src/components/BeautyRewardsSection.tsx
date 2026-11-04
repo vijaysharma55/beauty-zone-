@@ -24,8 +24,8 @@ import {
 import { LoyaltyCustomer, RewardOffer } from '../types';
 import { WhatsAppIcon } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
-import { api } from '../lib/api';
-import { supabase } from '../lib/supabase';
+import { customerApi } from '../lib/api';
+import { customerSupabase } from '../lib/supabase';
 
 interface BeautyRewardsSectionProps {
   onBookWithReward?: (voucherCode: string) => void;
@@ -45,6 +45,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
   const [otpCode, setOtpCode] = useState('');
   const [otpPending, setOtpPending] = useState(false);
   const [otpBusy, setOtpBusy] = useState(false);
+  const [redeemingOfferId, setRedeemingOfferId] = useState<string | null>(null);
   const [lookupNotice, setLookupNotice] = useState('');
   const [lookupError, setLookupError] = useState('');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
@@ -144,7 +145,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
         serviceTitle: activity.serviceTitle,
         billAmount: Number(activity.billAmount || 0) / 100,
         pointsEarned: activity.pointsEarned,
-        type: activity.type === 'bonus' ? 'bonus' : 'visit',
+        type: activity.type === 'redeem' ? 'redeem' : activity.type === 'bonus' ? 'bonus' : 'visit',
       })),
       redeemedRewards: (res.vouchers || []).map((voucher) => ({
         id: voucher.voucherCode,
@@ -173,12 +174,14 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
     setLookupError('');
     setLookupNotice('');
     try {
-      await supabase.auth.signInWithOtp(e164);
+      await customerSupabase.auth.signInWithOtp(e164);
+      // Never leave a previous customer's live balance visible while a new OTP is pending.
+      setCustomer(DEMO_CUSTOMERS[0]);
+      setLiveCustomer(false);
       setOtpPhone(e164);
       setOtpCode('');
       setOtpPending(true);
       setLookupNotice('A verification code was sent to ' + e164 + '. Enter the SMS code to view this account.');
-      setLiveCustomer(false);
     } catch (error) {
       setLookupError(error instanceof Error ? error.message : 'Could not send the verification code. Please try again.');
     } finally {
@@ -196,9 +199,9 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
     setLookupError('');
     setLookupNotice('');
     try {
-      const auth = await supabase.auth.verifyPhoneOtp(otpPhone, otpCode.trim());
+      const auth = await customerSupabase.auth.verifyPhoneOtp(otpPhone, otpCode.trim());
       if (!auth.session?.access_token) throw new Error('Phone verification did not create a secure session.');
-      const result = await api.get<{
+      const result = await customerApi.get<{
         account: {
           phone: string; name: string; memberId: string; tier: 'silver' | 'gold' | 'platinum';
           totalPoints: number; lifetimePoints: number; visitsCount: number; joinedDate: string;
@@ -232,8 +235,10 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
     }
 
     if (liveCustomer) {
+      if (redeemingOfferId) return;
+      setRedeemingOfferId(offer.id);
       try {
-        const result = await api.post<{
+        const result = await customerApi.post<{
           success: boolean;
           voucherCode: string;
           discountAmount: number;
@@ -710,7 +715,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
 
                     <button
                       onClick={() => handleRedeemReward(offer)}
-                      disabled={!canAfford}
+                      disabled={!canAfford || (liveCustomer && redeemingOfferId !== null)}
                       className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                         canAfford
                           ? 'bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A] shadow-xs'
@@ -719,7 +724,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
                     >
                       <span>
                         {canAfford
-                          ? 'Redeem Voucher'
+                          ? (redeemingOfferId === offer.id ? 'Processing…' : 'Redeem Voucher')
                           : `Need ${offer.pointsCost - customer.totalPoints} pts`}
                       </span>
                     </button>
