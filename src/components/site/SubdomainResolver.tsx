@@ -2,7 +2,7 @@ import React from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { SearchX } from 'lucide-react';
 import { useTenant } from '../../hooks/useTenant';
-import { PublicSalonPage } from './PublicSalonPage';
+const PublicSalonPage = React.lazy(() => import('./PublicSalonPage').then((module) => ({ default: module.PublicSalonPage })));
 import { Button, Spinner } from '../ui';
 
 /**
@@ -32,7 +32,7 @@ export const SubdomainResolver: React.FC = () => {
 
   if (tenant.mode === 'subdomain' && tenant.found && tenant.slug) {
     // Live tenant — render salon site directly under the subdomain
-    return <PublicSalonPage forcedSlug={tenant.slug} />;
+    return <React.Suspense fallback={null}><PublicSalonPage forcedSlug={tenant.slug} /></React.Suspense>;
   }
 
   if (tenant.mode === 'subdomain' && !tenant.found) {

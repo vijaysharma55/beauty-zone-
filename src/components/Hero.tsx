@@ -51,11 +51,10 @@ export const Hero: React.FC<HeroProps> = ({
             </div>
 
             <h1 className="font-serif text-4xl sm:text-5xl xl:text-[56px] font-bold text-[#0F172A] leading-[1.12] tracking-tight">
-              Best Salon Services for {' '}
+              Salon &amp; Doorstep Home Services in{' '}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D09A40] via-[#DCA54A] to-[#D09A40] italic font-normal">
-                You
-              </span>{' '}
-              {brand.cityName}
+                {brand.cityName}
+              </span>
             </h1>
 
             <p className="text-base sm:text-lg text-[#4A4A4A] max-w-2xl font-light leading-relaxed">

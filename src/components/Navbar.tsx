@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MapPin, Phone, Menu, X, CalendarCheck } from 'lucide-react';
 import { SocialLinksBar } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
-import { BrandEmblemIcon } from './WhiteLabelCustomizer';
+import { BrandEmblemIcon } from './BrandEmblemIcon';
 import { LanguageSwitcher } from './LanguageSwitcher';
 
 /**
