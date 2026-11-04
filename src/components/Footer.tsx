@@ -5,9 +5,6 @@ import {
   Phone,
   Mail,
   Heart,
-  Sliders,
-  Settings,
-  Palette,
 } from 'lucide-react';
 import { SocialLinksBar, InstagramIcon } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
@@ -27,6 +24,8 @@ export const Footer: React.FC<FooterProps> = ({
 }) => {
   const { brand, setIsCustomizerOpen, t } = useBrand();
   const { user } = useAuth();
+  // Template/catalog tools are only offered to signed-in owners and admins.
+  const isStaff = !!user && (user.role === 'salon_owner' || user.role === 'super_admin');
   const accountHref = user ? (user.role === 'super_admin' ? '/admin' : '/dashboard') : '/login';
 
   const branchNames =
@@ -130,6 +129,11 @@ export const Footer: React.FC<FooterProps> = ({
                 </button>
               </li>
               <li>
+                <Link to="/salons?city=Jaipur" className="hover:text-[#D09A40] transition-colors">
+                  Explore all salons
+                </Link>
+              </li>
+              <li>
                 <button
                   onClick={() => onNavigate('faq')}
                   className="hover:text-[#D09A40] transition-colors cursor-pointer"
@@ -197,39 +201,30 @@ export const Footer: React.FC<FooterProps> = ({
                 </a>
               </p>
             </div>
-
-            <div className="pt-2 flex flex-wrap gap-2">
-              <button
-                onClick={() => setIsCustomizerOpen(true)}
-                className="inline-flex items-center gap-2 text-xs bg-[#D09A40] text-[#0F172A] px-3.5 py-2 rounded-xl hover:bg-[#DCA54A] transition-colors cursor-pointer font-bold shadow-sm"
-              >
-                <Palette className="w-3.5 h-3.5" />
-                <span>White-Label Studio</span>
-              </button>
-              <button
-                onClick={onOpenManagement}
-                className="inline-flex items-center gap-2 text-xs bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 px-3.5 py-2 rounded-xl hover:bg-emerald-500/25 transition-colors cursor-pointer font-medium"
-              >
-                <Settings className="w-3.5 h-3.5" />
-                <span>Catalog Admin</span>
-              </button>
-              <button
-                onClick={onOpenInspector}
-                className="inline-flex items-center gap-2 text-xs bg-white/5 border border-[#D09A40]/30 text-[#D09A40] px-3.5 py-2 rounded-xl hover:bg-[#D09A40]/15 transition-colors cursor-pointer"
-              >
-                <Sliders className="w-3.5 h-3.5" />
-                <span>Design Tokens</span>
-              </button>
-            </div>
           </div>
         </div>
 
         {/* Bottom Copyright */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#FAF5E5]/50">
           <p>{brand.copyrightText}</p>
-          <Link to={accountHref} className="font-semibold text-[#D09A40] hover:underline">
-            {user ? 'Go to dashboard' : 'Salon owner login / sign up'}
-          </Link>
+          <nav aria-label="Owner tools" className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-[#FAF5E5]/40">
+            <Link to={accountHref} className="hover:text-[#D09A40] transition-colors">
+              {user ? (user.role === 'super_admin' ? 'Admin console' : 'My dashboard') : 'Owner login'}
+            </Link>
+            {isStaff && (
+              <>
+                <button onClick={onOpenManagement} className="hover:text-[#D09A40] transition-colors cursor-pointer">
+                  Catalog admin
+                </button>
+                <button onClick={() => setIsCustomizerOpen(true)} className="hover:text-[#D09A40] transition-colors cursor-pointer">
+                  Brand studio
+                </button>
+                <button onClick={onOpenInspector} className="hover:text-[#D09A40] transition-colors cursor-pointer">
+                  Design tokens
+                </button>
+              </>
+            )}
+          </nav>
           {brand.showPoweredByBadge && (
             <p className="flex items-center gap-1.5">
               <span>Crafted with</span>

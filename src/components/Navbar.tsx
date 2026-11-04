@@ -1,60 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import {
-  MapPin,
-  Phone,
-  Menu,
-  X,
-  Sliders,
-  Settings,
-  Palette,
-  UserCircle,
-  LayoutDashboard,
-} from 'lucide-react';
+import { MapPin, Phone, Menu, X, CalendarCheck } from 'lucide-react';
 import { SocialLinksBar } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
 import { BrandEmblemIcon } from './WhiteLabelCustomizer';
 import { LanguageSwitcher } from './LanguageSwitcher';
-import { useAuth } from '../context/AuthContext';
 
+/**
+ * Customer-facing header only. Owner/admin entry points (login, catalog admin,
+ * brand studio, design tokens) live in the footer's discreet "Owner tools" row.
+ */
 interface NavbarProps {
   onNavigate: (sectionId: string) => void;
-  onOpenInspector: () => void;
-  onOpenManagement: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({
-  onNavigate,
-  onOpenInspector,
-  onOpenManagement,
-}) => {
-  const { brand, setIsCustomizerOpen, t } = useBrand();
-  const { user } = useAuth();
-  const accountHref = user ? (user.role === 'super_admin' ? '/admin' : '/dashboard') : '/login';
-  const accountLabel = user
-    ? user.role === 'super_admin'
-      ? 'Admin console'
-      : 'My dashboard'
-    : 'Owner login';
+export const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
+  const { brand, t } = useBrand();
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 20);
-    };
+    const handleScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   const navLinks = [
-    { label: t('navReels'), id: 'reels', show: brand.sections.showReels },
-    { label: t('navPackages'), id: 'packages', show: brand.sections.showPackages },
     { label: t('navServices'), id: 'services', show: brand.sections.showServices },
+    { label: t('navPackages'), id: 'packages', show: brand.sections.showPackages },
     { label: t('navBridal'), id: 'bridal', show: brand.sections.showBridalSpotlight },
     { label: t('navGallery'), id: 'gallery', show: brand.sections.showGallery },
-    { label: t('navGiftCards'), id: 'gift-cards', show: brand.sections.showGiftCards },
-    { label: t('navRewards'), id: 'rewards', show: brand.sections.showRewards },
     { label: t('navLocations'), id: 'locations', show: brand.sections.showLocations },
   ].filter((item) => item.show);
 
@@ -79,7 +53,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           : 'bg-[#0F172A] py-4'
       }`}
     >
-      {/* Top Info Strip - Desktop Only */}
+      {/* Top Info Strip - Desktop Only (customer information, no tools) */}
       <div className="hidden lg:block border-b border-white/10 pb-2 mb-3">
         <div className="w-full px-4 flex items-center justify-between text-xs text-[#FAF5E5]/80">
           <div className="flex items-center space-x-6">
@@ -89,16 +63,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {brand.cityName}: {branchSummary}
               </span>
             </span>
-            <span className="text-[#D09A40]">•</span>
-            <Link
-              to="/salons?city=Jaipur"
-              className="text-[#D09A40] hover:text-[#DCA54A] transition font-semibold flex items-center gap-1.5"
-            >
-              <span>Explore Salons in Jaipur</span>
-              <span className="text-[10px] bg-[#D09A40]/20 text-[#FAF5E5] px-1.5 py-0.5 rounded-full font-bold">
-                Jaipur Flagship
-              </span>
-            </Link>
             <span className="text-[#D09A40]">•</span>
             <span>{t('navHomeServiceAvailable')}</span>
           </div>
@@ -116,51 +80,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Phone className="w-3.5 h-3.5 text-[#D09A40]" />
               <span>{brand.phoneDisplay}</span>
             </a>
-
-            <Link
-              to={accountHref}
-              className="flex items-center gap-1.5 bg-white/10 text-[#FAF5E5] border border-white/20 px-2.5 py-1 rounded-full hover:bg-white/20 transition-all font-semibold"
-            >
-              <UserCircle className="w-3.5 h-3.5 text-[#D09A40]" />
-              <span>{accountLabel}</span>
-            </Link>
-
-            {/* White-Label Brand Studio Trigger */}
-            <button
-              onClick={() => setIsCustomizerOpen(true)}
-              className="flex items-center gap-1.5 bg-[#D09A40] text-[#0F172A] px-2.5 py-1 rounded-full hover:bg-[#DCA54A] transition-all cursor-pointer font-bold shadow-xs"
-              title="Customize White-Label Brand, Theme, Presets & Copy"
-            >
-              <Palette className="w-3.5 h-3.5" />
-              <span>{t('navWhiteLabelStudio')}</span>
-            </button>
-
-            <button
-              onClick={onOpenManagement}
-              className="flex items-center gap-1.5 bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2.5 py-0.5 rounded-full hover:bg-emerald-500/25 transition-all cursor-pointer font-medium"
-              title="Manage services, packages & gallery in your owner dashboard"
-            >
-              <Settings className="w-3 h-3" />
-              <span>{t('navCatalogAdmin')}</span>
-            </button>
-            <button
-              onClick={onOpenInspector}
-              className="flex items-center gap-1.5 bg-[#D09A40]/15 text-[#D09A40] border border-[#D09A40]/30 px-2.5 py-0.5 rounded-full hover:bg-[#D09A40]/25 transition-all cursor-pointer"
-              title="Inspect Design System Tokens"
-            >
-              <Sliders className="w-3 h-3" />
-              <span>Tokens</span>
-            </button>
           </div>
         </div>
       </div>
 
       {/* Main Nav Bar */}
-      <div className="w-full px-4 flex items-center justify-between">
+      <div className="w-full px-4 flex items-center justify-between gap-4">
         {/* Brand Emblem */}
         <button
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           className="flex items-center gap-3 text-left group cursor-pointer"
+          aria-label={`${brand.brandName} - back to top`}
         >
           {brand.logoUrl ? (
             <img
@@ -170,10 +100,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             />
           ) : (
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#D09A40] to-[#B37E28] flex items-center justify-center shadow-md group-hover:scale-105 transition-transform duration-300">
-              <BrandEmblemIcon
-                icon={brand.logoIcon}
-                className="w-5 h-5 text-[#0F172A]"
-              />
+              <BrandEmblemIcon icon={brand.logoIcon} className="w-5 h-5 text-[#0F172A]" />
             </div>
           )}
           <div>
@@ -186,17 +113,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </button>
 
-        {/* Desktop Nav Links */}
-        <nav className="hidden lg:flex items-center space-x-6">
-          <Link
-            to="/salons?city=Jaipur"
-            className="relative text-sm font-semibold text-[#D09A40] hover:text-[#DCA54A] transition-colors py-1 flex items-center gap-1.5 cursor-pointer"
-          >
-            <span>Salons</span>
-            <span className="text-[10px] bg-[#D09A40]/20 text-[#FAF5E5] px-1.5 py-0.5 rounded-full font-bold">
-              Jaipur
-            </span>
-          </Link>
+        {/* Desktop: essential links + primary CTA */}
+        <nav className="hidden lg:flex items-center space-x-7" aria-label="Main">
           {navLinks.map((link) => (
             <button
               key={link.id}
@@ -207,22 +125,33 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-[#D09A40] transition-all duration-300 group-hover:w-full" />
             </button>
           ))}
+          <button
+            onClick={() => handleLinkClick('booking')}
+            className="flex items-center gap-2 bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A] font-bold text-sm px-5 py-2.5 rounded-full shadow-lg hover:shadow-[#D09A40]/25 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
+          >
+            <CalendarCheck className="w-4 h-4" />
+            <span>{t('navBookAppointment')}</span>
+          </button>
         </nav>
 
-        {/* Mobile Hamburger */}
+        {/* Mobile / tablet: compact CTA always visible + menu */}
         <div className="flex items-center gap-2 lg:hidden">
           <LanguageSwitcher variant="dark" compact />
           <button
-            onClick={() => setIsCustomizerOpen(true)}
-            className="p-2 text-[#D09A40] hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
-            title="White-Label Brand Studio"
+            onClick={() => handleLinkClick('booking')}
+            className="flex items-center gap-1.5 bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A] font-bold text-xs sm:text-sm px-3.5 py-2 rounded-full shadow-md cursor-pointer"
           >
-            <Palette className="w-5 h-5" />
+            <CalendarCheck className="w-4 h-4" />
+            <span>
+              <span className="sm:hidden">Book</span>
+              <span className="hidden sm:inline">{t('navBookAppointment')}</span>
+            </span>
           </button>
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="p-2 text-[#FAF5E5] hover:text-[#D09A40] transition-colors"
             aria-label="Toggle Menu"
+            aria-expanded={mobileMenuOpen}
           >
             {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
@@ -232,17 +161,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Mobile Dropdown Drawer */}
       {mobileMenuOpen && (
         <div className="lg:hidden bg-[#0F172A] border-t border-white/10 px-6 py-5 space-y-4 shadow-2xl">
-          <div className="flex flex-col space-y-3">
-            <Link
-              to="/salons?city=Jaipur"
-              onClick={() => setMobileMenuOpen(false)}
-              className="text-left text-base font-semibold text-[#D09A40] py-1.5 border-b border-white/5 transition-colors flex items-center justify-between"
-            >
-              <span>Explore Salons</span>
-              <span className="text-[11px] bg-[#D09A40]/20 text-[#FAF5E5] px-2 py-0.5 rounded-full font-bold">
-                Jaipur Flagship
-              </span>
-            </Link>
+          <nav className="flex flex-col space-y-3" aria-label="Mobile">
             {navLinks.map((link) => (
               <button
                 key={link.id}
@@ -252,27 +171,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {link.label}
               </button>
             ))}
-          </div>
-          <div className="pt-2 flex flex-col gap-3">
-            <Link
-              to={accountHref}
-              onClick={() => setMobileMenuOpen(false)}
-              className="w-full flex items-center justify-center gap-2 bg-[#D09A40] text-[#0F172A] font-bold py-3 rounded-full shadow-md"
-            >
-              <LayoutDashboard className="w-4 h-4" />
-              <span>{accountLabel}</span>
-            </Link>
-            <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                onOpenManagement();
-              }}
-              className="w-full flex items-center justify-center gap-2 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-semibold py-2.5 rounded-full text-sm"
-            >
-              <Settings className="w-4 h-4" />
-              <span>Manage catalog (owner)</span>
-            </button>
-          </div>
+          </nav>
+          <button
+            onClick={() => handleLinkClick('booking')}
+            className="w-full flex items-center justify-center gap-2 bg-[#D09A40] text-[#0F172A] font-bold py-3 rounded-full shadow-md"
+          >
+            <CalendarCheck className="w-4 h-4" />
+            <span>{t('navBookAppointment')}</span>
+          </button>
         </div>
       )}
     </header>
