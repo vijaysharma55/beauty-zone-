@@ -610,3 +610,78 @@ adminRouter.get('/audit-logs', (req, res) => {
     })),
   });
 });
+
+/* ------------------------------------------------------------------ */
+/* Platform payment oversight                                          */
+/* ------------------------------------------------------------------ */
+
+adminRouter.get('/payments', asyncHandler(async (req, res) => {
+  const { serializePayment } = await import('../payments/service.js');
+  const status = str(req.query.status, { max: 30, field: 'Status' }) || '';
+  const rows = status
+    ? db.prepare('SELECT * FROM payments WHERE status = ? ORDER BY created_at DESC LIMIT 300').all(status)
+    : db.prepare('SELECT * FROM payments ORDER BY created_at DESC LIMIT 300').all();
+  const salonName = (id) => (id ? db.prepare('SELECT name FROM salons WHERE id = ?').get(id)?.name || '' : '');
+  res.json({
+    payments: rows.map((row) => ({
+      ...serializePayment(row),
+      salonId: row.salon_id,
+      salonName: salonName(row.salon_id),
+    })),
+  });
+}));
+
+adminRouter.get('/payments/verification-queue', asyncHandler(async (req, res) => {
+  const { serializePayment } = await import('../payments/service.js');
+  const rows = db
+    .prepare("SELECT * FROM payments WHERE provider = 'manual_upi' AND status = 'verification_pending' ORDER BY claimed_at ASC LIMIT 200")
+    .all();
+  res.json({
+    queue: rows.map((row) => ({
+      ...serializePayment(row),
+      salonId: row.salon_id,
+      salonName: row.salon_id ? db.prepare('SELECT name FROM salons WHERE id = ?').get(row.salon_id)?.name || '' : '',
+    })),
+  });
+}));
+
+adminRouter.post('/payments/:paymentId/verify', asyncHandler(async (req, res) => {
+  const { verifyManualUpiPayment, serializePayment } = await import('../payments/service.js');
+  const payment = db.prepare('SELECT * FROM payments WHERE id = ?').get(req.params.paymentId);
+  if (!payment) throw new HttpError(404, 'Payment not found.', 'PAYMENT_NOT_FOUND');
+  const result = verifyManualUpiPayment({
+    paymentId: payment.id,
+    actor: req.user,
+    transactionRef: str(req.body?.transactionRef, { max: 60, field: 'Transaction reference' }) || '',
+    note: str(req.body?.note, { max: 300, field: 'Note' }) || '',
+  });
+  audit(req, 'admin.payment_manual_verified', 'payment', payment.id, { confirmed: result.confirmed });
+  res.json({ confirmed: result.confirmed, message: result.message, payment: serializePayment(result.payment) });
+}));
+
+adminRouter.post('/payments/:paymentId/reject', asyncHandler(async (req, res) => {
+  const { rejectManualUpiPayment, serializePayment } = await import('../payments/service.js');
+  const payment = db.prepare('SELECT * FROM payments WHERE id = ?').get(req.params.paymentId);
+  if (!payment) throw new HttpError(404, 'Payment not found.', 'PAYMENT_NOT_FOUND');
+  const result = rejectManualUpiPayment({
+    paymentId: payment.id,
+    actor: req.user,
+    note: str(req.body?.note, { max: 300, field: 'Note' }) || '',
+  });
+  audit(req, 'admin.payment_manual_rejected', 'payment', payment.id);
+  res.json({ status: result.status, message: result.message, payment: serializePayment(result.payment) });
+}));
+
+adminRouter.post('/bookings/:bookingId/whatsapp/retry', asyncHandler(async (req, res) => {
+  const { sendBookingReceiptWhatsApp, serializeWhatsAppNotification } = await import('../notifications/whatsapp.js');
+  const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.bookingId);
+  if (!booking) throw new HttpError(404, 'Booking not found.', 'BOOKING_NOT_FOUND');
+  const result = await sendBookingReceiptWhatsApp({ bookingId: booking.id, force: true });
+  audit(req, 'admin.whatsapp_retry', 'booking', booking.id, { status: result.status });
+  res.json({
+    ok: !!result.ok,
+    status: result.status,
+    message: result.ok ? 'Submitted to WhatsApp for delivery.' : `WhatsApp send did not complete: ${result.reason || result.status}.`,
+    notification: result.notification ? serializeWhatsAppNotification(result.notification) : null,
+  });
+}));

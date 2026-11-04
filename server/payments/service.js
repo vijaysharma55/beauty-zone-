@@ -9,7 +9,7 @@
 
 import crypto from 'node:crypto';
 import { db, newId, nowIso } from '../db.js';
-import { HttpError, str } from '../security.js';
+import { HttpError, str, ValidationError } from '../security.js';
 import { sendMail } from '../mailer.js';
 import { CURRENCY, publicPaymentConfig, resolvePaymentConfig } from './config.js';
 import { MOCK_OUTCOMES, deriveMockOutcome, toPaise } from './amounts.js';
@@ -19,8 +19,26 @@ import {
   verifyRazorpaySignature,
   verifyWebhookSignature,
 } from './razorpay.js';
+import {
+  PAYMENT_METHOD_KEYS,
+  UPI_METHOD_KEYS,
+  getSalonPaymentSettings,
+  resolveSalonChannels,
+} from './salon-settings.js';
+import { buildUpiPaymentLink } from './upi.js';
+import { issueReceiptForPayment, serializeReceipt } from './receipts.js';
+import { queueBookingReceiptWhatsApp } from '../notifications/whatsapp.js';
 
+/** Booking states from which a new advance payment order may be created. */
+const BILLABLE_STATUSES = ['pending_payment', 'payment_failed'];
+/** States from which a verified advance payment may confirm the booking.
+ *  Includes `payment_verification_pending` (a claimed manual UPI transfer that
+ *  the owner/admin has now verified). */
+const CONFIRMABLE_STATUSES = ['pending_payment', 'payment_failed', 'payment_verification_pending'];
+/** Legacy single-status name kept for readability in guards below. */
 const STATUS_BILLABLE = 'pending_payment';
+const isBillable = (status) => BILLABLE_STATUSES.includes(status);
+const isConfirmable = (status) => CONFIRMABLE_STATUSES.includes(status);
 
 export function serializePayment(row) {
   if (!row) return null;
@@ -29,6 +47,7 @@ export function serializePayment(row) {
     bookingId: row.booking_id,
     provider: row.provider,
     method: row.method || '',
+    kind: row.kind || 'advance',
     status: row.status,
     orderId: row.provider_order_id,
     transactionId: row.provider_payment_id,
@@ -38,6 +57,11 @@ export function serializePayment(row) {
     currency: row.currency,
     instrument: row.instrument || '',
     failureReason: row.failure_reason || '',
+    manualReference: row.manual_reference || null,
+    customerNote: row.customer_note || '',
+    claimedAt: row.claimed_at || null,
+    verifiedBy: row.verified_by || null,
+    verificationNote: row.verification_note || '',
     verifiedAt: row.verified_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -64,15 +88,17 @@ export function getBookingRow(bookingId) {
   return db.prepare('SELECT * FROM bookings WHERE id = ?').get(String(bookingId || ''));
 }
 
-/** Releases unpaid slots once the configured hold window has passed. */
+/** Releases unpaid slots once the configured hold window has passed.
+ *  Bookings in `payment_verification_pending` are NOT auto-expired: an owner
+ *  must verify or reject the claimed UPI transfer first. */
 export function expireStaleBookingHolds(config = resolvePaymentConfig()) {
   const cutoff = new Date(Date.now() - config.holdMinutes * 60_000).toISOString();
   try {
     const result = db
       .prepare(
         `UPDATE bookings SET status = 'expired', updated_at = ?
-         WHERE status = 'pending_payment'
-           AND payment_status IN ('unpaid', 'failed', 'cancelled', 'pending')
+         WHERE status IN ('pending_payment', 'payment_failed')
+           AND payment_status IN ('pending', 'failed', 'cancelled')
            AND created_at < ?`
       )
       .run(nowIso(), cutoff);
@@ -109,32 +135,118 @@ function assertMockAllowed(config) {
   }
 }
 
-/**
- * Creates a payment order for a booking that is awaiting payment.
- * The amount always comes from the booking row, never from the request.
- */
-export async function createPaymentOrder({ bookingId, method = '', fetchImpl }) {
-  const config = resolvePaymentConfig();
-  if (!config.available) {
-    throw new HttpError(503, config.reason || 'Online payments are unavailable.', 'PAYMENT_UNAVAILABLE');
-  }
+/** Outstanding balance after every verified payment on this booking. */
+export function remainingBalancePaise(booking) {
+  const paid = db
+    .prepare("SELECT COALESCE(SUM(amount_paise), 0) AS n FROM payments WHERE booking_id = ? AND status = 'paid'")
+    .get(booking.id).n;
+  return Math.max(0, toPaise(booking.amount_paise) - paid);
+}
 
+/**
+ * Creates a payment order for a booking.
+ *
+ * The amount always comes from the booking row (advance) or the outstanding
+ * balance (kind='balance'), never from the request. The channel is resolved
+ * from the salon owner's settings:
+ *   - gateway (Razorpay / mock) when configured and enabled by the owner
+ *   - manual UPI QR when the owner enabled direct UPI with their own VPA
+ */
+export async function createPaymentOrder({ bookingId, method = '', kind = 'advance', fetchImpl }) {
+  const config = resolvePaymentConfig();
   const id = str(bookingId, { required: true, max: 80, field: 'Booking' });
   const booking = getBookingRow(id);
-  if (!booking) throw new HttpError(404, 'Booking not found.', 'BOOKING_NOT_FOUND');
+  if (!booking) {
+    // Fail closed when no payment provider exists at all, even for an unknown
+    // booking — a disabled payment system must never look like a mere 404.
+    if (!config.available) {
+      throw new HttpError(503, config.reason || 'Online payments are unavailable.', 'PAYMENT_UNAVAILABLE');
+    }
+    throw new HttpError(404, 'Booking not found.', 'BOOKING_NOT_FOUND');
+  }
 
-  if (booking.status === 'confirmed' || booking.status === 'advance_paid' || booking.status === 'completed') {
-    throw new HttpError(409, 'This booking is already confirmed.', 'BOOKING_ALREADY_CONFIRMED');
+  const orderKind = kind === 'balance' ? 'balance' : 'advance';
+  const { settings, gateway, manual, any } = resolveSalonChannels(booking.salon_id, config);
+  if (!any) {
+    throw new HttpError(
+      503,
+      config.reason || 'This salon has no payment channel configured. Please contact the salon.',
+      'PAYMENT_UNAVAILABLE'
+    );
   }
-  if (booking.status !== STATUS_BILLABLE) {
-    throw new HttpError(409, 'This booking is not awaiting payment.', 'BOOKING_NOT_PAYABLE');
+
+  let amountPaise;
+  if (orderKind === 'balance') {
+    if (!['confirmed', 'advance_paid'].includes(booking.status)) {
+      throw new HttpError(409, 'The advance must be verified before the balance can be paid online.', 'BOOKING_NOT_PAYABLE');
+    }
+    if ((booking.balance_policy || 'at_salon') !== 'online') {
+      throw new HttpError(409, 'This booking’s remaining balance is payable at the salon.', 'BALANCE_AT_SALON');
+    }
+    amountPaise = remainingBalancePaise(booking);
+    if (amountPaise <= 0) throw new HttpError(409, 'This booking is already fully paid.', 'ALREADY_PAID');
+  } else {
+    if (['confirmed', 'advance_paid', 'completed'].includes(booking.status)) {
+      throw new HttpError(409, 'This booking is already confirmed.', 'BOOKING_ALREADY_CONFIRMED');
+    }
+    if (booking.status === 'payment_verification_pending') {
+      throw new HttpError(
+        409,
+        'Your UPI payment is already awaiting verification by the salon. Please wait for confirmation.',
+        'PAYMENT_UNDER_REVIEW'
+      );
+    }
+    if (!isBillable(booking.status)) {
+      throw new HttpError(409, 'This booking is not awaiting payment.', 'BOOKING_NOT_PAYABLE');
+    }
+    amountPaise = toPaise(booking.advance_paise);
+    if (amountPaise <= 0) {
+      throw new HttpError(409, 'This booking does not require an online payment.', 'NO_PAYMENT_REQUIRED');
+    }
+    if (Number(booking.amount_paise) <= 0) {
+      throw new HttpError(409, 'This booking has no payable amount.', 'INVALID_AMOUNT');
+    }
   }
-  const amountPaise = toPaise(booking.advance_paise);
-  if (amountPaise <= 0) {
-    throw new HttpError(409, 'This booking does not require an online payment.', 'NO_PAYMENT_REQUIRED');
+
+  // Resolve the requested method against what the salon actually offers.
+  const requestedMethod = String(method || '').trim().toLowerCase();
+  const wantsManual = ['manual_upi', 'upi_qr'].includes(requestedMethod);
+  const isKnownMethod = PAYMENT_METHOD_KEYS.includes(requestedMethod);
+  if (requestedMethod && !wantsManual && !isKnownMethod) {
+    throw new ValidationError(`Unknown payment method: ${requestedMethod}`);
   }
-  if (Number(booking.amount_paise) <= 0) {
-    throw new HttpError(409, 'This booking has no payable amount.', 'INVALID_AMOUNT');
+  if (isKnownMethod && settings.customized && settings.methods[requestedMethod] === false) {
+    throw new ValidationError('This payment method is not enabled by the salon.');
+  }
+
+  let provider;
+  if (wantsManual) {
+    if (!manual) {
+      throw new HttpError(409, 'Direct UPI QR payment is not enabled for this salon.', 'MANUAL_UPI_DISABLED');
+    }
+    provider = 'manual_upi';
+  } else if (gateway) {
+    provider = config.mode;
+  } else if (manual && (UPI_METHOD_KEYS.includes(requestedMethod) || !requestedMethod)) {
+    provider = 'manual_upi';
+  } else {
+    throw new HttpError(
+      409,
+      'That payment method is not available for this salon. Choose one of the enabled methods.',
+      'METHOD_UNAVAILABLE'
+    );
+  }
+
+  // A claimed manual payment awaiting review blocks new attempts.
+  const underReview = db
+    .prepare("SELECT id FROM payments WHERE booking_id = ? AND status = 'verification_pending' LIMIT 1")
+    .get(booking.id);
+  if (underReview) {
+    throw new HttpError(
+      409,
+      'A payment for this booking is already awaiting verification by the salon.',
+      'PAYMENT_UNDER_REVIEW'
+    );
   }
 
   // Any earlier unfinished attempt is closed so a stale checkout cannot be reused.
@@ -143,60 +255,83 @@ export async function createPaymentOrder({ bookingId, method = '', fetchImpl }) 
      WHERE booking_id = ? AND status IN ('created', 'pending')`
   ).run(nowIso(), booking.id);
 
-  const requestedMethod = String(method || '').trim().toLowerCase();
-  const paymentMethod = ['upi', 'card', 'netbanking', 'wallet'].includes(requestedMethod)
-    ? requestedMethod
-    : '';
-
+  const paymentMethod = wantsManual ? 'upi' : isKnownMethod ? requestedMethod : '';
   const paymentId = newId();
   let providerOrderId = '';
   let rawJson = null;
 
-  if (config.mode === 'razorpay') {
+  if (provider === 'razorpay') {
     const order = await createRazorpayOrder({
       amountPaise,
       currency: config.currency,
-      receipt: booking.reference,
-      notes: { bookingId: booking.id, bookingReference: booking.reference },
+      receipt: `${booking.reference}${orderKind === 'balance' ? '-BAL' : ''}`,
+      notes: { bookingId: booking.id, bookingReference: booking.reference, salonId: booking.salon_id || '', kind: orderKind },
       config,
       fetchImpl,
     });
     providerOrderId = order.id;
     rawJson = JSON.stringify(order);
+  } else if (provider === 'manual_upi') {
+    providerOrderId = `manual_order_${crypto.randomBytes(10).toString('hex')}`;
   } else {
     providerOrderId = `mock_order_${crypto.randomBytes(10).toString('hex')}`;
   }
 
+  const totalPaise = toPaise(booking.amount_paise);
   const ts = nowIso();
   db.prepare(
     `INSERT INTO payments
-       (id, booking_id, salon_id, provider, method, provider_order_id, provider_payment_id,
+       (id, booking_id, salon_id, provider, method, kind, provider_order_id, provider_payment_id,
         amount_paise, total_paise, remaining_paise, currency, status, failure_reason, instrument,
         raw_json, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, 'created', '', '', ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, 'created', '', '', ?, ?, ?)`
   ).run(
     paymentId,
     booking.id,
     booking.salon_id || null,
-    config.mode,
+    provider,
     paymentMethod,
+    orderKind,
     providerOrderId,
     amountPaise,
-    toPaise(booking.amount_paise),
-    toPaise(booking.amount_paise) - amountPaise,
+    totalPaise,
+    Math.max(0, totalPaise - amountPaise),
     config.currency,
     rawJson,
     ts,
     ts
   );
 
-  if (booking.payment_status !== 'unpaid') setBookingPaymentStatus(booking.id, 'unpaid');
+  if (orderKind === 'advance' && booking.payment_status !== 'pending') {
+    setBookingPaymentStatus(booking.id, 'pending');
+  }
 
-  return {
-    payment: db.prepare('SELECT * FROM payments WHERE id = ?').get(paymentId),
+  const paymentRow = db.prepare('SELECT * FROM payments WHERE id = ?').get(paymentId);
+  const result = {
+    payment: paymentRow,
     booking: getBookingRow(booking.id),
     config: publicPaymentConfig(config),
   };
+
+  if (provider === 'manual_upi') {
+    result.manualUpi = {
+      upiId: settings.upiId,
+      displayName: settings.paymentDisplayName || undefined,
+      qrUrl: settings.upiQrUrl || '',
+      paymentLink: buildUpiPaymentLink({
+        upiId: settings.upiId,
+        displayName: settings.paymentDisplayName,
+        amountPaise,
+        bookingReference: booking.reference,
+      }),
+      dynamicQrUrl: `/api/public/payments/orders/${paymentId}/upi-qr`,
+      amountPaise,
+      bookingReference: booking.reference,
+      instructions:
+        'Scan the QR or open the link in any UPI app and pay the exact amount. Then enter the UPI transaction reference (UTR). Your booking is confirmed only after the salon verifies the payment.',
+    };
+  }
+  return result;
 }
 
 /**
@@ -227,7 +362,7 @@ export function startMockCheckout({ paymentId, method, upiId, cardNumber, bank, 
 
   const booking = getBookingRow(payment.booking_id);
   if (!booking) throw new HttpError(404, 'Booking not found.', 'BOOKING_NOT_FOUND');
-  if (booking.status !== STATUS_BILLABLE) {
+  if (!isBillable(booking.status)) {
     throw new HttpError(409, 'This booking is no longer awaiting payment.', 'BOOKING_NOT_PAYABLE');
   }
 
@@ -294,6 +429,9 @@ export function startMockCheckout({ paymentId, method, upiId, cardNumber, bank, 
     const bookingPaymentStatus =
       derived.outcome === 'pending' ? 'pending' : derived.outcome === 'cancelled' ? 'cancelled' : 'failed';
     setBookingPaymentStatus(booking.id, bookingPaymentStatus);
+    if (derived.outcome === 'failed') {
+      db.prepare("UPDATE bookings SET status = 'payment_failed', updated_at = ? WHERE id = ?").run(ts, booking.id);
+    }
   }
 
   return {
@@ -326,7 +464,7 @@ export function cancelMockPayment({ paymentId }) {
   ).run('Payment cancelled by customer', ts, payment.id);
 
   const booking = getBookingRow(payment.booking_id);
-  if (booking && booking.status === STATUS_BILLABLE) setBookingPaymentStatus(booking.id, 'cancelled');
+  if (booking && isBillable(booking.status)) setBookingPaymentStatus(booking.id, 'cancelled');
 
   return {
     payment: db.prepare('SELECT * FROM payments WHERE id = ?').get(payment.id),
@@ -340,6 +478,16 @@ function assertPaymentAmounts(payment, booking) {
   if (String(payment.currency).toUpperCase() !== CURRENCY) {
     throw new HttpError(400, 'Unsupported payment currency.', 'CURRENCY_MISMATCH');
   }
+  if ((payment.kind || 'advance') === 'balance') {
+    const otherPaid = db
+      .prepare("SELECT COALESCE(SUM(amount_paise), 0) AS n FROM payments WHERE booking_id = ? AND status = 'paid' AND id <> ?")
+      .get(booking.id, payment.id).n;
+    const expected = Math.max(0, toPaise(booking.amount_paise) - otherPaid);
+    if (toPaise(payment.amount_paise) !== expected) {
+      throw new HttpError(409, 'The balance amount no longer matches this booking.', 'AMOUNT_MISMATCH');
+    }
+    return;
+  }
   if (toPaise(payment.amount_paise) !== toPaise(booking.advance_paise)) {
     throw new HttpError(409, 'The payment amount no longer matches this booking.', 'AMOUNT_MISMATCH');
   }
@@ -349,12 +497,27 @@ function assertPaymentAmounts(payment, booking) {
 }
 
 /**
+ * Post-verification side effects: issue the (idempotent) receipt and queue the
+ * WhatsApp confirmation. A notification failure can never undo the payment.
+ */
+export function issueReceiptAndNotify(booking, payment) {
+  try {
+    const { receipt, accessToken } = issueReceiptForPayment(booking, payment);
+    queueBookingReceiptWhatsApp(booking.id);
+    return { receipt, accessToken };
+  } catch (err) {
+    console.error('[payments] receipt/notification hook failed', err?.message || err);
+    return { receipt: null, accessToken: null };
+  }
+}
+
+/**
  * Marks a payment as captured and confirms the booking — once.
  *
  * Re-running this for an already-paid payment is a no-op, which makes webhook
  * retries and double clicks safe.
  */
-export function confirmBookingPayment({ paymentId, providerPaymentId, instrument = null, raw = null }) {
+export function confirmBookingPayment({ paymentId, providerPaymentId, instrument = null, raw = null, verifiedBy = null, verificationNote = null }) {
   const ts = nowIso();
   db.exec('BEGIN IMMEDIATE');
   try {
@@ -379,12 +542,49 @@ export function confirmBookingPayment({ paymentId, providerPaymentId, instrument
       db.prepare(
         `UPDATE payments SET status = 'paid', provider_payment_id = COALESCE(?, provider_payment_id),
            instrument = COALESCE(?, instrument), failure_reason = '', verified_at = ?, updated_at = ?,
-           raw_json = COALESCE(?, raw_json)
+           raw_json = COALESCE(?, raw_json), verified_by = COALESCE(?, verified_by),
+           verification_note = COALESCE(?, verification_note)
          WHERE id = ?`
-      ).run(providerPaymentId || null, instrument, ts, ts, raw, payment.id);
+      ).run(providerPaymentId || null, instrument, ts, ts, raw, verifiedBy, verificationNote, payment.id);
     };
 
-    if (booking.status !== STATUS_BILLABLE) {
+    // Balance payments settle an already-confirmed booking; they never change
+    // the booking status, only the payment status.
+    if ((payment.kind || 'advance') === 'balance') {
+      if (!['confirmed', 'advance_paid', 'completed'].includes(booking.status)) {
+        markPaid();
+        db.exec('COMMIT');
+        return {
+          confirmed: false,
+          requiresReview: true,
+          reason: 'booking_not_payable',
+          payment: db.prepare('SELECT * FROM payments WHERE id = ?').get(payment.id),
+          booking: db.prepare('SELECT * FROM bookings WHERE id = ?').get(booking.id),
+        };
+      }
+      markPaid();
+      const remaining = remainingBalancePaise(db.prepare('SELECT * FROM bookings WHERE id = ?').get(booking.id));
+      db.prepare('UPDATE bookings SET payment_status = ?, updated_at = ? WHERE id = ?').run(
+        remaining <= 0 ? 'paid' : 'advance_paid',
+        ts,
+        booking.id
+      );
+      db.exec('COMMIT');
+      const freshBooking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(booking.id);
+      const freshPayment = db.prepare('SELECT * FROM payments WHERE id = ?').get(payment.id);
+      const { receipt, accessToken } = issueReceiptAndNotify(freshBooking, freshPayment);
+      return {
+        confirmed: true,
+        idempotent: false,
+        balancePaid: true,
+        payment: freshPayment,
+        booking: freshBooking,
+        receipt,
+        receiptAccessToken: accessToken,
+      };
+    }
+
+    if (!isConfirmable(booking.status)) {
       // Money arrived for a booking that can no longer be honoured (cancelled,
       // expired, already confirmed elsewhere). Record the payment, never confirm.
       markPaid();
@@ -430,27 +630,37 @@ export function confirmBookingPayment({ paymentId, providerPaymentId, instrument
 
     markPaid();
     const paymentStatus = toPaise(booking.advance_paise) >= toPaise(booking.amount_paise) ? 'paid' : 'advance_paid';
+    const methodUsed =
+      payment.provider === 'manual_upi'
+        ? `UPI (salon QR)${payment.method && payment.method !== 'upi' ? ` · ${payment.method}` : ''}`
+        : payment.method || payment.provider;
     db.prepare(
       `UPDATE bookings
          SET status = 'confirmed', payment_status = ?, advance_paid = ?, advance_paise = ?,
-             advance_ref = ?, confirmed_at = ?, updated_at = ?
+             advance_ref = ?, payment_method = ?, confirmed_at = ?, updated_at = ?
        WHERE id = ?`
     ).run(
       paymentStatus,
       Math.round(toPaise(booking.advance_paise) / 100),
       toPaise(booking.advance_paise),
-      providerPaymentId || payment.provider_payment_id || payment.id,
+      providerPaymentId || payment.provider_payment_id || payment.manual_reference || payment.id,
+      methodUsed,
       ts,
       ts,
       booking.id
     );
 
     db.exec('COMMIT');
+    const freshBooking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(booking.id);
+    const freshPayment = db.prepare('SELECT * FROM payments WHERE id = ?').get(payment.id);
+    const { receipt, accessToken } = issueReceiptAndNotify(freshBooking, freshPayment);
     return {
       confirmed: true,
       idempotent: false,
-      payment: db.prepare('SELECT * FROM payments WHERE id = ?').get(payment.id),
-      booking: db.prepare('SELECT * FROM bookings WHERE id = ?').get(booking.id),
+      payment: freshPayment,
+      booking: freshBooking,
+      receipt,
+      receiptAccessToken: accessToken,
     };
   } catch (err) {
     try {
@@ -534,6 +744,8 @@ export function completeMockPayment({ paymentId, transactionId, amountPaise, cur
       confirmed: result.confirmed,
       requiresReview: !!result.requiresReview,
       idempotent: !!result.idempotent,
+      receipt: result.receipt || null,
+      receiptAccessToken: result.receiptAccessToken || null,
       message: result.confirmed
         ? 'Mock payment verified. Your booking is confirmed.'
         : 'Payment received, but this slot needs manual review. The salon will contact you.',
@@ -548,7 +760,12 @@ export function completeMockPayment({ paymentId, transactionId, amountPaise, cur
     ts,
     payment.id
   );
-  if (booking.status === STATUS_BILLABLE) setBookingPaymentStatus(booking.id, nextPaymentStatus);
+  if (isBillable(booking.status)) {
+    setBookingPaymentStatus(booking.id, nextPaymentStatus);
+    if (txn.outcome === 'failed') {
+      db.prepare("UPDATE bookings SET status = 'payment_failed', updated_at = ? WHERE id = ?").run(ts, booking.id);
+    }
+  }
   if (txn.outcome !== 'pending') {
     db.prepare('UPDATE mock_transactions SET consumed_at = ? WHERE id = ?').run(ts, txn.id);
   }
@@ -670,6 +887,8 @@ export async function verifyRazorpayPayment({
     confirmed: result.confirmed,
     requiresReview: !!result.requiresReview,
     idempotent: !!result.idempotent,
+    receipt: result.receipt || null,
+    receiptAccessToken: result.receiptAccessToken || null,
     message: result.confirmed
       ? 'Payment verified. Your booking is confirmed.'
       : 'Payment received, but this slot needs manual review. The salon will contact you.',
@@ -805,8 +1024,9 @@ export function processRazorpayWebhook({ rawBody, signature, eventIdHeader }) {
        WHERE id = ? AND status <> 'paid'`
     ).run(String(paymentEntity?.error_description || 'Payment failed at the gateway').slice(0, 300), nowIso(), payment.id);
     const booking = getBookingRow(payment.booking_id);
-    if (booking && booking.status === STATUS_BILLABLE && booking.payment_status !== 'paid') {
+    if (booking && isBillable(booking.status) && booking.payment_status !== 'paid') {
       setBookingPaymentStatus(booking.id, 'failed');
+      db.prepare("UPDATE bookings SET status = 'payment_failed', updated_at = ? WHERE id = ?").run(nowIso(), booking.id);
     }
     return finish('processed', { reason: 'payment_failed', paymentId: payment.id });
   }
@@ -869,4 +1089,209 @@ export function notifyBookingConfirmed(booking, payment) {
   } catch (err) {
     console.error('[payments] confirmation notification failed', err.message);
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Manual UPI QR workflow (salon-owner verification)                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Customer claims to have paid a manual UPI order and submits the UPI
+ * transaction reference (UTR). This NEVER confirms the booking — it moves it
+ * to `payment_verification_pending` until the salon owner/admin verifies the
+ * transfer against their bank/UPI app.
+ */
+export function claimManualUpiPayment({ paymentId, reference, note = '' }) {
+  const payment = getPaymentRow(paymentId);
+  if (!payment) throw new HttpError(404, 'Payment order not found.', 'PAYMENT_NOT_FOUND');
+  if (payment.provider !== 'manual_upi') {
+    throw new HttpError(400, 'This order is not a direct UPI QR payment.', 'NOT_MANUAL_ORDER');
+  }
+  if (payment.status === 'paid') {
+    throw new HttpError(409, 'This payment has already been verified.', 'PAYMENT_ALREADY_PAID');
+  }
+  if (['cancelled', 'expired', 'failed'].includes(payment.status)) {
+    throw new HttpError(409, 'This payment order is no longer active. Start a new payment attempt.', 'PAYMENT_NOT_ACTIVE');
+  }
+
+  const booking = getBookingRow(payment.booking_id);
+  if (!booking) throw new HttpError(404, 'Booking not found.', 'BOOKING_NOT_FOUND');
+  if (!isBillable(booking.status) && booking.status !== 'payment_verification_pending') {
+    throw new HttpError(409, 'This booking is not awaiting payment.', 'BOOKING_NOT_PAYABLE');
+  }
+
+  const txnRef = str(reference, { min: 6, max: 60, field: 'UPI transaction reference', required: true })
+    .replace(/\s+/g, '')
+    .toUpperCase();
+  if (!/^[A-Z0-9-]{6,60}$/.test(txnRef)) {
+    throw new ValidationError('Enter the UPI transaction reference (UTR) exactly as shown in your UPI app.');
+  }
+
+  // The same bank reference cannot back two different payments.
+  const duplicate = db
+    .prepare(
+      `SELECT id FROM payments
+       WHERE manual_reference = ? AND id <> ? AND status IN ('verification_pending', 'paid')
+       LIMIT 1`
+    )
+    .get(txnRef, payment.id);
+  if (duplicate) {
+    throw new HttpError(409, 'This transaction reference has already been submitted for another payment.', 'DUPLICATE_REFERENCE');
+  }
+
+  const ts = nowIso();
+  db.prepare(
+    `UPDATE payments
+       SET status = 'verification_pending', manual_reference = ?, customer_note = ?, claimed_at = ?,
+           failure_reason = '', updated_at = ?
+     WHERE id = ?`
+  ).run(txnRef, String(note || '').slice(0, 300), ts, ts, payment.id);
+
+  db.prepare(
+    `UPDATE bookings SET status = 'payment_verification_pending', payment_status = 'verification_pending', updated_at = ?
+     WHERE id = ?`
+  ).run(ts, booking.id);
+
+  return {
+    status: 'verification_pending',
+    payment: db.prepare('SELECT * FROM payments WHERE id = ?').get(payment.id),
+    booking: getBookingRow(booking.id),
+    message:
+      'Payment reference submitted. Your booking stays unconfirmed until the salon verifies the transfer — you will receive a WhatsApp confirmation once it is approved.',
+  };
+}
+
+function assertManualVerifiable(payment) {
+  if (!payment) throw new HttpError(404, 'Payment not found.', 'PAYMENT_NOT_FOUND');
+  if (payment.provider !== 'manual_upi') {
+    throw new HttpError(400, 'Only direct UPI QR payments are verified manually.', 'NOT_MANUAL_ORDER');
+  }
+}
+
+/**
+ * Authorized salon-owner/admin verification of a claimed UPI transfer.
+ * The verifier must have checked the credit in their own bank/UPI app.
+ */
+export function verifyManualUpiPayment({ paymentId, actor, transactionRef = '', note = '' }) {
+  const payment = getPaymentRow(paymentId);
+  assertManualVerifiable(payment);
+  if (payment.status === 'paid') {
+    return {
+      confirmed: true,
+      idempotent: true,
+      payment,
+      booking: getBookingRow(payment.booking_id),
+      message: 'This payment was already verified.',
+    };
+  }
+  if (payment.status !== 'verification_pending') {
+    throw new HttpError(
+      409,
+      'The customer has not submitted a payment reference for this order yet.',
+      'NO_CLAIM_TO_VERIFY'
+    );
+  }
+
+  const ref = String(transactionRef || '').trim().toUpperCase() || payment.manual_reference;
+  if (!ref) throw new ValidationError('A bank/UPI transaction reference is required to verify this payment.');
+  if (String(transactionRef || '').trim() && ref !== payment.manual_reference) {
+    db.prepare('UPDATE payments SET manual_reference = ?, updated_at = ? WHERE id = ?').run(ref, nowIso(), payment.id);
+  }
+
+  const result = confirmBookingPayment({
+    paymentId: payment.id,
+    providerPaymentId: ref,
+    instrument: 'UPI · verified by salon',
+    raw: JSON.stringify({ provider: 'manual_upi', verifiedBy: actor?.id || null, reference: ref }),
+    verifiedBy: actor?.id || null,
+    verificationNote: String(note || '').slice(0, 300),
+  });
+
+  if (result.confirmed && !result.idempotent) {
+    notifyBookingConfirmed(result.booking, result.payment);
+  }
+
+  return {
+    confirmed: result.confirmed,
+    idempotent: !!result.idempotent,
+    requiresReview: !!result.requiresReview,
+    payment: result.payment,
+    booking: result.booking,
+    receipt: result.receipt || null,
+    message: result.confirmed
+      ? 'Payment verified. The booking is confirmed and the customer receipt has been issued.'
+      : 'Payment recorded, but this booking needs manual review (the slot may already be taken).',
+  };
+}
+
+/** Rejects a claimed UPI transfer; the customer can retry with a new payment. */
+export function rejectManualUpiPayment({ paymentId, actor, note = '' }) {
+  const payment = getPaymentRow(paymentId);
+  assertManualVerifiable(payment);
+  if (payment.status === 'paid') {
+    throw new HttpError(409, 'A verified payment cannot be rejected. Issue a refund instead.', 'PAYMENT_ALREADY_PAID');
+  }
+  if (payment.status !== 'verification_pending') {
+    throw new HttpError(409, 'Only payments awaiting verification can be rejected.', 'NO_CLAIM_TO_REJECT');
+  }
+
+  const ts = nowIso();
+  const reason = String(note || '').slice(0, 300) || 'Payment could not be matched in the salon bank account';
+  db.prepare(
+    `UPDATE payments SET status = 'failed', failure_reason = ?, verified_by = ?, verification_note = ?, updated_at = ?
+     WHERE id = ?`
+  ).run(reason, actor?.id || null, String(note || '').slice(0, 300), ts, payment.id);
+
+  const booking = getBookingRow(payment.booking_id);
+  if (booking && booking.status === 'payment_verification_pending') {
+    db.prepare(
+      `UPDATE bookings SET status = 'payment_failed', payment_status = 'failed', updated_at = ? WHERE id = ?`
+    ).run(ts, booking.id);
+  }
+
+  return {
+    status: 'failed',
+    payment: db.prepare('SELECT * FROM payments WHERE id = ?').get(payment.id),
+    booking: booking ? getBookingRow(booking.id) : null,
+    message: 'Payment rejected. The customer can submit a new payment for this booking.',
+  };
+}
+
+/** Marks the remaining balance as collected at the salon (owner action). */
+export function recordBalanceCollectedAtSalon({ bookingId, actor }) {
+  const booking = getBookingRow(bookingId);
+  if (!booking) throw new HttpError(404, 'Booking not found.', 'BOOKING_NOT_FOUND');
+  if (!['confirmed', 'advance_paid', 'completed'].includes(booking.status)) {
+    throw new HttpError(409, 'Only confirmed bookings can collect a balance.', 'BOOKING_NOT_CONFIRMED');
+  }
+  const remaining = remainingBalancePaise(booking);
+  if (remaining <= 0) throw new HttpError(409, 'This booking is already fully paid.', 'ALREADY_PAID');
+
+  const ts = nowIso();
+  const id = newId();
+  db.prepare(
+    `INSERT INTO payments
+       (id, booking_id, salon_id, provider, method, kind, provider_order_id, provider_payment_id,
+        amount_paise, total_paise, remaining_paise, currency, status, failure_reason, instrument,
+        raw_json, verified_at, verified_by, created_at, updated_at)
+     VALUES (?, ?, ?, 'manual_upi', 'cash_at_salon', 'balance', ?, NULL, ?, ?, 0, ?, 'paid', '', 'Collected at salon',
+             NULL, ?, ?, ?, ?)`
+  ).run(
+    id,
+    booking.id,
+    booking.salon_id || null,
+    `salon_balance_${crypto.randomBytes(10).toString('hex')}`,
+    remaining,
+    toPaise(booking.amount_paise),
+    CURRENCY,
+    ts,
+    actor?.id || null,
+    ts,
+    ts
+  );
+  db.prepare("UPDATE bookings SET payment_status = 'paid', updated_at = ? WHERE id = ?").run(ts, booking.id);
+  const freshBooking = getBookingRow(booking.id);
+  const freshPayment = db.prepare('SELECT * FROM payments WHERE id = ?').get(id);
+  issueReceiptAndNotify(freshBooking, freshPayment);
+  return { booking: freshBooking, payment: freshPayment };
 }

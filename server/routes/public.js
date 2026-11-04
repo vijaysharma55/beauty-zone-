@@ -81,6 +81,9 @@ function livePayload(salon) {
       durationMinutes: service.durationMinutes,
       active: true,
       sortOrder: service.sortOrder,
+      advanceMode: service.advanceMode || 'inherit',
+      advancePercent: service.advancePercent ?? null,
+      advanceFixedPaise: service.advanceFixedPaise ?? null,
     }));
   const staff = (live.staff || [])
     .filter((member) => member.active)

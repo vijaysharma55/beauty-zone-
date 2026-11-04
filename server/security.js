@@ -317,3 +317,44 @@ export function sanitizeText(input, max = 2000) {
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
     .slice(0, max);
 }
+
+/* ------------------------------------------------------------------ */
+/* Date of birth (mandatory at signup, private profile data)           */
+/* ------------------------------------------------------------------ */
+
+export const DOB_RE = /^\d{4}-\d{2}-\d{2}$/;
+export const DOB_MIN = '1900-01-01';
+
+/** Today's date (UTC) as YYYY-MM-DD. */
+export function todayUtc(now = new Date()) {
+  return now.toISOString().slice(0, 10);
+}
+
+/**
+ * Validates a date-of-birth value.
+ * - must be a real calendar date in YYYY-MM-DD form
+ * - must not be in the future
+ * - must not be before 1900-01-01 (guards against typos / placeholder dates)
+ * Returns the normalised string, or null when optional and empty.
+ */
+export function validateDob(value, { required = true, field = 'Date of birth', now = new Date() } = {}) {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    if (required) throw new ValidationError(`${field} is required`);
+    return null;
+  }
+  if (typeof value !== 'string') throw new ValidationError(`${field} must be a date in YYYY-MM-DD format`);
+  const raw = value.trim();
+  if (!DOB_RE.test(raw)) throw new ValidationError(`${field} must be a valid date in YYYY-MM-DD format`);
+  const [y, m, d] = raw.split('-').map(Number);
+  const probe = new Date(Date.UTC(y, m - 1, d));
+  if (
+    probe.getUTCFullYear() !== y ||
+    probe.getUTCMonth() !== m - 1 ||
+    probe.getUTCDate() !== d
+  ) {
+    throw new ValidationError(`${field} is not a real calendar date`);
+  }
+  if (raw < DOB_MIN) throw new ValidationError(`${field} must be on or after ${DOB_MIN}`);
+  if (raw > todayUtc(now)) throw new ValidationError(`${field} cannot be in the future`);
+  return raw;
+}

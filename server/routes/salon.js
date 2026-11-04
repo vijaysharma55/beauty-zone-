@@ -35,12 +35,18 @@ import {
 import { requireAuth, requireRole, asyncHandler } from '../middleware.js';
 import { workflowInfo, submitForApproval, listVersions, serializeVersion } from '../workflow.js';
 import { ownerBookingsRouter } from './bookings.js';
+import { salonPaymentsRouter } from './salon-payments.js';
+import { serviceAdvanceFields } from '../payments/salon-settings.js';
 
 export const salonRouter = Router();
 
 /* Every route in this router is salon-owner only. Ownership is resolved from the
    session, so there is no client-supplied salon id anywhere in this file. */
 salonRouter.use(requireAuth, requireRole('salon_owner'));
+
+/* Booking & advance payment settings, payment methods, transactions,
+   verification queue, receipts and WhatsApp retries. */
+salonRouter.use(salonPaymentsRouter);
 
 function requireOwnSalon(req) {
   const salon = findSalonByOwner(req.user.id);
@@ -385,7 +391,7 @@ salonRouter.post(
   asyncHandler(async (req, res) => {
     req.salon = requireOwnSalon(req);
     const kind = String(req.query.kind || 'image');
-    if (!['logo', 'cover', 'gallery', 'staff'].includes(kind)) {
+    if (!['logo', 'cover', 'gallery', 'staff', 'payment_qr'].includes(kind)) {
       return res.status(400).json({ error: 'Unsupported upload type' });
     }
     const mime = String(req.get('content-type') || '').split(';')[0].trim().toLowerCase();
@@ -440,6 +446,7 @@ function servicePayload(body, { partial = false } = {}) {
   }
   if (body.active !== undefined) out.active = bool(body.active, true) ? 1 : 0;
   if (body.sortOrder !== undefined) out.sort_order = int(body.sortOrder, { min: 0, max: 10_000, field: 'Sort order' });
+  Object.assign(out, serviceAdvanceFields(body, { partial }));
   return out;
 }
 
@@ -455,8 +462,9 @@ salonRouter.post('/services', (req, res) => {
   const ts = nowIso();
   const count = getServicesForSalon(salon.id).length;
   db.prepare(
-    `INSERT INTO services (id, salon_id, name, category, description, price_paise, duration_minutes, active, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO services (id, salon_id, name, category, description, price_paise, duration_minutes, active, sort_order,
+       advance_mode, advance_percent, advance_fixed_paise, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     salon.id,
@@ -467,6 +475,9 @@ salonRouter.post('/services', (req, res) => {
     data.duration_minutes,
     data.active ?? 1,
     data.sort_order ?? count,
+    data.advance_mode ?? 'inherit',
+    data.advance_percent ?? null,
+    data.advance_fixed_paise ?? null,
     ts,
     ts
   );

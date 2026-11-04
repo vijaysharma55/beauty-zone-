@@ -25,7 +25,10 @@ import { aiRouter } from './routes/ai.js';
 import { bookingsRouter } from './routes/bookings.js';
 import { loyaltyRouter } from './routes/loyalty.js';
 import { paymentsRouter } from './routes/payments.js';
+import { receiptsRouter } from './routes/receipts.js';
+import { whatsappWebhookRouter } from './notifications/whatsapp-webhook.js';
 import { resolvePaymentConfig } from './payments/config.js';
+import { resolveWhatsAppConfig } from './notifications/whatsapp.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -73,6 +76,8 @@ app.use('/api/salon/uploads', express.raw({ type: 'image/*', limit: '5mb' }));
 // Razorpay signs the exact bytes it sends, so the webhook keeps its raw body.
 app.use('/api/public/payments/razorpay/webhook', express.raw({ type: '*/*', limit: '1mb' }));
 app.use('/api/payments/razorpay/webhook', express.raw({ type: '*/*', limit: '1mb' }));
+// Meta signs WhatsApp webhooks the same way (X-Hub-Signature-256 over raw bytes).
+app.use('/api/public/whatsapp/webhook', express.raw({ type: '*/*', limit: '1mb' }));
 
 app.use(express.json({ limit: '2mb' }));
 
@@ -96,9 +101,13 @@ app.use('/api/ai', aiRouter);
 // /api/public/bookings — visitor appointment requests
 app.use('/api/public', bookingsRouter);
 app.use('/api/public', loyaltyRouter);
-// /api/public/payments — booking checkout (mock + Razorpay), also at /api/payments
+// /api/public/payments — booking checkout (mock + Razorpay + manual UPI), also at /api/payments
 app.use('/api/public/payments', paymentsRouter);
 app.use('/api/payments', paymentsRouter);
+// /api/public/receipts — token-gated receipt JSON / PDF / WhatsApp resend
+app.use('/api/public/receipts', receiptsRouter);
+// /api/public/whatsapp — provider delivery-status webhook
+app.use('/api/public/whatsapp', whatsappWebhookRouter);
 
 // Uploaded images are public assets (they are embedded in public salon websites).
 app.use(
@@ -212,6 +221,12 @@ if (!process.env.VERCEL) {
     if (paymentConfig.mockBlockedInProduction) {
       console.error('[startup] PAYMENT_MODE=mock is not allowed in production. Configure Razorpay instead.');
     }
+    const whatsappConfig = resolveWhatsAppConfig();
+    console.log(
+      whatsappConfig.enabled
+        ? `  WhatsApp: Meta Cloud API (template "${whatsappConfig.templateName}")`
+        : `  WhatsApp: disabled — ${whatsappConfig.reason}`
+    );
     if (seeded) {
       console.log('\n  Seeded demo accounts:');
       console.log(`    Super admin : ${process.env.SEED_ADMIN_EMAIL || 'admin@beautyzone.app'} / ${process.env.SEED_ADMIN_PASSWORD || 'Admin@12345'}`);

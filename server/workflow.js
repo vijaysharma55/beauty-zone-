@@ -96,6 +96,9 @@ export function buildSalonSnapshot(salonRow) {
       durationMinutes: service.durationMinutes,
       active: service.active,
       sortOrder: service.sortOrder,
+      advanceMode: service.advanceMode || 'inherit',
+      advancePercent: service.advancePercent ?? null,
+      advanceFixedPaise: service.advanceFixedPaise ?? null,
     })),
     staff: staff.map((member) => ({
       id: member.id,
