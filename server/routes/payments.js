@@ -10,13 +10,18 @@
  */
 
 import { Router } from 'express';
-import { audit } from '../db.js';
+import { audit, findSalonBySlug } from '../db.js';
 import { HttpError, rateLimit, str } from '../security.js';
 import { asyncHandler } from '../middleware.js';
 import { publicPaymentConfig, resolvePaymentConfig } from '../payments/config.js';
 import { bookingPaymentSummary, isConfirmedStatus, publicBookingStatus, serializeBooking } from './bookings.js';
+import { publicSalonPaymentSummary } from '../payments/salon-settings.js';
+import { buildUpiPaymentLink, renderQrSvg } from '../payments/upi.js';
+import { serializeReceipt } from '../payments/receipts.js';
+import { getSalonPaymentSettings } from '../payments/salon-settings.js';
 import {
   cancelMockPayment,
+  claimManualUpiPayment,
   completeMockPayment,
   createPaymentOrder,
   expireStaleBookingHolds,
@@ -48,9 +53,18 @@ function bookingPayload(bookingId) {
   };
 }
 
-/** Public, secret-free payment configuration used to render the checkout. */
+/** Public, secret-free payment configuration used to render the checkout.
+ *  Pass ?salon=<slug> to include that salon's owner-configured advance rules,
+ *  enabled methods and UPI QR details (no secrets). */
 paymentsRouter.get('/config', (req, res) => {
-  res.json({ payment: publicPaymentConfig() });
+  const config = resolvePaymentConfig();
+  const slug = str(req.query.salon, { max: 60, field: 'Salon' });
+  let salonPayment = null;
+  if (slug) {
+    const salon = findSalonBySlug(slug);
+    if (salon) salonPayment = publicSalonPaymentSummary(salon.id, config);
+  }
+  res.json({ payment: publicPaymentConfig(config), salonPayment });
 });
 
 /** Creates the server-side order the checkout will pay against. */
@@ -60,11 +74,13 @@ paymentsRouter.post(
   asyncHandler(async (req, res) => {
     const bookingId = str(req.body?.bookingId, { max: 80, field: 'Booking', required: true });
     const method = str(req.body?.method, { max: 20, field: 'Payment method' }) || '';
-    const result = await createPaymentOrder({ bookingId, method });
+    const kind = str(req.body?.kind, { max: 10, field: 'Payment kind' }) || 'advance';
+    const result = await createPaymentOrder({ bookingId, method, kind });
 
     audit(req, 'payment.order_created', 'payment', result.payment.id, {
       bookingId,
       provider: result.payment.provider,
+      kind: result.payment.kind,
       amountPaise: result.payment.amount_paise,
     });
 
@@ -72,6 +88,7 @@ paymentsRouter.post(
       payment: serializePayment(result.payment),
       ...bookingPayload(bookingId),
       config: result.config,
+      ...(result.manualUpi ? { manualUpi: result.manualUpi } : {}),
     });
   })
 );
@@ -161,6 +178,7 @@ paymentsRouter.post(
       requiresReview: !!result.requiresReview,
       idempotent: !!result.idempotent,
       payment: serializePayment(result.payment),
+      receipt: result.receipt ? serializeReceipt(result.receipt, { accessToken: result.receiptAccessToken }) : null,
       ...bookingPayload(result.booking.id),
     });
   })
@@ -219,6 +237,7 @@ paymentsRouter.post(
       confirmed: !!result.confirmed,
       requiresReview: !!result.requiresReview,
       payment: serializePayment(result.payment),
+      receipt: result.receipt ? serializeReceipt(result.receipt, { accessToken: result.receiptAccessToken }) : null,
       ...bookingPayload(result.booking.id),
     });
   })
@@ -245,6 +264,74 @@ paymentsRouter.post(
       eventIdHeader: req.get('x-razorpay-event-id') || '',
     });
     return res.status(200).json(result);
+  })
+);
+
+/**
+ * Dynamic UPI QR for a manual order — a real scannable SVG carrying the exact
+ * amount and booking reference. Scanning it never proves payment by itself.
+ */
+paymentsRouter.get(
+  '/orders/:paymentId/upi-qr',
+  verifyLimiter,
+  asyncHandler(async (req, res) => {
+    const payment = getPaymentRow(req.params.paymentId);
+    if (!payment) throw new HttpError(404, 'Payment order not found.', 'PAYMENT_NOT_FOUND');
+    if (payment.provider !== 'manual_upi') {
+      throw new HttpError(400, 'This order is not a direct UPI QR payment.', 'NOT_MANUAL_ORDER');
+    }
+    const booking = getBookingRow(payment.booking_id);
+    const settings = getSalonPaymentSettings(payment.salon_id);
+    if (!settings.upiId) throw new HttpError(409, 'The salon UPI ID is not configured.', 'UPI_NOT_CONFIGURED');
+    const link = buildUpiPaymentLink({
+      upiId: settings.upiId,
+      displayName: settings.paymentDisplayName,
+      amountPaise: payment.amount_paise,
+      bookingReference: booking?.reference || '',
+    });
+    const svg = renderQrSvg(link);
+    res.set('Content-Type', 'image/svg+xml');
+    res.set('Cache-Control', 'no-store');
+    res.send(svg);
+  })
+);
+
+/**
+ * Customer submits the UPI transaction reference for a manual QR payment.
+ * The booking moves to `payment_verification_pending` — it is NEVER confirmed
+ * here. Only the salon owner/admin verification (or a gateway callback) can
+ * confirm it.
+ */
+paymentsRouter.post(
+  '/manual/claim',
+  verifyLimiter,
+  asyncHandler(async (req, res) => {
+    const result = claimManualUpiPayment({
+      paymentId: str(req.body?.orderId || req.body?.paymentId, {
+        max: 80,
+        field: 'Payment order',
+        required: true,
+      }),
+      reference: str(req.body?.reference || req.body?.transactionRef, {
+        max: 60,
+        field: 'UPI transaction reference',
+        required: true,
+      }),
+      note: str(req.body?.note, { max: 300, field: 'Note' }) || '',
+    });
+
+    audit(req, 'payment.manual_claimed', 'payment', result.payment.id, {
+      reference: result.payment.manual_reference,
+      bookingId: result.payment.booking_id,
+    });
+
+    res.json({
+      status: result.status,
+      message: result.message,
+      confirmed: false,
+      payment: serializePayment(result.payment),
+      ...bookingPayload(result.booking.id),
+    });
   })
 );
 

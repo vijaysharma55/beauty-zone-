@@ -29,12 +29,20 @@ import { generateSlots } from '../availability.js';
 import { creditLoyaltyPointsForCompletedBooking } from './loyalty.js';
 import { getLiveContent } from '../workflow.js';
 import { resolvePaymentConfig } from '../payments/config.js';
-import { computePaymentAmounts, toPaise } from '../payments/amounts.js';
+import { toPaise } from '../payments/amounts.js';
+import {
+  assertBookingAllowedByPolicy,
+  publicSalonPaymentSummary,
+  resolveAdvanceForBooking,
+  resolveSalonChannels,
+} from '../payments/salon-settings.js';
 import {
   expireStaleBookingHolds,
   latestPaymentForBooking,
   serializePayment,
 } from '../payments/service.js';
+import { receiptsForBooking, serializeReceipt } from '../payments/receipts.js';
+import { notificationsForBooking, serializeWhatsAppNotification } from '../notifications/whatsapp.js';
 
 export const bookingsRouter = Router();
 
@@ -47,6 +55,8 @@ const TIME12_RE = /^(0?\d|1[0-2]):[0-5]\d\s?(AM|PM)$/i;
 export const BOOKING_STATUSES = [
   'requested',
   'pending_payment',
+  'payment_verification_pending',
+  'payment_failed',
   'advance_paid',
   'confirmed',
   'declined',
@@ -173,41 +183,54 @@ function uniqueReference(preferred, salonId) {
   return makeReference('BK');
 }
 
-/** Authoritative service price, read from the salon's approved public snapshot. */
-function resolveServicePricePaise(salon, serviceName) {
+/** Authoritative service, read from the salon's approved public snapshot. */
+function resolveLiveService(salon, serviceName) {
   if (!salon) return null;
   try {
     const live = getLiveContent(salon);
     const services = Array.isArray(live?.services) ? live.services : [];
     const wanted = String(serviceName || '').trim().toLowerCase();
-    const match = services.find(
-      (s) => s && String(s.name || '').trim().toLowerCase() === wanted && s.active !== false
+    return (
+      services.find(
+        (s) => s && String(s.name || '').trim().toLowerCase() === wanted && s.active !== false
+      ) || null
     );
-    const price = Number(match?.pricePaise);
-    if (Number.isFinite(price) && price > 0) return Math.round(price);
   } catch (err) {
-    console.error('[bookings] price lookup failed', err.message);
+    console.error('[bookings] service lookup failed', err.message);
+    return null;
   }
-  return null;
+}
+
+function resolveServicePricePaise(salon, serviceName) {
+  const price = Number(resolveLiveService(salon, serviceName)?.pricePaise);
+  return Number.isFinite(price) && price > 0 ? Math.round(price) : null;
 }
 
 /** Payment summary attached to every booking response. */
 export function bookingPaymentSummary(row, config = resolvePaymentConfig()) {
   const totalPaise = toPaise(row?.amount_paise ?? Math.round(Number(row?.estimated_total || 0) * 100));
   const advancePaise = toPaise(row?.advance_paise ?? Math.round(Number(row?.advance_paid || 0) * 100));
+  const salonSummary = row?.salon_id ? publicSalonPaymentSummary(row.salon_id, config) : null;
   return {
-    required: advancePaise > 0 && ['unpaid', 'pending', 'failed', 'cancelled'].includes(row?.payment_status),
+    required: advancePaise > 0 && ['pending', 'failed', 'cancelled'].includes(row?.payment_status),
     status: row?.payment_status || 'not_required',
     mode: config.mode,
-    available: config.available,
+    available: row?.salon_id ? resolveSalonChannels(row.salon_id, config).any : config.available,
     currency: config.currency,
-    advancePercent: config.advancePercent,
+    advancePercent: salonSummary ? salonSummary.advancePercent : config.advancePercent,
+    advanceType: salonSummary ? salonSummary.advanceType : 'percent',
+    advanceFixedPaise: salonSummary ? salonSummary.advanceFixedPaise : 0,
+    balancePolicy: row?.balance_policy || salonSummary?.balancePolicy || 'at_salon',
     holdMinutes: config.holdMinutes,
     totalPaise,
     amountPaise: totalPaise,
     advancePaise,
     remainingPaise: Math.max(0, totalPaise - advancePaise),
     advancePaidPaise: ['advance_paid', 'paid'].includes(row?.payment_status) ? advancePaise : 0,
+    verificationPending: row?.payment_status === 'verification_pending',
+    methods: salonSummary?.methods || [],
+    manualUpi: salonSummary?.manualUpi || { enabled: false },
+    testMode: config.mock,
   };
 }
 
@@ -245,7 +268,10 @@ export function serializeBooking(row) {
     remainingPaise: Math.max(0, totalPaise - advancePaise),
     advanceRef: row.advance_ref,
     paymentStatus: row.payment_status || 'not_required',
-    paymentRequired: !confirmed && ['unpaid', 'pending', 'failed', 'cancelled'].includes(row.payment_status) && advancePaise > 0,
+    paymentRequired: !confirmed && ['pending', 'failed', 'cancelled'].includes(row.payment_status) && advancePaise > 0,
+    balancePolicy: row.balance_policy || 'at_salon',
+    paymentMethod: row.payment_method || '',
+    verificationPending: row.payment_status === 'verification_pending',
     status: row.status,
     confirmed,
     calendarEnabled: confirmed,
@@ -398,22 +424,37 @@ bookingsRouter.post(
       }
     }
 
-    const breakdown = computePaymentAmounts({
-      amountPaise,
-      advancePercent: payConfig.advancePercent,
-      advanceRequired: payConfig.advanceRequired,
+    // The advance is resolved from the salon owner's settings (percentage or
+    // fixed amount, with optional per-service overrides) — never the client.
+    const liveService = salon ? resolveLiveService(salon, data.service) : null;
+    const advance = resolveAdvanceForBooking({
+      salonId: salon?.id || null,
+      service: liveService,
+      totalPaise: amountPaise,
+      config: payConfig,
     });
+    assertBookingAllowedByPolicy(advance);
 
-    if (breakdown.paymentRequired && !payConfig.available) {
+    const breakdown = {
+      totalPaise: amountPaise,
+      advancePaise: advance.advancePaise,
+      remainingPaise: advance.remainingPaise,
+      paymentRequired: advance.paymentRequired,
+    };
+
+    const channels = salon ? resolveSalonChannels(salon.id, payConfig) : { any: payConfig.available };
+    if (breakdown.paymentRequired && !channels.any) {
+      // Fail closed: a required advance is never silently bypassed.
       throw new HttpError(
         503,
-        payConfig.reason || 'Online payments are not configured. Please book on WhatsApp.',
+        payConfig.reason ||
+          'This salon requires an advance payment but has no payment channel configured yet. Please book on WhatsApp.',
         'PAYMENT_UNAVAILABLE'
       );
     }
 
     const status = breakdown.paymentRequired ? 'pending_payment' : 'requested';
-    const paymentStatus = breakdown.paymentRequired ? 'unpaid' : 'not_required';
+    const paymentStatus = breakdown.paymentRequired ? 'pending' : 'not_required';
 
     const conflicts = salon ? conflictingCount(salon.id, data.date, data.time) : 0;
 
@@ -422,8 +463,8 @@ bookingsRouter.post(
          (id, salon_id, reference, full_name, phone, service, category, stylist, date, time,
           location_type, branch, address, locality, distance_km, bridal_trial, notes, promo_code,
           estimated_total, advance_paid, advance_ref, amount_paise, advance_paise, payment_status,
-          confirmed_at, status, source, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?, NULL, ?, 'public', ?, ?)`
+          balance_policy, confirmed_at, status, source, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?, ?, NULL, ?, 'public', ?, ?)`
     ).run(
       id,
       salon ? salon.id : null,
@@ -447,6 +488,7 @@ bookingsRouter.post(
       amountPaise,
       breakdown.advancePaise,
       paymentStatus,
+      advance.balancePolicy || 'at_salon',
       status,
       ts,
       ts
@@ -519,8 +561,12 @@ bookingsRouter.post(
         advancePaise: breakdown.advancePaise,
         remainingPaise: breakdown.remainingPaise,
         totalPaise: breakdown.totalPaise,
+        advanceType: advance.advanceType,
+        advancePercent: advance.advancePercent,
+        advanceFixedPaise: advance.advanceFixedPaise,
+        balancePolicy: advance.balancePolicy,
         message: breakdown.paymentRequired
-          ? `Pay ₹${(breakdown.advancePaise / 100).toFixed(2)} now to confirm this appointment. The remaining ₹${(breakdown.remainingPaise / 100).toFixed(2)} is payable at the salon.`
+          ? `Pay ₹${(breakdown.advancePaise / 100).toFixed(2)} now to confirm this appointment. The remaining ₹${(breakdown.remainingPaise / 100).toFixed(2)} is ${advance.balancePolicy === 'online' ? 'payable online before your visit' : 'payable at the salon'}.`
           : 'No advance is required. The salon will confirm your request.',
       },
       confirmation: {
@@ -579,11 +625,19 @@ bookingsRouter.get(
 
     const salon = row.salon_id ? db.prepare('SELECT * FROM salons WHERE id = ?').get(row.salon_id) : null;
     const calendar = calendarDetails(row, salon);
+    const receipts = receiptsForBooking(row.id).map((r) => serializeReceipt(r, { accessToken: r.access_token }));
+    const latestWhatsApp = notificationsForBooking(row.id)[0] || null;
     return res.json({
       confirmed: true,
       booking: publicBookingStatus(row),
-      salon: salon ? { name: salon.name, slug: salon.slug, phone: salon.phone, city: salon.city } : null,
+      salon: salon
+        ? { name: salon.name, slug: salon.slug, phone: salon.phone, city: salon.city, addressLine: salon.address_line }
+        : null,
       calendar,
+      receipts,
+      whatsapp: latestWhatsApp
+        ? { status: latestWhatsApp.status, updatedAt: latestWhatsApp.updated_at }
+        : null,
       message: `Your appointment for ${row.service} on ${row.date} at ${row.time} is confirmed.`,
     });
   })

@@ -25,6 +25,10 @@ function addColumn(table, column, definition) {
 addColumn('users', 'supabase_uid', 'TEXT');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_supabase_uid ON users(supabase_uid) WHERE supabase_uid IS NOT NULL');
 
+/* Mandatory date of birth (private profile field). Existing accounts keep a
+   NULL value and are asked to complete it on their next dashboard visit. */
+addColumn('users', 'date_of_birth', 'TEXT');
+
 /* Users: email verification & password reset */
 const addedVerification = addColumn('users', 'email_verified', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('users', 'email_verified_at', 'TEXT');
@@ -110,9 +114,11 @@ const BOOKINGS_TABLE_SQL = `
     amount_paise INTEGER NOT NULL DEFAULT 0,
     advance_paise INTEGER NOT NULL DEFAULT 0,
     payment_status TEXT NOT NULL DEFAULT 'not_required',
+    balance_policy TEXT NOT NULL DEFAULT 'at_salon',
+    payment_method TEXT NOT NULL DEFAULT '',
     confirmed_at TEXT,
     status TEXT NOT NULL DEFAULT 'requested'
-      CHECK (status IN ('requested','pending_payment','advance_paid','confirmed','declined','completed','cancelled','expired')),
+      CHECK (status IN ('requested','pending_payment','payment_verification_pending','payment_failed','advance_paid','confirmed','declined','completed','cancelled','expired')),
     source TEXT NOT NULL DEFAULT 'public',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -131,11 +137,11 @@ const BOOKING_COLUMNS = [
   'id', 'salon_id', 'reference', 'full_name', 'phone', 'service', 'category', 'stylist', 'date',
   'time', 'location_type', 'branch', 'address', 'locality', 'distance_km', 'bridal_trial', 'notes',
   'promo_code', 'estimated_total', 'advance_paid', 'advance_ref', 'amount_paise', 'advance_paise',
-  'payment_status', 'confirmed_at', 'status', 'source', 'created_at', 'updated_at',
+  'payment_status', 'balance_policy', 'payment_method', 'confirmed_at', 'status', 'source', 'created_at', 'updated_at',
 ];
 
 const existingBookingSql = bookingsTableSql();
-if (existingBookingSql && !existingBookingSql.includes('pending_payment')) {
+if (existingBookingSql && !existingBookingSql.includes('payment_verification_pending')) {
   /* SQLite cannot alter a CHECK constraint, so the table is rebuilt in place.
      Foreign keys are disabled for the swap; the data is copied column by column
      and legacy rows get the payment defaults. */
@@ -183,8 +189,39 @@ db.exec(`
 addColumn('bookings', 'amount_paise', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('bookings', 'advance_paise', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('bookings', 'payment_status', "TEXT NOT NULL DEFAULT 'not_required'");
+addColumn('bookings', 'balance_policy', "TEXT NOT NULL DEFAULT 'at_salon'");
+addColumn('bookings', 'payment_method', "TEXT NOT NULL DEFAULT ''");
 addColumn('bookings', 'confirmed_at', 'TEXT');
 db.exec('CREATE INDEX IF NOT EXISTS idx_bookings_payment_status ON bookings(payment_status)');
+
+/* Canonical payment status names: the legacy 'unpaid' value becomes 'pending'. */
+db.prepare("UPDATE bookings SET payment_status = 'pending' WHERE payment_status = 'unpaid'").run();
+
+/* Per-service advance overrides (salon owners can price deposits per service). */
+addColumn('services', 'advance_mode', "TEXT NOT NULL DEFAULT 'inherit'");
+addColumn('services', 'advance_percent', 'REAL');
+addColumn('services', 'advance_fixed_paise', 'INTEGER');
+
+/* Salon-owner booking & advance payment settings. */
+db.exec(`
+  CREATE TABLE IF NOT EXISTS salon_payment_settings (
+    salon_id TEXT PRIMARY KEY REFERENCES salons(id) ON DELETE CASCADE,
+    advance_enabled INTEGER NOT NULL DEFAULT 1,
+    advance_type TEXT NOT NULL DEFAULT 'percent' CHECK (advance_type IN ('percent','fixed')),
+    advance_percent REAL NOT NULL DEFAULT 25,
+    advance_fixed_paise INTEGER NOT NULL DEFAULT 0,
+    balance_policy TEXT NOT NULL DEFAULT 'at_salon' CHECK (balance_policy IN ('at_salon','online')),
+    disabled_policy TEXT NOT NULL DEFAULT 'pay_at_salon' CHECK (disabled_policy IN ('pay_at_salon','block_booking')),
+    gateway_enabled INTEGER NOT NULL DEFAULT 1,
+    manual_upi_enabled INTEGER NOT NULL DEFAULT 0,
+    upi_id TEXT NOT NULL DEFAULT '',
+    payment_display_name TEXT NOT NULL DEFAULT '',
+    upi_qr_url TEXT NOT NULL DEFAULT '',
+    methods_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+`);
 
 /* Legacy rows that were already paid before this schema existed. */
 db.prepare("UPDATE bookings SET payment_status = 'not_required' WHERE payment_status IS NULL OR payment_status = ''").run();
@@ -203,13 +240,14 @@ db.prepare(
 ).run();
 
 /* Payment orders, mock test transactions and webhook deliveries. */
-db.exec(`
+const PAYMENTS_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS payments (
     id TEXT PRIMARY KEY,
     booking_id TEXT NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
     salon_id TEXT REFERENCES salons(id) ON DELETE SET NULL,
-    provider TEXT NOT NULL CHECK (provider IN ('mock','razorpay')),
+    provider TEXT NOT NULL CHECK (provider IN ('mock','razorpay','manual_upi')),
     method TEXT NOT NULL DEFAULT '',
+    kind TEXT NOT NULL DEFAULT 'advance' CHECK (kind IN ('advance','balance')),
     provider_order_id TEXT NOT NULL UNIQUE,
     provider_payment_id TEXT UNIQUE,
     amount_paise INTEGER NOT NULL CHECK (amount_paise >= 0),
@@ -217,17 +255,121 @@ db.exec(`
     remaining_paise INTEGER NOT NULL DEFAULT 0,
     currency TEXT NOT NULL DEFAULT 'INR',
     status TEXT NOT NULL DEFAULT 'created'
-      CHECK (status IN ('created','pending','paid','failed','cancelled','expired')),
+      CHECK (status IN ('created','pending','verification_pending','paid','failed','cancelled','expired')),
     failure_reason TEXT NOT NULL DEFAULT '',
     instrument TEXT NOT NULL DEFAULT '',
+    manual_reference TEXT,
+    customer_note TEXT NOT NULL DEFAULT '',
+    claimed_at TEXT,
+    verified_by TEXT,
+    verification_note TEXT NOT NULL DEFAULT '',
     raw_json TEXT,
     verified_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+`;
+
+const PAYMENT_COLUMNS = [
+  'id', 'booking_id', 'salon_id', 'provider', 'method', 'kind', 'provider_order_id',
+  'provider_payment_id', 'amount_paise', 'total_paise', 'remaining_paise', 'currency', 'status',
+  'failure_reason', 'instrument', 'manual_reference', 'customer_note', 'claimed_at',
+  'verified_by', 'verification_note', 'raw_json', 'verified_at', 'created_at', 'updated_at',
+];
+
+const existingPaymentsSql = (() => {
+  try {
+    return db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'payments'").get()?.sql || '';
+  } catch {
+    return '';
+  }
+})();
+
+if (existingPaymentsSql && !existingPaymentsSql.includes('manual_upi')) {
+  /* Extend the provider/status CHECK constraints by rebuilding in place. */
+  try {
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.exec('BEGIN IMMEDIATE');
+    db.exec('DROP TABLE IF EXISTS payments_owner_upgrade');
+    db.exec(PAYMENTS_TABLE_SQL.replace('CREATE TABLE IF NOT EXISTS payments', 'CREATE TABLE payments_owner_upgrade'));
+    const current = columns('payments');
+    const shared = PAYMENT_COLUMNS.filter((c) => current.includes(c));
+    db.exec(`INSERT INTO payments_owner_upgrade (${shared.join(', ')}) SELECT ${shared.join(', ')} FROM payments`);
+    db.exec('DROP TABLE payments');
+    db.exec('ALTER TABLE payments_owner_upgrade RENAME TO payments');
+    db.exec('COMMIT');
+    db.exec('PRAGMA foreign_keys = ON');
+    console.log('[migrations] payments table upgraded for owner-controlled payments');
+  } catch (err) {
+    try {
+      db.exec('ROLLBACK');
+    } catch {
+      // nothing to roll back
+    }
+    try {
+      db.exec('PRAGMA foreign_keys = ON');
+    } catch {
+      // ignore
+    }
+    throw err;
+  }
+}
+
+db.exec(PAYMENTS_TABLE_SQL);
+db.exec(`
   CREATE INDEX IF NOT EXISTS idx_payments_booking ON payments(booking_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
+`);
+addColumn('payments', 'kind', "TEXT NOT NULL DEFAULT 'advance'");
+addColumn('payments', 'manual_reference', 'TEXT');
+addColumn('payments', 'customer_note', "TEXT NOT NULL DEFAULT ''");
+addColumn('payments', 'claimed_at', 'TEXT');
+addColumn('payments', 'verified_by', 'TEXT');
+addColumn('payments', 'verification_note', "TEXT NOT NULL DEFAULT ''");
 
+/* Receipts + WhatsApp notification ledger. */
+db.exec(`
+  CREATE TABLE IF NOT EXISTS payment_receipts (
+    id TEXT PRIMARY KEY,
+    receipt_number TEXT NOT NULL UNIQUE,
+    booking_id TEXT NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+    payment_id TEXT NOT NULL UNIQUE REFERENCES payments(id) ON DELETE CASCADE,
+    salon_id TEXT REFERENCES salons(id) ON DELETE SET NULL,
+    access_token TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'advance' CHECK (kind IN ('advance','balance')),
+    total_paise INTEGER NOT NULL DEFAULT 0,
+    paid_paise INTEGER NOT NULL DEFAULT 0,
+    remaining_paise INTEGER NOT NULL DEFAULT 0,
+    method TEXT NOT NULL DEFAULT '',
+    transaction_ref TEXT NOT NULL DEFAULT '',
+    currency TEXT NOT NULL DEFAULT 'INR',
+    issued_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_receipts_booking ON payment_receipts(booking_id);
+
+  CREATE TABLE IF NOT EXISTS whatsapp_notifications (
+    id TEXT PRIMARY KEY,
+    booking_id TEXT NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+    salon_id TEXT,
+    receipt_id TEXT,
+    to_number TEXT NOT NULL,
+    provider TEXT NOT NULL DEFAULT 'meta_cloud',
+    template_name TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending'
+      CHECK (status IN ('pending','sent','delivered','read','failed','skipped')),
+    provider_message_id TEXT,
+    error TEXT NOT NULL DEFAULT '',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    payload_json TEXT,
+    last_attempt_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_whatsapp_booking ON whatsapp_notifications(booking_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_whatsapp_msg ON whatsapp_notifications(provider_message_id);
+`);
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS mock_transactions (
     id TEXT PRIMARY KEY,
     payment_id TEXT NOT NULL REFERENCES payments(id) ON DELETE CASCADE,

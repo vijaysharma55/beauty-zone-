@@ -166,6 +166,7 @@ test('roles cannot be self-assigned on registration', async () => {
     name: 'Sneaky User',
     email: 'sneaky@test.local',
     password: 'Sneaky@12345',
+    dateOfBirth: '1995-06-15',
     role: 'super_admin',
   });
   assert.equal(res.status, 201);
@@ -179,6 +180,7 @@ test('weak passwords are rejected', async () => {
     name: 'Weak User',
     email: 'weak@test.local',
     password: 'short',
+    dateOfBirth: '1995-06-15',
   });
   assert.equal(res.status, 400);
 });
@@ -189,6 +191,7 @@ test('duplicate email registration is rejected', async () => {
     name: 'Owner Duplicate',
     email: 'OWNER@test.local',
     password: 'Owner@12345',
+    dateOfBirth: '1995-06-15',
   });
   assert.equal(res.status, 409);
 });
@@ -212,6 +215,7 @@ test('second owner completes onboarding with a unique live URL', async () => {
     name: 'Second Owner',
     email: 'second@test.local',
     password: 'Second@12345',
+    dateOfBirth: '1995-06-15',
   });
   assert.equal(reg.status, 201);
 
@@ -374,6 +378,7 @@ test('super admin can manage users, salons and settings', async () => {
     name: 'Late User',
     email: 'late@test.local',
     password: 'Late@12345',
+    dateOfBirth: '1995-06-15',
   });
   assert.equal(reg.status, 403);
 
@@ -392,6 +397,7 @@ test('new owners must verify their email before submitting', async () => {
     name: 'Flow Owner',
     email: 'flow@test.local',
     password: 'Flow@12345',
+    dateOfBirth: '1995-06-15',
   });
   assert.equal(reg.status, 201);
   assert.equal(reg.data.user.emailVerified, false);

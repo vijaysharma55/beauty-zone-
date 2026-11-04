@@ -331,7 +331,7 @@ test('mock successful UPI payment creates a pending booking that only confirms a
 
   // Created unconfirmed, with a server-computed advance.
   assert.equal(booking.status, 'pending_payment');
-  assert.equal(booking.paymentStatus, 'unpaid');
+  assert.equal(booking.paymentStatus, 'pending');
   assert.equal(booking.confirmed, false);
   assert.equal(booking.amountPaise, SERVICE_PRICE_PAISE);
   assert.equal(booking.advancePaise, ADVANCE_PAISE);
@@ -425,7 +425,7 @@ test('mock failed payment leaves the booking unconfirmed and does not touch the 
   assert.equal(complete.status, 200);
   assert.equal(complete.data.confirmed, false);
   assert.equal(complete.data.status, 'failed');
-  assert.equal(complete.data.booking.status, 'pending_payment');
+  assert.equal(complete.data.booking.status, 'payment_failed');
   assert.equal(complete.data.booking.paymentStatus, 'failed');
 
   assert.equal((await makeClient(base).get(`/api/public/bookings/${bookingId}/confirmation`)).status, 409);
@@ -578,7 +578,7 @@ test('wrong amount or currency is rejected and the booking stays unconfirmed', a
 
   const stillPending = await makeClient(base).get(`/api/public/bookings/${bookingId}`);
   assert.equal(stillPending.data.booking.status, 'pending_payment');
-  assert.equal(stillPending.data.booking.paymentStatus, 'unpaid');
+  assert.equal(stillPending.data.booking.paymentStatus, 'pending');
 
   // The genuine amount still works afterwards.
   const correct = await makeClient(base).post('/api/public/payments/mock/complete', {
@@ -606,7 +606,7 @@ test('the booking API ignores client payment claims and the owner cannot confirm
   });
   assert.equal(forged.status, 201);
   assert.equal(forged.data.booking.status, 'pending_payment', 'client status must be ignored');
-  assert.equal(forged.data.booking.paymentStatus, 'unpaid', 'client payment status must be ignored');
+  assert.equal(forged.data.booking.paymentStatus, 'pending', 'client payment status must be ignored');
   assert.equal(forged.data.booking.advancePaid, 0, 'client payment claim must be ignored');
   assert.equal(forged.data.booking.advanceRef, null);
   assert.equal(forged.data.booking.confirmed, false);

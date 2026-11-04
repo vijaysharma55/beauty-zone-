@@ -45,6 +45,7 @@ db.exec(`
     password_reset_token_hash TEXT,
     password_reset_expires TEXT,
     last_login_at TEXT,
+    date_of_birth TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -113,10 +114,33 @@ db.exec(`
     duration_minutes INTEGER NOT NULL DEFAULT 30 CHECK (duration_minutes > 0 AND duration_minutes <= 1440),
     active INTEGER NOT NULL DEFAULT 1,
     sort_order INTEGER NOT NULL DEFAULT 0,
+    advance_mode TEXT NOT NULL DEFAULT 'inherit' CHECK (advance_mode IN ('inherit','percent','fixed','none')),
+    advance_percent REAL,
+    advance_fixed_paise INTEGER,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_services_salon ON services(salon_id);
+
+  /* Salon-owner-controlled booking & advance payment settings. One row per
+     salon; salons without a row fall back to the platform defaults. */
+  CREATE TABLE IF NOT EXISTS salon_payment_settings (
+    salon_id TEXT PRIMARY KEY REFERENCES salons(id) ON DELETE CASCADE,
+    advance_enabled INTEGER NOT NULL DEFAULT 1,
+    advance_type TEXT NOT NULL DEFAULT 'percent' CHECK (advance_type IN ('percent','fixed')),
+    advance_percent REAL NOT NULL DEFAULT 25,
+    advance_fixed_paise INTEGER NOT NULL DEFAULT 0,
+    balance_policy TEXT NOT NULL DEFAULT 'at_salon' CHECK (balance_policy IN ('at_salon','online')),
+    disabled_policy TEXT NOT NULL DEFAULT 'pay_at_salon' CHECK (disabled_policy IN ('pay_at_salon','block_booking')),
+    gateway_enabled INTEGER NOT NULL DEFAULT 1,
+    manual_upi_enabled INTEGER NOT NULL DEFAULT 0,
+    upi_id TEXT NOT NULL DEFAULT '',
+    payment_display_name TEXT NOT NULL DEFAULT '',
+    upi_qr_url TEXT NOT NULL DEFAULT '',
+    methods_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
 
   CREATE TABLE IF NOT EXISTS staff (
     id TEXT PRIMARY KEY,
@@ -169,8 +193,10 @@ db.exec(`
     amount_paise INTEGER NOT NULL DEFAULT 0,
     advance_paise INTEGER NOT NULL DEFAULT 0,
     payment_status TEXT NOT NULL DEFAULT 'not_required',
+    balance_policy TEXT NOT NULL DEFAULT 'at_salon',
+    payment_method TEXT NOT NULL DEFAULT '',
     confirmed_at TEXT,
-    status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested','pending_payment','advance_paid','confirmed','declined','completed','cancelled','expired')),
+    status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested','pending_payment','payment_verification_pending','payment_failed','advance_paid','confirmed','declined','completed','cancelled','expired')),
     source TEXT NOT NULL DEFAULT 'public',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -178,13 +204,15 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_bookings_salon ON bookings(salon_id, date);
   CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date);
 
-  /* Payment orders (mock test orders and Razorpay orders share this table). */
+  /* Payment orders (mock test orders, Razorpay orders and manual UPI orders
+     share this table). */
   CREATE TABLE IF NOT EXISTS payments (
     id TEXT PRIMARY KEY,
     booking_id TEXT NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
     salon_id TEXT REFERENCES salons(id) ON DELETE SET NULL,
-    provider TEXT NOT NULL CHECK (provider IN ('mock','razorpay')),
+    provider TEXT NOT NULL CHECK (provider IN ('mock','razorpay','manual_upi')),
     method TEXT NOT NULL DEFAULT '',
+    kind TEXT NOT NULL DEFAULT 'advance' CHECK (kind IN ('advance','balance')),
     provider_order_id TEXT NOT NULL UNIQUE,
     provider_payment_id TEXT UNIQUE,
     amount_paise INTEGER NOT NULL CHECK (amount_paise >= 0),
@@ -192,9 +220,14 @@ db.exec(`
     remaining_paise INTEGER NOT NULL DEFAULT 0,
     currency TEXT NOT NULL DEFAULT 'INR',
     status TEXT NOT NULL DEFAULT 'created'
-      CHECK (status IN ('created','pending','paid','failed','cancelled','expired')),
+      CHECK (status IN ('created','pending','verification_pending','paid','failed','cancelled','expired')),
     failure_reason TEXT NOT NULL DEFAULT '',
     instrument TEXT NOT NULL DEFAULT '',
+    manual_reference TEXT,
+    customer_note TEXT NOT NULL DEFAULT '',
+    claimed_at TEXT,
+    verified_by TEXT,
+    verification_note TEXT NOT NULL DEFAULT '',
     raw_json TEXT,
     verified_at TEXT,
     created_at TEXT NOT NULL,
@@ -231,6 +264,49 @@ db.exec(`
     received_at TEXT NOT NULL,
     processed_at TEXT
   );
+
+  /* Professional payment receipts, issued only after a verified payment.
+     The public download link carries a random token; only its hash is stored. */
+  CREATE TABLE IF NOT EXISTS payment_receipts (
+    id TEXT PRIMARY KEY,
+    receipt_number TEXT NOT NULL UNIQUE,
+    booking_id TEXT NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+    payment_id TEXT NOT NULL UNIQUE REFERENCES payments(id) ON DELETE CASCADE,
+    salon_id TEXT REFERENCES salons(id) ON DELETE SET NULL,
+    access_token TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'advance' CHECK (kind IN ('advance','balance')),
+    total_paise INTEGER NOT NULL DEFAULT 0,
+    paid_paise INTEGER NOT NULL DEFAULT 0,
+    remaining_paise INTEGER NOT NULL DEFAULT 0,
+    method TEXT NOT NULL DEFAULT '',
+    transaction_ref TEXT NOT NULL DEFAULT '',
+    currency TEXT NOT NULL DEFAULT 'INR',
+    issued_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_receipts_booking ON payment_receipts(booking_id);
+
+  /* WhatsApp Business notification ledger. A message is only marked sent when
+     the provider API accepts it; delivery/read come from provider webhooks. */
+  CREATE TABLE IF NOT EXISTS whatsapp_notifications (
+    id TEXT PRIMARY KEY,
+    booking_id TEXT NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+    salon_id TEXT,
+    receipt_id TEXT,
+    to_number TEXT NOT NULL,
+    provider TEXT NOT NULL DEFAULT 'meta_cloud',
+    template_name TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending'
+      CHECK (status IN ('pending','sent','delivered','read','failed','skipped')),
+    provider_message_id TEXT,
+    error TEXT NOT NULL DEFAULT '',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    payload_json TEXT,
+    last_attempt_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_whatsapp_booking ON whatsapp_notifications(booking_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_whatsapp_msg ON whatsapp_notifications(provider_message_id);
 
   CREATE TABLE IF NOT EXISTS platform_settings (
     key TEXT PRIMARY KEY,
@@ -386,7 +462,7 @@ export function safeJson(value, fallback) {
   }
 }
 
-export function publicUser(row) {
+export function publicUser(row, { includePrivate = false } = {}) {
   if (!row) return null;
   return {
     id: row.id,
@@ -398,6 +474,9 @@ export function publicUser(row) {
     emailVerified: !!row.email_verified,
     lastLoginAt: row.last_login_at,
     createdAt: row.created_at,
+    // Date of birth is private PII: it is only ever returned to the account
+    // owner (includePrivate), never in admin lists or public payloads.
+    ...(includePrivate ? { dateOfBirth: row.date_of_birth || null } : {}),
   };
 }
 
@@ -413,6 +492,9 @@ export function serializeService(row) {
     durationMinutes: row.duration_minutes,
     active: !!row.active,
     sortOrder: row.sort_order,
+    advanceMode: row.advance_mode || 'inherit',
+    advancePercent: row.advance_percent === null || row.advance_percent === undefined ? null : Number(row.advance_percent),
+    advanceFixedPaise: row.advance_fixed_paise === null || row.advance_fixed_paise === undefined ? null : Number(row.advance_fixed_paise),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

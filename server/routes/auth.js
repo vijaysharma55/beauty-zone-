@@ -30,6 +30,7 @@ import {
   EMAIL_RE,
   HttpError,
   validatePassword,
+  validateDob,
 } from '../security.js';
 import { requireAuth, asyncHandler, touchUserLogin } from '../middleware.js';
 import { verifyGoogleIdToken, googleConfigured } from '../google.js';
@@ -95,7 +96,9 @@ const LOCK_MS = 15 * 60_000;
 
 
 function userPayload(userRow) {
-  const user = publicUser(userRow);
+  // includePrivate: the session owner may see their own DOB; admin/public
+  // serializers never include it.
+  const user = publicUser(userRow, { includePrivate: true });
   const salonRow = user.role === 'salon_owner' ? findSalonByOwner(user.id) : null;
   return {
     user,
@@ -161,7 +164,7 @@ authRouter.post(
     }
 
     const profileResponse = await fetch(
-      projectUrl + '/rest/v1/profiles?id=eq.' + encodeURIComponent(identity.id) + '&select=id,email,name,role&limit=1',
+      projectUrl + '/rest/v1/profiles?id=eq.' + encodeURIComponent(identity.id) + '&select=id,email,name,role,date_of_birth&limit=1',
       { headers: { apikey: publishableKey, Authorization: 'Bearer ' + accessToken } }
     );
     if (!profileResponse.ok) {
@@ -181,6 +184,18 @@ authRouter.post(
       ? identity.identities.find((item) => item.provider === 'google')?.id || null
       : null;
     const name = String(profile.name || identity.user_metadata?.name || identity.user_metadata?.full_name || email.split('@')[0]).slice(0, 120);
+    // DOB comes from the verified Supabase profile (or signup metadata). It is
+    // validated here and never trusted blindly; an invalid value is ignored
+    // and the dashboard will ask the user to complete it.
+    let dob = null;
+    const rawDob = profile.date_of_birth || identity.user_metadata?.date_of_birth || null;
+    if (rawDob) {
+      try {
+        dob = validateDob(String(rawDob), { required: false });
+      } catch {
+        dob = null;
+      }
+    }
     const ts = nowIso();
     const verified = Boolean(identity.email_confirmed_at || identity.confirmed_at);
     let localUser = db.prepare('SELECT * FROM users WHERE supabase_uid = ?').get(identity.id);
@@ -198,15 +213,15 @@ authRouter.post(
       db.prepare(
         `UPDATE users SET supabase_uid = ?, email = ?, name = ?, role = ?, auth_provider = ?,
           google_sub = COALESCE(?, google_sub), email_verified = ?, email_verified_at = CASE WHEN ? = 1 THEN COALESCE(email_verified_at, ?) ELSE NULL END,
-          updated_at = ? WHERE id = ?`
-      ).run(identity.id, email, name, role, provider, providerId, verified ? 1 : 0, verified ? 1 : 0, ts, ts, localUser.id);
+          date_of_birth = COALESCE(?, date_of_birth), updated_at = ? WHERE id = ?`
+      ).run(identity.id, email, name, role, provider, providerId, verified ? 1 : 0, verified ? 1 : 0, ts, dob, ts, localUser.id);
       localUser = findUserById(localUser.id);
     } else {
       db.prepare(
         `INSERT INTO users (id, supabase_uid, email, password_hash, auth_provider, google_sub, name, role, status,
-          email_verified, email_verified_at, created_at, updated_at)
-         VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`
-      ).run(identity.id, identity.id, email, provider, providerId, name, role, verified ? 1 : 0, verified ? ts : null, ts, ts);
+          email_verified, email_verified_at, date_of_birth, created_at, updated_at)
+         VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)`
+      ).run(identity.id, identity.id, email, provider, providerId, name, role, verified ? 1 : 0, verified ? ts : null, dob, ts, ts);
       localUser = findUserById(identity.id);
     }
 
@@ -237,6 +252,7 @@ authRouter.post(
     const email = str(req.body?.email, { min: 3, max: 254, field: 'Email', required: true }).toLowerCase();
     if (!EMAIL_RE.test(email)) throw new ValidationError('Please enter a valid email address');
     const password = validatePassword(req.body?.password);
+    const dateOfBirth = validateDob(req.body?.dateOfBirth ?? req.body?.dob, { required: true });
 
     if (findUserByEmail(email)) {
       // Do not reveal account existence in a way that enables enumeration of roles.
@@ -248,9 +264,9 @@ authRouter.post(
     const passwordHash = await hashPassword(password);
     // Role is always salon_owner: clients can never self-assign admin.
     db.prepare(
-      `INSERT INTO users (id, email, password_hash, auth_provider, name, role, status, created_at, updated_at)
-       VALUES (?, ?, ?, 'password', ?, 'salon_owner', 'active', ?, ?)`
-    ).run(id, email, passwordHash, name, ts, ts);
+      `INSERT INTO users (id, email, password_hash, auth_provider, name, role, status, date_of_birth, created_at, updated_at)
+       VALUES (?, ?, ?, 'password', ?, 'salon_owner', 'active', ?, ?, ?)`
+    ).run(id, email, passwordHash, name, dateOfBirth, ts, ts);
 
     createSession(req, res, id);
     req.user = findUserById(id);
@@ -508,6 +524,39 @@ authRouter.post(
     createSession(req, res, user.id);
     audit(req, 'auth.password_changed', 'user', user.id);
     return res.json({ ok: true });
+  })
+);
+
+/* ------------------------------------------------------------------ */
+/* Profile (self-service) — name + mandatory date of birth             */
+/* ------------------------------------------------------------------ */
+
+authRouter.patch(
+  '/profile',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const user = findUserById(req.user.id);
+    if (!user) throw new HttpError(401, 'Authentication required.');
+    const updates = {};
+    if (req.body?.name !== undefined) {
+      updates.name = str(req.body.name, { min: 2, max: 120, field: 'Name', required: true });
+    }
+    if (req.body?.dateOfBirth !== undefined || req.body?.dob !== undefined) {
+      // Same verification rules as any profile change: an authenticated,
+      // active session. DOB remains private to the account owner.
+      updates.date_of_birth = validateDob(req.body?.dateOfBirth ?? req.body?.dob, { required: true });
+    }
+    if (Object.keys(updates).length === 0) {
+      return res.json({ user: publicUser(user, { includePrivate: true }) });
+    }
+    updates.updated_at = nowIso();
+    const cols = Object.keys(updates);
+    db.prepare(`UPDATE users SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`).run(
+      ...cols.map((c) => updates[c]),
+      user.id
+    );
+    audit(req, 'auth.profile_updated', 'user', user.id, { fields: cols.filter((c) => c !== 'updated_at') });
+    return res.json({ user: publicUser(findUserById(user.id), { includePrivate: true }) });
   })
 );
 

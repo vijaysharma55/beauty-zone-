@@ -16,7 +16,7 @@ POST /api/public/bookings          ← server computes total + advance from the
               │                       salon's published price and
               ▼                       PAYMENT_ADVANCE_PERCENT
    booking created as `pending_payment`
-   (payment_status = unpaid, no confirmed_at)
+   (payment_status = pending, no confirmed_at)
               │
               ▼
 POST /api/public/payments/orders   ← server creates a mock order (or a Razorpay
@@ -53,7 +53,12 @@ slot is held for `PAYMENT_HOLD_MINUTES` (default 30) and then released
 | `advance_paid` `/ `completed` | Confirmed / finished (kept for compatibility). |
 | `cancelled` / `declined` / `expired` | Not honoured; payment never processed. |
 
-`bookings.payment_status`: `not_required` → `unpaid` → `pending`/`failed`/`cancelled` → `advance_paid` (`paid` for a 100% advance).
+`bookings.payment_status`: `not_required` → `pending` → `verification_pending`/`failed`/`cancelled` → `advance_paid` (`paid` for a 100% advance).
+
+> **Owner-controlled advances:** the advance percentage above is only the platform
+> default. Each salon owner overrides it (percentage / fixed ₹ / per-service) from
+> their dashboard, and can enable direct UPI QR payments with owner verification.
+> See [`ADVANCE_PAYMENTS.md`](./ADVANCE_PAYMENTS.md) and [`WHATSAPP.md`](./WHATSAPP.md).
 
 ---
 
