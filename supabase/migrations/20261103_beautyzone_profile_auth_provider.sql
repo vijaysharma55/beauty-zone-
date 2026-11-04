@@ -19,12 +19,12 @@ declare
   v_provider text;
 begin
   v_role := case
-    when new.phone is not null or new.app_metadata ->> 'provider' = 'phone' then 'customer'
+    when new.phone is not null or new.raw_app_meta_data ->> 'provider' = 'phone' then 'customer'
     else 'salon_owner'
   end;
   v_provider := case
-    when new.app_metadata ->> 'provider' = 'google' then 'google'
-    when new.phone is not null or new.app_metadata ->> 'provider' = 'phone' then 'phone'
+    when new.raw_app_meta_data ->> 'provider' = 'google' then 'google'
+    when new.phone is not null or new.raw_app_meta_data ->> 'provider' = 'phone' then 'phone'
     else 'password'
   end;
   insert into public.profiles (id,email,name,role,auth_provider,email_verified,updated_at)
