@@ -209,18 +209,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           ))}
         </nav>
 
-        {/* Action Buttons */}
-        <div className="hidden sm:flex items-center gap-2.5">
-          <button
-            onClick={() => setIsCustomizerOpen(true)}
-            className="lg:hidden flex items-center gap-1.5 border border-[#D09A40]/50 text-[#D09A40] hover:bg-[#D09A40]/15 font-semibold text-xs px-3 py-2.5 rounded-full transition-all cursor-pointer"
-          >
-            <Palette className="w-3.5 h-3.5" />
-            <span>Brand Studio</span>
-          </button>
-
-        </div>
-
         {/* Mobile Hamburger */}
         <div className="flex items-center gap-2 lg:hidden">
           <LanguageSwitcher variant="dark" compact />
