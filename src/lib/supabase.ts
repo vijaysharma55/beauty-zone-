@@ -120,10 +120,10 @@ export const supabase = {
       listeners.add(callback);
       return { data: { subscription: { unsubscribe: () => listeners.delete(callback) } } };
     },
-    signUp: async (email: string, password: string, name: string): Promise<AuthResult> => {
+    signUp: async (email: string, password: string, name: string, dateOfBirth: string): Promise<AuthResult> => {
       const redirect = encodeURIComponent(window.location.origin + '/verify-email');
       const result = await authRequest<any>('/signup?redirect_to=' + redirect, {
-        email, password, data: { name, full_name: name },
+        email, password, data: { name, full_name: name, date_of_birth: dateOfBirth },
       });
       const session = normalizedSession(result);
       if (session) persistSession(session, 'SIGNED_IN');
