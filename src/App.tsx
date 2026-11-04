@@ -44,6 +44,7 @@ import { ServicesPage } from './components/dashboard/ServicesPage';
 import { StaffPage } from './components/dashboard/StaffPage';
 import { BillingPage } from './components/dashboard/BillingPage';
 import { BookingsPage } from './components/dashboard/BookingsPage';
+import { PaymentSettingsPage } from './components/dashboard/PaymentSettingsPage';
 import { AnalyticsPage } from './components/dashboard/AnalyticsPage';
 import { AccountPage } from './components/dashboard/AccountPage';
 import { PreviewPage } from './components/dashboard/PreviewPage';
@@ -437,6 +438,7 @@ export function App() {
         <Route path="approval" element={<ApprovalPage />} />
         <Route path="preview" element={<PreviewPage />} />
         <Route path="bookings" element={<BookingsPage />} />
+        <Route path="payments" element={<PaymentSettingsPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="billing" element={<BillingPage />} />
         <Route path="account" element={<AccountPage />} />

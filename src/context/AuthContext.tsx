@@ -14,7 +14,7 @@ interface AuthContextValue {
   isAdmin: boolean;
   isOwner: boolean;
   login: (email: string, password: string) => Promise<AuthResponse>;
-  register: (name: string, email: string, password: string) => Promise<RegisterResult>;
+  register: (name: string, email: string, password: string, dateOfBirth: string) => Promise<RegisterResult>;
   loginWithGoogle: (credential: string) => Promise<AuthResponse>;
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
@@ -116,8 +116,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return syncAccessToken(result.session.access_token);
   }, [syncAccessToken]);
 
-  const register = useCallback(async (name: string, email: string, password: string): Promise<RegisterResult> => {
-    const result = await supabase.auth.signUp(email.trim().toLowerCase(), password, name.trim());
+  const register = useCallback(async (name: string, email: string, password: string, dateOfBirth: string): Promise<RegisterResult> => {
+    const result = await supabase.auth.signUp(email.trim().toLowerCase(), password, name.trim(), dateOfBirth);
     if (result.session?.access_token) return syncAccessToken(result.session.access_token);
     apply(null);
     return { user: null, emailVerificationSent: true, pendingEmail: email.trim().toLowerCase() };
