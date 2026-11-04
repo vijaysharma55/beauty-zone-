@@ -75,7 +75,7 @@ async function issueVerification(req, user) {
  * Issues a fresh 1-hour password reset token (only its SHA-256 hash is stored)
  * and dispatches the reset email.
  */
-async function issuePasswordReset(req, user) {
+export async function issuePasswordReset(req, user) {
   const token = createSessionToken();
   const expires = new Date(Date.now() + RESET_TOKEN_TTL_MS).toISOString();
   db.prepare(
