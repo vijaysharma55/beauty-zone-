@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CalendarDays, CheckCircle2, Clock, Loader2, RefreshCw, Scissors, User as UserIcon } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CheckCircle2, Clock, CreditCard, Loader2, RefreshCw, Scissors, User as UserIcon } from 'lucide-react';
 import { api, errorMessage } from '../../lib/api';
+import { openRazorpayCheckout } from '../../lib/razorpay';
 import { useAvailability, type Slot } from '../../hooks/useAvailability';
 import type { Salon, SalonService, SalonStaff } from '../../types/auth';
 
@@ -61,6 +62,11 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
   const [submitError, setSubmitError] = useState('');
   const [reference, setReference] = useState('');
+  const [bookingId, setBookingId] = useState('');
+  const [gatewayEnabled, setGatewayEnabled] = useState(false);
+  const [paymentWorking, setPaymentWorking] = useState(false);
+  const [paymentMessage, setPaymentMessage] = useState('');
+  const [paymentError, setPaymentError] = useState('');
 
   const selectedService = useMemo(
     () => bookableServices.find((s) => s.name === serviceName) || bookableServices[0],
@@ -123,6 +129,12 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
     setErrors({});
     setSubmitState('idle');
     setSubmitError('');
+    setReference('');
+    setBookingId('');
+    setGatewayEnabled(false);
+    setPaymentWorking(false);
+    setPaymentMessage('');
+    setPaymentError('');
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -139,7 +151,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
 
     setSubmitState('submitting');
     try {
-      const res = await api.post<{ booking: { reference: string } }>('/public/bookings', {
+      const res = await api.post<{ booking: { id: string; reference: string } }>('/public/bookings', {
         slug: salon.slug,
         fullName: fullName.trim(),
         phone: phone.trim(),
@@ -154,11 +166,44 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
         estimatedTotal: selectedService ? Math.round(selectedService.price * 100) : 0,
       });
       setReference(res.booking?.reference || '');
+      setBookingId(res.booking?.id || '');
+      const config = await api.get<{ enabled: boolean }>('/public/payments/config').catch(() => ({ enabled: false }));
+      setGatewayEnabled(Boolean(config.enabled));
       setSubmitState('done');
     } catch (err) {
       console.error('[salon booking] failed', err);
       setSubmitState('failed');
       setSubmitError(errorMessage(err));
+    }
+  };
+
+  const payBookingAdvance = async () => {
+    setPaymentWorking(true);
+    setPaymentError('');
+    setPaymentMessage('');
+    try {
+      const order = await api.post<{
+        keyId: string; orderId: string; amount: number; currency: string;
+        paymentRecordId: string; alreadyPaid?: boolean; description?: string;
+      }>('/public/bookings/' + encodeURIComponent(bookingId) + '/payment-order', { reference, phone: phone.trim() });
+      if (order.alreadyPaid) {
+        setPaymentMessage('The booking advance has already been paid.');
+        return;
+      }
+      const response = await openRazorpayCheckout(order, { name: fullName.trim(), contact: phone.trim() });
+      const result = await api.post<{ success: boolean; status: string }>('/public/booking-payments/verify', {
+        reference, phone: phone.trim(),
+        razorpayOrderId: response.razorpay_order_id,
+        razorpayPaymentId: response.razorpay_payment_id,
+        razorpaySignature: response.razorpay_signature,
+      });
+      setPaymentMessage(result.status === 'captured'
+        ? 'Your 25% booking advance is paid and confirmed.'
+        : 'Payment received. We are waiting for Razorpay webhook confirmation.');
+    } catch (err) {
+      setPaymentError(errorMessage(err));
+    } finally {
+      setPaymentWorking(false);
     }
   };
 
@@ -210,6 +255,20 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
                 Reference: {reference}
               </p>
             )}
+            {gatewayEnabled && bookingId && (
+              <div className="mt-5 space-y-2">
+                <button type="button" onClick={payBookingAdvance} disabled={paymentWorking}
+                  className="inline-flex items-center gap-2 rounded-full bg-[#D09A40] px-5 py-3 text-sm font-bold text-[#0F172A] disabled:opacity-60">
+                  <CreditCard className="h-4 w-4" /> {paymentWorking ? 'Opening secure checkout…' : 'Pay 25% booking advance'}
+                </button>
+                <p className="text-xs" style={{ color: `${primary}99` }}>Secure payment processed by Razorpay. Your booking request is saved.</p>
+              </div>
+            )}
+            {!gatewayEnabled && (
+              <p className="mt-4 text-xs" style={{ color: `${primary}99` }}>Online advance payment is not enabled yet. The salon will contact you to confirm the booking.</p>
+            )}
+            {paymentMessage && <p role="status" className="mt-3 text-sm font-semibold text-emerald-700">{paymentMessage}</p>}
+            {paymentError && <p role="alert" className="mt-3 text-sm text-red-600">{paymentError}</p>}
             <div className="mt-6 flex flex-wrap justify-center gap-2">
               {whatsappUrl && (
                 <a
