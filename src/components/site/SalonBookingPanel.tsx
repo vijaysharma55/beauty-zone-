@@ -9,12 +9,15 @@ import {
   Lock,
   RefreshCw,
   Scissors,
-  User as UserIcon,
+  Star,
+  Users,
 } from 'lucide-react';
 import { api, errorMessage } from '../../lib/api';
 import { useAvailability, type Slot } from '../../hooks/useAvailability';
 import type { Salon, SalonService, SalonStaff } from '../../types/auth';
 import { PaymentCheckout } from '../payment/PaymentCheckout';
+import { StylistSelectGrid, type StylistOption } from '../StylistSelectGrid';
+import { StylistProfileModal, type StylistProfile } from '../StylistProfileModal';
 import {
   formatPaise,
   getBookingConfirmation,
@@ -74,7 +77,11 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
   );
 
   const [serviceName, setServiceName] = useState(bookableServices[0]?.name || '');
+  // `staffId` is the canonical booking selection; `stylist` keeps the display
+  // name used by the WhatsApp fallback and the confirmation summary.
+  const [staffId, setStaffId] = useState('');
   const [stylist, setStylist] = useState('');
+  const [profileStaffId, setProfileStaffId] = useState<string | null>(null);
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [fullName, setFullName] = useState('');
@@ -93,6 +100,57 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
   const [paymentNotice, setPaymentNotice] = useState('');
   const [confirmation, setConfirmation] = useState<ConfirmationPayload | null>(null);
   const [confirmationError, setConfirmationError] = useState('');
+
+  const staffOptions: StylistOption[] = useMemo(
+    () =>
+      bookableStaff.map((member) => ({
+        id: member.id,
+        name: member.name,
+        role: member.roleTitle || 'Salon specialist',
+        photo: member.photoUrl || undefined,
+        specialty: member.specialties?.[0],
+        rating: member.rating ?? null,
+        reviewCount: member.reviewCount ?? 0,
+        experience: member.experience,
+      })),
+    [bookableStaff]
+  );
+
+  const selectedStaff = useMemo(
+    () => bookableStaff.find((member) => member.id === staffId) || null,
+    [bookableStaff, staffId]
+  );
+
+  const profileStaff = useMemo(
+    () => bookableStaff.find((member) => member.id === profileStaffId) || null,
+    [bookableStaff, profileStaffId]
+  );
+
+  const profileStaffData: StylistProfile | null = useMemo(
+    () =>
+      profileStaff
+        ? {
+            id: profileStaff.id,
+            name: profileStaff.name,
+            role: profileStaff.roleTitle,
+            experience: profileStaff.experience,
+            rating: profileStaff.rating ?? null,
+            reviewCount: profileStaff.reviewCount ?? 0,
+            bio: profileStaff.bio,
+            avatar: profileStaff.photoUrl,
+            specialties: profileStaff.specialties,
+            joinedAt: profileStaff.createdAt,
+          }
+        : null,
+    [profileStaff]
+  );
+
+  /** Empty id means “any available specialist”. */
+  const handleStaffSelect = (id: string) => {
+    const member = bookableStaff.find((item) => item.id === id);
+    setStaffId(member ? member.id : '');
+    setStylist(member ? member.name : '');
+  };
 
   useEffect(() => {
     let active = true;
@@ -199,6 +257,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
         service: serviceName,
         serviceCategory: selectedService?.category || '',
         stylist: stylist || '',
+        stylistId: staffId || null,
         date,
         time,
         locationType: 'salon',
@@ -356,6 +415,9 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
                 Reference: {reference}
               </p>
             )}
+            <p className="mt-1 text-[11px]" style={{ color: `${primary}99` }}>
+              Specialist: <strong style={{ color: primary }}>{stylist || 'Any available stylist'}</strong>
+            </p>
 
             {pending && paymentNotice && (
               <div
@@ -489,7 +551,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
           style={{ borderColor: `${accent}33`, backgroundColor: surface }}
         >
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
+            <div className="sm:col-span-2">
               <label style={labelStyle} htmlFor="sb-service">
                 Service
               </label>
@@ -513,35 +575,49 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
               </div>
             </div>
 
-            <div>
-              <label style={labelStyle} htmlFor="sb-stylist">
-                Specialist
-              </label>
-              <div className="relative">
-                <UserIcon
-                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2"
-                  style={{ color: accent }}
-                />
-                <select
-                  id="sb-stylist"
-                  value={stylist}
-                  onChange={(e) => setStylist(e.target.value)}
-                  style={{ ...inputStyle, paddingLeft: '2.25rem' }}
+            <div className="sm:col-span-2">
+              <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+                <label style={{ ...labelStyle, marginBottom: 0 }}>
+                  Select Preferred Stylist / Staff
+                </label>
+                <span
+                  className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide"
+                  style={{ backgroundColor: `${accent}1A`, color: primary }}
                 >
-                  <option value="">First available specialist</option>
-                  {bookableStaff.map((member) => (
-                    <option key={member.id} value={member.name}>
-                      {member.name}
-                      {member.roleTitle ? ` — ${member.roleTitle}` : ''}
-                    </option>
-                  ))}
-                </select>
+                  {selectedStaff ? (
+                    <>
+                      <Star className="h-3 w-3" style={{ color: accent, fill: accent }} />
+                      {selectedStaff.name}
+                    </>
+                  ) : (
+                    <>
+                      <Users className="h-3 w-3" style={{ color: accent }} />
+                      Any available
+                    </>
+                  )}
+                </span>
               </div>
-              {bookableStaff.length === 0 && (
-                <p className="mt-1 text-[11px]" style={{ color: `${primary}77` }}>
-                  No specialist is accepting online bookings right now — we'll assign the best match.
-                </p>
-              )}
+
+              <StylistSelectGrid
+                options={staffOptions}
+                selectedId={staffId}
+                onSelect={handleStaffSelect}
+                onViewProfile={(id) => setProfileStaffId(id)}
+                accent={accent}
+                primary={primary}
+                background={background}
+                surface={surface}
+                anyLabel="Any Available Stylist"
+                anyDescription="Best match for your service"
+                emptyMessage="No specialist is accepting online bookings right now — we'll assign the best match."
+                className="grid grid-cols-2 gap-3 sm:grid-cols-3"
+              />
+
+              <p className="mt-2 text-[11px] leading-snug" style={{ color: `${primary}88` }}>
+                {selectedStaff
+                  ? `${selectedStaff.name} will be reserved for your appointment.`
+                  : "We'll assign the best specialist for your chosen service."}
+              </p>
             </div>
 
             <div>
@@ -758,6 +834,20 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
           </div>
         </form>
       </div>
+
+      <StylistProfileModal
+        profile={profileStaffData}
+        selected={Boolean(profileStaff && staffId === profileStaff.id)}
+        accent={accent}
+        primary={primary}
+        background={background}
+        surface={surface}
+        onClose={() => setProfileStaffId(null)}
+        onSelect={(profile) => {
+          handleStaffSelect(profile.id);
+          setProfileStaffId(null);
+        }}
+      />
     </section>
   );
 };

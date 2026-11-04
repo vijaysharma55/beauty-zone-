@@ -153,6 +153,10 @@ export interface SalonStaff {
   active: boolean;
   /** When false the specialist is listed but cannot be booked online. */
   bookingEnabled?: boolean;
+  /** Optional reputation fields shown in the booking picker when provided. */
+  rating?: number | null;
+  reviewCount?: number | null;
+  experience?: string;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;

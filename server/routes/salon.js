@@ -533,6 +533,25 @@ function staffPayload(body, { partial = false } = {}) {
       list.map((s) => str(s, { max: 60, field: 'Specialty' })).filter(Boolean)
     );
   }
+  if (!partial || body.rating !== undefined) {
+    if (body.rating === null || body.rating === '') out.rating = null;
+    else {
+      const rating = Number(body.rating);
+      if (!Number.isFinite(rating) || rating < 0 || rating > 5) {
+        throw new ValidationError('Rating must be between 0 and 5');
+      }
+      out.rating = Math.round(rating * 10) / 10;
+    }
+  }
+  if (!partial || body.reviewCount !== undefined) {
+    out.review_count =
+      body.reviewCount === null || body.reviewCount === ''
+        ? 0
+        : int(body.reviewCount, { min: 0, max: 1_000_000, field: 'Review count' });
+  }
+  if (!partial || body.experience !== undefined) {
+    out.experience = str(body.experience, { max: 40, field: 'Experience' });
+  }
   if (body.active !== undefined) out.active = bool(body.active, true) ? 1 : 0;
   // "Accepts online booking" — when off the specialist is still shown on the
   // website but is not offered in the booking picker.
@@ -552,8 +571,8 @@ salonRouter.post('/staff', (req, res) => {
   const id = newId();
   const ts = nowIso();
   db.prepare(
-    `INSERT INTO staff (id, salon_id, name, role_title, bio, photo_url, specialties_json, active, booking_enabled, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO staff (id, salon_id, name, role_title, bio, photo_url, specialties_json, rating, review_count, experience, active, booking_enabled, sort_order, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     salon.id,
@@ -562,6 +581,9 @@ salonRouter.post('/staff', (req, res) => {
     data.bio,
     data.photo_url,
     data.specialties_json,
+    data.rating ?? null,
+    data.review_count ?? 0,
+    data.experience ?? '',
     data.active ?? 1,
     data.booking_enabled ?? 1,
     data.sort_order ?? getStaffForSalon(salon.id).length,

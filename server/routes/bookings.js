@@ -127,6 +127,7 @@ function parsePayload(body) {
     service,
     category: str(b.serviceCategory, { max: 40, field: 'Category' }),
     stylist: str(b.stylist, { max: 120, field: 'Specialist' }),
+    stylistId: str(b.stylistId, { max: 80, field: 'Specialist id' }),
     date,
     time,
     locationType,
@@ -143,6 +144,28 @@ function parsePayload(body) {
     amountPaise: requestAmountPaise(b),
     reference: str(b.reference, { max: 40, field: 'Booking reference' }) || null,
   };
+}
+
+/**
+ * Resolves a preferred specialist id against the salon's roster.
+ *
+ * Returns the staff row only when it belongs to the salon, is active and still
+ * accepts online bookings; otherwise the booking keeps the free-text name so a
+ * stale roster id can never block a booking or mis-assign it.
+ */
+function resolveBookableStaff(salonId, staffId) {
+  if (!salonId || !staffId) return null;
+  try {
+    const row = db
+      .prepare('SELECT * FROM staff WHERE id = ? AND salon_id = ? AND active = 1')
+      .get(staffId, salonId);
+    if (!row) return null;
+    if (row.booking_enabled !== undefined && row.booking_enabled !== null && !row.booking_enabled) return null;
+    return row;
+  } catch (err) {
+    console.error('[bookings] staff lookup failed', err.message);
+    return null;
+  }
 }
 
 /**
@@ -248,6 +271,7 @@ export function serializeBooking(row) {
     service: row.service,
     category: row.category,
     stylist: row.stylist,
+    stylistId: row.stylist_id || '',
     date: row.date,
     time: row.time,
     locationType: row.location_type,
@@ -385,6 +409,19 @@ bookingsRouter.post(
       }
     }
 
+    // Preferred specialist: verify the id against the salon roster and keep the
+    // canonical staff name so the owner dashboard always shows a real person.
+    if (data.stylistId) {
+      const staffRow = resolveBookableStaff(salon ? salon.id : null, data.stylistId);
+      if (staffRow) {
+        if (!data.stylist) data.stylist = staffRow.name;
+        data.stylistId = staffRow.id;
+      } else if (salon) {
+        // Unknown / unavailable staff id on a real salon: keep the typed name.
+        data.stylistId = '';
+      }
+    }
+
     // Sanity-check that the requested time falls inside the salon's opening hours.
     if (salon) {
       try {
@@ -460,11 +497,11 @@ bookingsRouter.post(
 
     db.prepare(
       `INSERT INTO bookings
-         (id, salon_id, reference, full_name, phone, service, category, stylist, date, time,
+         (id, salon_id, reference, full_name, phone, service, category, stylist, stylist_id, date, time,
           location_type, branch, address, locality, distance_km, bridal_trial, notes, promo_code,
           estimated_total, advance_paid, advance_ref, amount_paise, advance_paise, payment_status,
           balance_policy, confirmed_at, status, source, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?, ?, NULL, ?, 'public', ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?, ?, NULL, ?, 'public', ?, ?)`
     ).run(
       id,
       salon ? salon.id : null,
@@ -474,6 +511,7 @@ bookingsRouter.post(
       data.service,
       data.category,
       data.stylist,
+      data.stylistId,
       data.date,
       data.time,
       data.locationType,

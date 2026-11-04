@@ -832,6 +832,47 @@ test('visitor can book a live salon and the owner sees it', async () => {
   assert.equal(badStatus.status, 400);
 });
 
+test('preferred specialist is validated, stored and returned with the booking', async () => {
+  const anon = makeClient();
+  const detail = await (await fetch(`${BASE}/api/public/salons/lumina-luxe`)).json();
+  const member = detail.staff[0];
+  assert.ok(member, 'the public salon exposes its team');
+  assert.equal(typeof member.rating, 'number');
+  assert.ok(member.reviewCount > 0);
+  assert.ok(member.experience, 'experience is published for the profile modal');
+
+  const created = await anon.post('/api/public/bookings', {
+    slug: 'lumina-luxe',
+    fullName: 'Stylist Choice Client',
+    phone: '9000012345',
+    service: 'HD Airbrush Bridal Makeover',
+    date: nextMondayDate(),
+    time: '04:00 PM',
+    locationType: 'salon',
+    stylist: member.name,
+    stylistId: member.id,
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.data.booking.stylist, member.name);
+  assert.equal(created.data.booking.stylistId, member.id);
+
+  // An unknown roster id must never block a booking — the typed name is kept.
+  const fallback = await anon.post('/api/public/bookings', {
+    slug: 'lumina-luxe',
+    fullName: 'Stylist Choice Client',
+    phone: '9000012345',
+    service: 'HD Airbrush Bridal Makeover',
+    date: nextMondayDate(),
+    time: '05:00 PM',
+    locationType: 'salon',
+    stylist: 'Guest Artist',
+    stylistId: 'not-a-real-staff-id',
+  });
+  assert.equal(fallback.status, 201);
+  assert.equal(fallback.data.booking.stylist, 'Guest Artist');
+  assert.equal(fallback.data.booking.stylistId, '');
+});
+
 test('booking rejects closed days, past dates and unknown salons', async () => {
   const anon = makeClient();
   const base = {
