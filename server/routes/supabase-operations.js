@@ -129,6 +129,33 @@ supabaseOperationsRouter.post('/auth/logout-all', asyncRoute(async(req,res)=>{
   await requestSupabase('/auth/v1/logout?scope=global',req.sb.token,{method:'POST'});
   res.json({ok:true});
 }));
+
+supabaseOperationsRouter.post('/auth/password', asyncRoute(async(req,res)=>{
+  if(!req.sb) fail(401,'Authentication required.');
+  if(!['super_admin','salon_owner'].includes(req.sb.role)) fail(403,'Only salon owner and admin accounts can change a password.');
+  const password=s(req.body?.newPassword,128,true);
+  const currentPassword=s(req.body?.currentPassword,128);
+  if(password.length<8||!/[A-Z]/.test(password)||!/[a-z]/.test(password)||!/[0-9]/.test(password)||!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/.test(password)){
+    fail(400,'New password must be at least 8 characters and include uppercase, lowercase, a number and a special symbol.');
+  }
+  if(req.sb.profile.auth_provider==='password'){
+    if(!currentPassword) fail(400,'Enter your current password before changing it.');
+    const verified=await requestSupabase('/auth/v1/token?grant_type=password',null,{
+      method:'POST',body:{email:req.sb.email,password:currentPassword},
+    });
+    if(verified?.user?.id!==req.sb.id) fail(401,'Current password verification failed.');
+  }
+  await requestSupabase('/auth/v1/user',req.sb.token,{method:'PUT',body:{password}});
+  let signedOutOtherSessions=false;
+  try{
+    await requestSupabase('/auth/v1/logout?scope=others',req.sb.token,{method:'POST'});
+    signedOutOtherSessions=true;
+  }catch(error){
+    console.warn('[auth password] password changed; other-session revocation was not confirmed:',error.message);
+  }
+  await audit(req.sb,'auth.password_changed','user',req.sb.id,{signedOutOtherSessions});
+  res.json({ok:true,signedOutOtherSessions,message:'Password updated.'});
+}));
 supabaseOperationsRouter.post('/auth/resend-verification', asyncRoute(async(req,res)=>{
   if(!req.sb) fail(401,'Sign in before requesting another verification email.');
   if(req.sb.emailVerified) return res.json({ok:true,message:'Your email is already verified.'});
