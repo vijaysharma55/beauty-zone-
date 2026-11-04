@@ -103,7 +103,7 @@ export const BookingSummaryModal: React.FC<BookingSummaryModalProps> = ({
           <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-4">
             <CheckCircle2 className="w-10 h-10" />
           </div>
-          <h2 className="font-serif text-2xl font-bold text-[#0F172A]">Booking Confirmed!</h2>
+          <h2 className="font-serif text-2xl font-bold text-[#0F172A]">Booking Request Saved</h2>
           <p className="text-sm text-[#4A4A4A] mt-2">Booking Reference: #{bookingRef}</p>
         </div>
 
