@@ -93,18 +93,28 @@ async function supa(pathname,options={}) {
   if(!response.ok)throw new Error('Supabase '+(options.method||'GET')+' '+pathname+' failed ('+response.status+'): '+(value?.message||value?.msg||JSON.stringify(value).slice(0,400)));
   return value;
 }
+function encryptedExport(value,passphrase){
+  if(!passphrase||passphrase.length<16)throw new Error('MIGRATION_EXPORT_PASSPHRASE must be at least 16 characters for encrypted exports.');
+  const salt=crypto.randomBytes(16),iv=crypto.randomBytes(12);
+  const key=crypto.scryptSync(passphrase,salt,32);
+  const cipher=crypto.createCipheriv('aes-256-gcm',key,iv);
+  const encrypted=Buffer.concat([cipher.update(JSON.stringify(value),'utf8'),cipher.final()]);
+  const tag=cipher.getAuthTag();
+  return ['BZEXPORT1',salt.toString('base64'),iv.toString('base64'),tag.toString('base64'),encrypted.toString('base64')].join('\\n')+'\\n';
+}
 async function listAuthUsers(){const byEmail=new Map();let page=1;for(;;){const data=await supa('/auth/v1/admin/users?page='+page+'&per_page=500');const users=Array.isArray(data?.users)?data.users:[];for(const u of users)if(u.email)byEmail.set(cleanEmail(u.email),u);if(users.length<500)break;page++;}return byEmail;}
 async function upsertTable(name,rows){if(!rows.length)return {source:0,inserted:0};let inserted=0;for(const batch of chunks(rows,100)){const data=await supa('/rest/v1/'+name+'?on_conflict='+(name==='platform_settings'?'key':'id'),{method:'POST',headers:{Prefer:'resolution=ignore-duplicates,return=representation'},body:JSON.stringify(batch)});inserted+=Array.isArray(data)?data.length:0;}return {source:rows.length,inserted,skipped:rows.length-inserted};}
 
 export async function runMigration({apply=false,sendRecovery=false,exportPath=null}={}){
   if(!fs.existsSync(SQLITE_PATH))throw new Error('SQLite database not found at '+SQLITE_PATH);
   if(apply&&(!SUPABASE_URL||!SERVICE_KEY))throw new Error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in the migration environment. Never add the service-role key to VITE_* or Git.');
+  if(exportPath&&(!process.env.MIGRATION_EXPORT_PASSPHRASE||process.env.MIGRATION_EXPORT_PASSPHRASE.length<16))throw new Error('Set MIGRATION_EXPORT_PASSPHRASE (minimum 16 characters) to create an encrypted export.');
   if(sendRecovery&&!apply)throw new Error('--send-recovery requires --apply.');
   const db=new DatabaseSync(SQLITE_PATH,{readOnly:true});
   try{
     const source=readSource(db);const plan=buildMigrationPlan(source);
-    const report={mode:apply?'apply':'dry-run',sqlitePath:SQLITE_PATH,sourceCounts:Object.fromEntries(EXPORT_TABLES.map(t=>[t,source[t].length])),plannedCounts:Object.fromEntries(Object.entries(plan).filter(([k,v])=>Array.isArray(v)).map(([k,v])=>[k,v.length])),skippedInvalidEmails:plan.skippedUsers.length,legacyGoogleUsers:plan.profiles.filter(p=>p.legacy_provider==='google').map(p=>p.email),imported:{},identity:{created:0,matched:0,recoveryQueued:0,errors:[]}};
-    if(exportPath){const safe={exportedAt:new Date().toISOString(),data:source};safe.data.users=safe.data.users.map(({password_hash,google_sub,email_verification_token_hash,email_verification_expires,password_reset_token_hash,password_reset_expires,failed_logins,locked_until,...u})=>u);delete safe.data.sessions;fs.mkdirSync(path.dirname(path.resolve(exportPath)),{recursive:true});fs.writeFileSync(exportPath,JSON.stringify(safe,null,2),{mode:0o600,flag:'wx'});report.exportPath=path.resolve(exportPath);}
+    const report={mode:apply?'apply':'dry-run',sqlitePath:SQLITE_PATH,sourceCounts:Object.fromEntries(EXPORT_TABLES.map(t=>[t,source[t].length])),plannedCounts:Object.fromEntries(Object.entries(plan).filter(([k,v])=>Array.isArray(v)).map(([k,v])=>[k,v.length])),skippedInvalidEmails:plan.skippedUsers.length,legacyGoogleCount:plan.profiles.filter(p=>p.legacy_provider==='google').length,imported:{},identity:{created:0,matched:0,recoveryQueued:0,errors:[]}};
+    if(exportPath){const safe={exportedAt:new Date().toISOString(),data:source};safe.data.users=safe.data.users.map(({password_hash,google_sub,email_verification_token_hash,email_verification_expires,password_reset_token_hash,password_reset_expires,failed_logins,locked_until,...u})=>u);delete safe.data.sessions;const encrypted=encryptedExport(safe,process.env.MIGRATION_EXPORT_PASSPHRASE||'');fs.mkdirSync(path.dirname(path.resolve(exportPath)),{recursive:true});fs.writeFileSync(exportPath,encrypted,{mode:0o600,flag:'wx'});report.exportPath=path.resolve(exportPath);report.exportEncrypted=true;}
     if(!apply)return report;
     const authUsers=await listAuthUsers();const profileMap=new Map();
     for(const p of plan.profiles){
@@ -126,7 +136,8 @@ export async function runMigration({apply=false,sendRecovery=false,exportPath=nu
     };
     const order=['salons','services','staff','subscriptions','salon_versions','bookings','loyalty_accounts','loyalty_transactions','loyalty_vouchers','waitlist','stylist_inquiries','platform_settings','audit_logs'];
     for(const table of order){try{report.imported[table]=await upsertTable(table,importRows[table]);}catch(error){report.imported[table]={source:importRows[table].length,error:error.message};report.failedTable=table;break;}}
-    report.identity.needsGoogleProviderLink=report.legacyGoogleUsers.length;
+    report.identity.needsGoogleProviderLink=report.legacyGoogleCount;
+    report.reconciliation.legacyGoogleAccountsNeedProviderRelink=report.legacyGoogleCount;
     report.reconciliation={profilesExpected:plan.profiles.length,profilesMapped:profileMap.size,foreignKeysMappedByStableIds:true,passwordHashesMigrated:false,sessionsMigrated:false};
     return report;
   }finally{db.close();}
@@ -134,6 +145,6 @@ export async function runMigration({apply=false,sendRecovery=false,exportPath=nu
 
 function parseArgs(argv){return {apply:argv.includes('--apply'),sendRecovery:argv.includes('--send-recovery'),exportPath:(argv.find(x=>x.startsWith('--export='))||'').slice(9)||null};}
 if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href){
-  if(process.argv.includes('--help'))console.log('Dry-run by default. Use --apply to write; --send-recovery sends password setup emails; --export=/secure/path writes a redacted 0600 JSON export.');
-  else runMigration(parseArgs(process.argv.slice(2))).then(report=>console.log(JSON.stringify(report,null,2))).catch(error=>{console.error(error.message);process.exitCode=1;});
+  if(process.argv.includes('--help'))console.log('Dry-run by default. Use --apply to write; --send-recovery sends password setup emails; --export=/secure/path.enc writes an AES-256-GCM encrypted, redacted export. Set MIGRATION_EXPORT_PASSPHRASE (16+ chars).');
+  else runMigration(parseArgs(process.argv.slice(2))).then(report=>{console.log(JSON.stringify(report,null,2));if(report.failedTable)process.exitCode=1;}).catch(error=>{console.error(error.message);process.exitCode=1;});
 }
