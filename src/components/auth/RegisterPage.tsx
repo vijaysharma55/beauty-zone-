@@ -24,8 +24,8 @@ export const RegisterPage: React.FC = () => {
   const [confirm, setConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
-  const [confirmationSent, setConfirmationSent] = useState(false);
 
   if (user) {
     return <Navigate to={user.role === 'super_admin' ? '/admin' : '/dashboard'} replace />;
@@ -45,8 +45,8 @@ export const RegisterPage: React.FC = () => {
     setLoading(true);
     try {
       const data = await register(name.trim(), email.trim(), password);
-      if (!data) {
-        setConfirmationSent(true);
+      if (!data.user) {
+        setNotice('Account request received. Open the confirmation link sent to ' + data.pendingEmail + ' to activate your account, then sign in.');
         return;
       }
       navigate(data.salon ? '/dashboard' : '/dashboard/onboarding', { replace: true });
@@ -70,25 +70,6 @@ export const RegisterPage: React.FC = () => {
     }
   };
 
-  if (confirmationSent) {
-    return (
-      <AuthLayout
-        title="Check your inbox"
-        subtitle={`We sent a confirmation link to ${email.trim()}.`}
-        footer={
-          <Link to="/login" className="font-semibold text-[#8a641f] hover:underline">
-            Back to sign in
-          </Link>
-        }
-      >
-        <p className="text-sm text-slate-700">
-          Click the link in the email to activate your account, then sign in. The email can take a minute to
-          arrive — check your spam folder too.
-        </p>
-      </AuthLayout>
-    );
-  }
-
   return (
     <AuthLayout
       title="Create your owner account"
@@ -102,6 +83,12 @@ export const RegisterPage: React.FC = () => {
         </span>
       }
     >
+      {notice && (
+        <div role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {notice}
+          <p className="mt-2"><Link to="/login" className="font-semibold underline">Go to sign in</Link></p>
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         {error && (
           <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

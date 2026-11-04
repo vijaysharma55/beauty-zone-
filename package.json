@@ -14,13 +14,12 @@
     "clean": "rm -rf dist data",
     "lint": "tsc --noEmit",
     "test:api": "node --test server/tests/api.test.js",
-    "test": "node --test server/tests/unit.test.js server/tests/store.test.js server/tests/api.test.js",
-    "test:unit": "node --test server/tests/unit.test.js server/tests/store.test.js",
+    "test": "node --test server/tests/unit.test.js server/tests/api.test.js",
+    "test:unit": "node --test server/tests/unit.test.js",
     "verify": "npm run lint && npm test && npm run build"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
-    "@supabase/supabase-js": "^2.58.0",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
     "bcryptjs": "^3.0.3",

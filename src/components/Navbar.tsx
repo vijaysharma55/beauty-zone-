@@ -5,7 +5,6 @@ import {
   Phone,
   Menu,
   X,
-  Calendar,
   Sliders,
   Settings,
   Palette,
@@ -210,20 +209,16 @@ export const Navbar: React.FC<NavbarProps> = ({
           ))}
         </nav>
 
-        {/* Action Buttons */}
-        <div className="hidden sm:flex items-center gap-2.5">
-          <button
-            onClick={() => handleLinkClick('booking')}
-            className="flex items-center gap-2 bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A] font-semibold text-sm px-5 py-2.5 rounded-full shadow-lg hover:shadow-[#D09A40]/25 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
-          >
-            <Calendar className="w-4 h-4" />
-            <span>{brand.heroPrimaryCta || t('navBookAppointment')}</span>
-          </button>
-        </div>
-
         {/* Mobile Hamburger */}
         <div className="flex items-center gap-2 lg:hidden">
           <LanguageSwitcher variant="dark" compact />
+          <button
+            onClick={() => setIsCustomizerOpen(true)}
+            className="p-2 text-[#D09A40] hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+            title="White-Label Brand Studio"
+          >
+            <Palette className="w-5 h-5" />
+          </button>
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="p-2 text-[#FAF5E5] hover:text-[#D09A40] transition-colors"
@@ -267,16 +262,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               <LayoutDashboard className="w-4 h-4" />
               <span>{accountLabel}</span>
             </Link>
-            <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                setIsCustomizerOpen(true);
-              }}
-              className="w-full flex items-center justify-center gap-2 bg-white/10 border border-[#D09A40]/40 text-[#FAF5E5] font-semibold py-2.5 rounded-full text-sm"
-            >
-              <Palette className="w-4 h-4 text-[#D09A40]" />
-              <span>{t('navWhiteLabelStudio')}</span>
-            </button>
             <button
               onClick={() => {
                 setMobileMenuOpen(false);

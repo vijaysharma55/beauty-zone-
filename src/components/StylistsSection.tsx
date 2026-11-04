@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Stylist } from '../types';
-import { Award, Star, MapPin, Calendar, Sparkles, CheckCircle2, X, Eye, Plus, Camera, ImagePlus, Loader2, Trash2 } from 'lucide-react';
+import { Stylist, GalleryItem } from '../types';
+import { Award, Star, MapPin, Calendar, Sparkles, CheckCircle2, X, Eye, Plus, Camera, ImagePlus, Loader2, Trash2, MessageCircle, Briefcase } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
 import { SmartImage } from './crud/SmartImage';
 import { ItemActions } from './crud/ItemActions';
@@ -8,9 +8,13 @@ import { CardEditorModal, type EditorField } from './crud/CardEditorModal';
 import { CrudToast, ManageControls, ManageHint } from './crud/ManageControls';
 import { useCardCollection } from './crud/useCardCollection';
 import { optimizeImageFile } from '../lib/imageUtils';
+import { StylistChatModal } from './StylistChatModal';
+import { GALLERY_CATEGORIES, GALLERY_SERVICES } from '../data/galleryData';
 
 interface StylistsSectionProps {
   onBookWithStylist: (stylistName: string, branchName: string) => void;
+  galleryItems?: GalleryItem[];
+  onUpdateGallery?: (items: GalleryItem[]) => void;
 }
 
 const STYLIST_CATEGORY_OPTIONS = [
@@ -127,9 +131,14 @@ const normalizeStylistValues = (
   portfolio: base?.portfolio || [],
 });
 
-export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStylist }) => {
+export const StylistsSection: React.FC<StylistsSectionProps> = ({ 
+  onBookWithStylist,
+  galleryItems = [],
+  onUpdateGallery
+}) => {
   const { brand, t, updateBrand } = useBrand();
   const [selectedStylist, setSelectedStylist] = useState<Stylist | null>(null);
+  const [chatWithStylist, setChatWithStylist] = useState<Stylist | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'bridal' | 'hair' | 'skin' | 'nails'>('all');
 
   const manager = useCardCollection<Stylist>(
@@ -170,28 +179,52 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
   };
 
   const handleAddPortfolioImage = async (file: File | undefined) => {
-    if (!file || !selectedStylist) return;
+    if (!file || !selectedStylist || !onUpdateGallery) return;
     setAddingPortfolio(true);
     try {
       const dataUrl = await optimizeImageFile(file);
-      const newPortfolioItem = {
+      const newGalleryItem: GalleryItem = {
+        id: `gal-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        type: 'photo',
+        title: `${selectedStylist.name.split(' ')[0]}'s Work`,
+        description: `Stunning transformation work by our specialist ${selectedStylist.name}.`,
+        category: GALLERY_CATEGORIES[0],
+        service: GALLERY_SERVICES[0],
         image: dataUrl,
-        title: 'Transformation Look',
-        description: 'Client makeover transformation photo',
+        sort_order: 1,
+        featured: false,
+        active: true,
+        created_at: new Date().toISOString().slice(0, 10),
+        artist: selectedStylist.name
       };
-      const updatedPortfolio = [...(selectedStylist.portfolio || []), newPortfolioItem];
-      const updatedStylists = brand.stylists.map((s) =>
-        s.id === selectedStylist.id ? { ...s, portfolio: updatedPortfolio } : s
-      );
-      updateBrand({ stylists: updatedStylists });
-      setSelectedStylist({ ...selectedStylist, portfolio: updatedPortfolio });
-      manager.notify('Added transformation photo to portfolio!');
+      
+      const updatedGallery = [newGalleryItem, ...galleryItems];
+      onUpdateGallery(updatedGallery);
+      manager.notify('Added transformation photo to gallery portfolio!');
     } catch (err) {
       console.error('[portfolio photo upload]', err);
     } finally {
       setAddingPortfolio(false);
     }
   };
+
+  const stylistGalleryItems = selectedStylist 
+    ? galleryItems.filter(item => 
+        item.artist?.toLowerCase().includes(selectedStylist.name.toLowerCase()) ||
+        selectedStylist.name.toLowerCase().includes(item.artist?.toLowerCase() || '')
+      )
+    : [];
+
+  const combinedPortfolio = selectedStylist 
+    ? [
+        ...(selectedStylist.portfolio || []),
+        ...stylistGalleryItems.map(item => ({
+          image: item.image,
+          title: item.title,
+          description: item.description
+        }))
+      ]
+    : [];
 
   const removeStylist = (id: string) => {
     setSelectedStylist((current) => (current?.id === id ? null : current));
@@ -350,13 +383,22 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
 
               {/* Card Footer CTAs */}
               <div className="px-5 pb-5 pt-2 space-y-2">
-                <button
-                  onClick={() => setSelectedStylist(stylist)}
-                  className="w-full py-2.5 px-3 rounded-xl border border-[#0F172A]/15 bg-[#FAF5E5]/60 hover:bg-[#0F172A]/5 text-[#0F172A] font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Eye className="w-3.5 h-3.5 text-[#D09A40]" />
-                  <span>View Portfolio & Bio</span>
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setSelectedStylist(stylist)}
+                    className="py-2.5 px-3 rounded-xl border border-[#0F172A]/15 bg-[#FAF5E5]/60 hover:bg-[#0F172A]/5 text-[#0F172A] font-semibold text-[11px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Briefcase className="w-3.5 h-3.5 text-[#D09A40]" />
+                    <span>View Portfolio</span>
+                  </button>
+                  <button
+                    onClick={() => setChatWithStylist(stylist)}
+                    className="py-2.5 px-3 rounded-xl border border-[#D09A40]/30 bg-[#D09A40]/5 hover:bg-[#D09A40]/10 text-[#0F172A] font-semibold text-[11px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 text-[#D09A40]" />
+                    <span>Inquiry</span>
+                  </button>
+                </div>
                 <button
                   onClick={() => onBookWithStylist(stylist.name, stylist.branch)}
                   className="w-full py-2.5 px-3 rounded-xl bg-[#0F172A] hover:bg-[#D09A40] text-[#FAF5E5] hover:text-[#0F172A] font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
@@ -536,7 +578,7 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {selectedStylist.portfolio.map((item, idx) => (
+                  {combinedPortfolio.map((item, idx) => (
                     <div
                       key={idx}
                       className="rounded-2xl overflow-hidden border border-[#0F172A]/10 bg-[#FAF5E5]"
@@ -547,29 +589,39 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
                         className="w-full h-36 object-cover"
                       />
                       <div className="p-3">
-                        <p className="font-serif font-bold text-xs text-[#0F172A]">
+                        <p className="font-serif font-bold text-xs text-[#0F172A] truncate">
                           {item.title}
                         </p>
-                        <p className="text-[11px] text-[#4A4A4A] mt-0.5 leading-snug">
+                        <p className="text-[11px] text-[#4A4A4A] mt-0.5 leading-snug line-clamp-2">
                           {item.description}
                         </p>
                       </div>
                     </div>
                   ))}
+                  {combinedPortfolio.length === 0 && (
+                    <div className="col-span-full py-12 flex flex-col items-center justify-center text-center bg-[#FAF5E5]/40 rounded-2xl border border-dashed border-[#0F172A]/10">
+                      <ImagePlus className="w-8 h-8 text-neutral-300 mb-2" />
+                      <p className="text-xs text-[#4A4A4A]">No transformations added yet.</p>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-[#0F172A]/10 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <p className="text-xs text-[#4A4A4A]">
-                  Available at <strong>{selectedStylist.branch}</strong> & for Bridal Venue Bookings
-                </p>
+              <div className="pt-4 border-t border-[#0F172A]/10 flex flex-col sm:flex-row items-center justify-end gap-3">
+                <button
+                  onClick={() => setChatWithStylist(selectedStylist)}
+                  className="w-full sm:w-auto border border-[#0F172A]/20 hover:bg-[#0F172A]/5 text-[#0F172A] font-bold text-xs sm:text-sm px-6 py-3 rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <MessageCircle className="w-4 h-4 text-[#D09A40]" />
+                  <span>Send Inquiry</span>
+                </button>
                 <button
                   onClick={() => {
                     const stylist = selectedStylist;
                     setSelectedStylist(null);
                     onBookWithStylist(stylist.name, stylist.branch);
                   }}
-                  className="w-full sm:w-auto bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A] font-bold text-xs sm:text-sm px-6 py-3 rounded-xl flex items-center justify-center gap-2 shadow-md cursor-pointer"
+                  className="w-full sm:w-auto bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A] font-bold text-xs sm:text-sm px-6 py-3 rounded-xl flex items-center justify-center gap-2 shadow-md cursor-pointer transition-all"
                 >
                   <Calendar className="w-4 h-4" />
                   <span>Book Appointment with {selectedStylist.name}</span>
@@ -607,6 +659,12 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({ onBookWithStyl
           onSubmit={(values) =>
             manager.saveItem(normalizeStylistValues(values, manager.editorState?.item))
           }
+        />
+      )}
+      {chatWithStylist && (
+        <StylistChatModal
+          stylist={chatWithStylist}
+          onClose={() => setChatWithStylist(null)}
         />
       )}
       <CrudToast message={manager.notice} />

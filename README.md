@@ -320,15 +320,85 @@ src/
   hooks/useAvailability.ts Slot loading with retry + graceful fallback
   context/AuthContext.tsx
   lib/api.ts             Fetch wrapper (ApiError, typed methods)
+  lib/supabase.ts        Supabase Auth, PostgREST and Storage client
+  lib/sectionStore.ts    Owner-scoped Supabase website content sync
   lib/ai.ts              AI helpers with local fallbacks
 data/                    SQLite database + uploads (gitignored)
-docs/SUPABASE_RLS.md     RLS policy mapping if the store is ever moved to Postgres
+docs/SUPABASE_RLS.md     Current Supabase RLS, workflow and migration boundary
 AUDIT.md                 End-to-end gap audit & remediation log
 ```
 
 ---
 
-## 8. Deployment checklist
+
+## 9. Supabase integration (current rollout)
+
+The BeautyZone Supabase project is **beauty-zone-jaipur**
+(project ID **botkjeikjzhnbxnowdkl**, region **eu-central-1**). Supabase Auth
+now handles new email/password sign-up, sign-in, email confirmation and
+password recovery. The Express API verifies Supabase access tokens against
+the Auth endpoint, then issues the existing HttpOnly application session so
+the current owner/admin routes continue to work.
+
+The following website content is synchronised to the owner's RLS-protected
+site_sections records: brand configuration, services, packages, gallery and
+videos. Local storage remains a cache/fallback so existing previews do not
+lose their content when the network is unavailable.
+
+The Supabase schema also contains owner-scoped tables for salons, versions,
+services, staff, subscriptions, bookings, site sections, gallery, packages,
+videos, branches, waitlist, stylist enquiries, reviews, loyalty, platform
+settings and audit records. RLS is enabled and workflow triggers prevent
+self-approval / privilege escalation. Security Advisor was rechecked after
+hardening and returned no security lints.
+
+**Migration boundary — do not treat this as a completed SQLite-to-Postgres
+migration.** Existing operational salon, booking, subscription, staff,
+admin and audit endpoints still read/write the legacy SQLite database through
+server/routes/*.js. Existing SQLite rows have not been copied into the
+Supabase tables, and those legacy endpoints are not yet backed by Postgres.
+The content bridge above is an initial rollout, not evidence that every page
+or dashboard CRUD path has moved to Supabase. Do not deploy this as a
+Supabase-only persistent backend on a platform where the /tmp SQLite volume
+is ephemeral until the remaining route migration and data backfill are complete.
+
+### First super-admin setup
+
+After the first administrator registers and confirms the email, promote that
+profile from the trusted Supabase SQL Editor (replace the email with the
+administrator address):
+
+```sql
+update public.profiles
+set role = 'super_admin'
+where email = 'your-admin-email@example.com';
+```
+
+Do not add a browser-side role editor or accept role values from registration
+metadata. Existing local SQLite super-admin role is preserved during identity
+linking, but Supabase RLS admin access requires this profile promotion.
+
+### Required deployment settings
+
+Set the following values in the frontend build and server environment:
+
+- VITE_SUPABASE_URL=https://botkjeikjzhnbxnowdkl.supabase.co
+- VITE_SUPABASE_PUBLISHABLE_KEY=<the project's publishable key>
+- SUPABASE_URL=https://botkjeikjzhnbxnowdkl.supabase.co
+- SUPABASE_PUBLISHABLE_KEY=<the project's publishable key>
+
+The publishable key is designed for browser use; database RLS policies are
+the security boundary. Never use a service_role or secret key in frontend
+code, VITE_* variables, Git, screenshots or client requests.
+
+In Supabase Authentication settings, set the production Site URL and add
+the deployed app's /verify-email and /reset-password URLs to the redirect
+allow list. Configure SMTP for production mail delivery. To enable Google
+sign-in, enable the Google provider in Supabase Auth and configure the
+matching Google OAuth client/audience used by GOOGLE_CLIENT_ID.
+
+
+## 10. Deployment checklist
 
 1. Set a strong `SEED_ADMIN_PASSWORD` (or create the admin interactively) and remove demo accounts.
    Set `APP_URL` so verification links point at your public host, and connect a real mail provider.

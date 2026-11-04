@@ -16,7 +16,6 @@ import {
   notFound,
   errorHandler,
 } from './middleware.js';
-import { loadSupabaseUser } from './supabase.js';
 import { subdomainMiddleware } from './subdomain.js';
 import { authRouter } from './routes/auth.js';
 import { salonRouter } from './routes/salon.js';
@@ -77,7 +76,6 @@ app.use('/api', (req, res, next) => {
 });
 
 app.use(loadSession);
-app.use(loadSupabaseUser);
 app.use('/api', csrfProtection);
 
 app.get('/api/health', (req, res) => {

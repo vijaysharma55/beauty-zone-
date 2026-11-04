@@ -1,3 +1,5 @@
+import { supabase } from './supabase';
+
 export class ApiError extends Error {
   status: number;
   code?: string;
@@ -9,8 +11,6 @@ export class ApiError extends Error {
     this.code = code;
   }
 }
-
-import { getAccessToken } from './supabase';
 
 const BASE = '/api';
 
@@ -33,8 +33,10 @@ async function parseResponse(res: Response): Promise<any> {
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set('X-Requested-With', 'beautyzone');
-  const accessToken = await getAccessToken();
-  if (accessToken && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${accessToken}`);
+  if (!headers.has('Authorization')) {
+    const accessToken = await supabase.auth.getAccessToken().catch(() => null);
+    if (accessToken) headers.set('Authorization', 'Bearer ' + accessToken);
+  }
   if (options.body && !(options.body instanceof Blob) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
