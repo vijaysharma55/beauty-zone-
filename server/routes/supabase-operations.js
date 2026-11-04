@@ -663,26 +663,32 @@ supabaseOperationsRouter.post('/public/bookings/:bookingId/payment-order',asyncR
     });
     return {keyId:RAZORPAY_KEY_ID,orderId:order.id,amount:Number(order.amount),currency:order.currency,paymentRecordId:paymentId,description:'25% booking advance'};
   };
-  const pending=await readServiceRow('booking_payments','booking_id=eq.'+encodeURIComponent(booking.id)+'&status=eq.pending&select=id,provider_order_id,amount_paise&limit=1');
-  if(pending){
-    if(Number(pending.amount_paise)!==due)fail(409,'A booking advance payment is already being processed. Please wait for confirmation.');
-    if(pending.provider_order_id){
-      const existingOrder=await fetchRazorpayOrder(pending.provider_order_id);
-      return res.json({keyId:RAZORPAY_KEY_ID,orderId:existingOrder.id,amount:Number(existingOrder.amount),currency:existingOrder.currency,paymentRecordId:pending.id,description:'25% booking advance'});
-    }
-    return res.json(await createOrderForBookingPayment(pending.id));
+  let pending=await readServiceRow('booking_payments','booking_id=eq.'+encodeURIComponent(booking.id)+'&status=eq.pending&select=id,provider_order_id,amount_paise&limit=1');
+  if(pending&&Number(pending.amount_paise)!==due)fail(409,'A booking advance payment is already being processed. Please wait for confirmation.');
+  if(pending?.provider_order_id){
+    const existingOrder=await fetchRazorpayOrder(pending.provider_order_id);
+    return res.json({keyId:RAZORPAY_KEY_ID,orderId:existingOrder.id,amount:Number(existingOrder.amount),currency:existingOrder.currency,paymentRecordId:pending.id,description:'25% booking advance'});
   }
-  const paymentRow=await insertServiceRow('booking_payments',{
-    booking_id:booking.id,provider:'razorpay',provider_order_id:null,
-    amount_paise:due,currency:'INR',status:'pending',
-    metadata:{bookingReference:booking.reference,purpose:'booking_advance'},
-  });
-  if(!paymentRow?.id)fail(502,'Could not save the Razorpay booking payment record.');
+  if(!pending){
+    pending=await insertServiceRow('booking_payments',{
+      booking_id:booking.id,provider:'razorpay',provider_order_id:null,
+      amount_paise:due,currency:'INR',status:'pending',
+      metadata:{bookingReference:booking.reference,purpose:'booking_advance'},
+    });
+    if(!pending?.id)fail(502,'Could not save the Razorpay booking payment record.');
+  }
   try{
-    const response=await createOrderForBookingPayment(paymentRow.id);
-    res.status(201).json(response);
+    const order=await createRazorpayOrder({
+      amountPaise:due,
+      receipt:'bzbk_'+booking.id.replace(/-/g,'').slice(0,30),
+      notes:{bookingId:booking.id,bookingReference:booking.reference,purpose:'booking_advance'},
+    });
+    await patchServiceRow('booking_payments','id=eq.'+encodeURIComponent(pending.id),{
+      provider_order_id:order.id,updated_at:isoNow(),
+    });
+    return res.status(201).json({keyId:RAZORPAY_KEY_ID,orderId:order.id,amount:Number(order.amount),currency:order.currency,paymentRecordId:pending.id,description:'25% booking advance'});
   }catch(error){
-    await patchServiceRow('booking_payments','id=eq.'+encodeURIComponent(paymentRow.id),{status:'failed',updated_at:isoNow()}).catch(()=>{});
+    await patchServiceRow('booking_payments','id=eq.'+encodeURIComponent(pending.id),{status:'failed',updated_at:isoNow()}).catch(()=>{});
     throw error;
   }
 }));
