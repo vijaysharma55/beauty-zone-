@@ -268,17 +268,19 @@ export const AdminSubscriptions: React.FC = () => {
                     <td className="px-5 py-3 capitalize">{payment.plan}</td>
                     <td className="px-5 py-3">
                       <p className="uppercase text-xs text-slate-500">{payment.provider}</p>
-                      <p className="font-mono text-xs text-slate-800">{payment.provider_reference || 'No reference'}</p>
+                      <p className="font-mono text-xs text-slate-800">{payment.provider_reference || payment.provider_order_id || 'No reference'}</p>
                     </td>
                     <td className="px-5 py-3">{formatCurrency(Number(payment.amount_paise || 0))}</td>
                     <td className="px-5 py-3">
                       <Badge tone={payment.status === 'verified' ? 'green' : payment.status === 'pending' ? 'amber' : 'red'}>{payment.status}</Badge>
                     </td>
                     <td className="px-5 py-3 text-right">
-                      {payment.status === 'pending' ? (
+                      {payment.status === 'pending' && payment.provider !== 'razorpay' ? (
                         <Button variant="gold" size="sm" loading={busyId === 'payment:' + payment.id} onClick={() => verifyPayment(payment)}>
                           Verify & activate
                         </Button>
+                      ) : payment.status === 'pending' && payment.provider === 'razorpay' ? (
+                        <span className="text-xs text-amber-700">Waiting for signed webhook</span>
                       ) : <span className="text-xs text-slate-400">No action</span>}
                     </td>
                   </tr>
