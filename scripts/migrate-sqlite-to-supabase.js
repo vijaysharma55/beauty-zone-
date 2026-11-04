@@ -23,7 +23,7 @@ const APP_URL = String(process.env.APP_URL || '').replace(/\/+$/, '');
 const EXPORT_TABLES = ['users','salons','services','staff','subscriptions','bookings','salon_versions','loyalty_accounts','loyalty_transactions','loyalty_vouchers','waitlist','stylist_inquiries','platform_settings','audit_logs'];
 const cleanEmail = (v) => String(v || '').trim().toLowerCase();
 const validEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
-const normalizePhone = (v) => String(v || '').replace(/\\D/g, '');
+const normalizePhone = (v) => String(v || '').replace(/\D/g, '');
 const json = (v, fallback) => { if (v === null || v === undefined || v === '') return fallback; try { return JSON.parse(v); } catch { return fallback; } };
 const bool = (v) => v === true || v === 1 || v === '1';
 const iso = (v) => v ? new Date(v).toISOString() : new Date(0).toISOString();
