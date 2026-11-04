@@ -92,7 +92,7 @@ export const SubdomainAwareHome: React.FC<{ children: React.ReactNode }> = ({ ch
     );
   }
   if (tenant.mode === 'subdomain' && tenant.found && tenant.slug) {
-    return <PublicSalonPage forcedSlug={tenant.slug} />;
+    return <React.Suspense fallback={null}><PublicSalonPage forcedSlug={tenant.slug} /></React.Suspense>;
   }
   if (tenant.mode === 'subdomain' && !tenant.found) {
     // Show fallback instead of marketing site — don't pretend subdomain is the homepage
