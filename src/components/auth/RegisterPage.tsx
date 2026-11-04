@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { AlertCircle, Check, Eye, EyeOff, Lock, Mail, User } from 'lucide-react';
 import { AuthLayout } from './AuthLayout';
-import { GoogleSignInButton } from './GoogleSignInButton';
 import { Button, Field, Input } from '../ui';
 import { useAuth } from '../../context/AuthContext';
 import { errorMessage } from '../../lib/api';
@@ -16,10 +15,11 @@ const rules = [
 ];
 
 export const RegisterPage: React.FC = () => {
-  const { register, loginWithGoogle, user } = useAuth();
+  const { register, user } = useAuth();
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -44,7 +44,11 @@ export const RegisterPage: React.FC = () => {
     }
     setLoading(true);
     try {
-      const data = await register(name.trim(), email.trim(), password);
+      if (!dateOfBirth || dateOfBirth > new Date().toISOString().slice(0, 10)) {
+      setError('Please enter a valid date of birth.');
+      return;
+    }
+    const data = await register(name.trim(), email.trim(), password, dateOfBirth);
       if (!data.user) {
         setNotice('Account request received. Open the confirmation link sent to ' + data.pendingEmail + ' to activate your account, then sign in.');
         return;
@@ -57,18 +61,7 @@ export const RegisterPage: React.FC = () => {
     }
   };
 
-  const handleGoogle = async (credential: string) => {
-    setError('');
-    setLoading(true);
-    try {
-      const data = await loginWithGoogle(credential);
-      navigate(data.salon ? '/dashboard' : '/dashboard/onboarding', { replace: true });
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  };
+
 
   return (
     <AuthLayout
@@ -126,6 +119,19 @@ export const RegisterPage: React.FC = () => {
               className="pl-9"
             />
           </div>
+        </Field>
+
+        <Field label="Date of birth" htmlFor="dateOfBirth" required>
+          <Input
+            id="dateOfBirth"
+            type="date"
+            autoComplete="bday"
+            required
+            max={new Date().toISOString().slice(0, 10)}
+            value={dateOfBirth}
+            onChange={(e) => setDateOfBirth(e.target.value)}
+          />
+          <p className="mt-1 text-xs text-slate-500">Required for your account. This information is private and is not shown publicly.</p>
         </Field>
 
         <Field label="Password" htmlFor="password" required>
@@ -194,7 +200,7 @@ export const RegisterPage: React.FC = () => {
         <span className="h-px flex-1 bg-slate-200" />
       </div>
 
-      <GoogleSignInButton onCredential={handleGoogle} />
+      <p className="text-center text-xs text-slate-500">Google sign-in is available from the sign-in page for existing accounts.</p>
     </AuthLayout>
   );
 };
