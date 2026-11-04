@@ -222,11 +222,7 @@ function MarketingSite() {
   return (
     <div className="min-h-screen w-full flex flex-col bg-[#FAF5E5] text-[#0F172A] selection:bg-[#D09A40] selection:text-[#0F172A] pb-16 lg:pb-0">
       {/* Sticky Navigation Header */}
-      <Navbar
-        onNavigate={scrollToSection}
-        onOpenInspector={() => setIsInspectorOpen(true)}
-        onOpenManagement={() => handleOpenManagement('packages')}
-      />
+      <Navbar onNavigate={scrollToSection} />
 
       {/* Main Content */}
       <main className="w-full flex-grow">
