@@ -230,7 +230,7 @@ supabaseOperationsRouter.post('/salon/uploads', asyncRoute(async(req,res)=>{
     method:'POST',headers:{'Content-Type':mime,'x-upsert':'true'},body:data,
   });
   await audit(req.sb,'salon.image_uploaded','salon',salon.id,{kind,size:data.length});
-  res.status(201).json({url:'https://botkjeikjzhnbxnowdkl.supabase.co/storage/v1/object/public/beautyzone-assets/'+key});
+  res.status(201).json({url:process.env.SUPABASE_URL?.replace(/\\/+$/,'')+'/storage/v1/object/public/beautyzone-assets/'+key});
 }));
 supabaseOperationsRouter.get('/salon/services', asyncRoute(async(req,res)=>{
   const salon=await ownSalonOrFail(req.sb); res.json({services:await getServices(req.sb,salon.id)});
