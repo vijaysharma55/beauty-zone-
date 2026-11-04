@@ -166,13 +166,71 @@ db.exec(`
     estimated_total INTEGER NOT NULL DEFAULT 0,
     advance_paid INTEGER NOT NULL DEFAULT 0,
     advance_ref TEXT,
-    status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested','confirmed','declined','completed','cancelled')),
+    amount_paise INTEGER NOT NULL DEFAULT 0,
+    advance_paise INTEGER NOT NULL DEFAULT 0,
+    payment_status TEXT NOT NULL DEFAULT 'not_required',
+    confirmed_at TEXT,
+    status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested','pending_payment','advance_paid','confirmed','declined','completed','cancelled','expired')),
     source TEXT NOT NULL DEFAULT 'public',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_bookings_salon ON bookings(salon_id, date);
   CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date);
+
+  /* Payment orders (mock test orders and Razorpay orders share this table). */
+  CREATE TABLE IF NOT EXISTS payments (
+    id TEXT PRIMARY KEY,
+    booking_id TEXT NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+    salon_id TEXT REFERENCES salons(id) ON DELETE SET NULL,
+    provider TEXT NOT NULL CHECK (provider IN ('mock','razorpay')),
+    method TEXT NOT NULL DEFAULT '',
+    provider_order_id TEXT NOT NULL UNIQUE,
+    provider_payment_id TEXT UNIQUE,
+    amount_paise INTEGER NOT NULL CHECK (amount_paise >= 0),
+    total_paise INTEGER NOT NULL DEFAULT 0,
+    remaining_paise INTEGER NOT NULL DEFAULT 0,
+    currency TEXT NOT NULL DEFAULT 'INR',
+    status TEXT NOT NULL DEFAULT 'created'
+      CHECK (status IN ('created','pending','paid','failed','cancelled','expired')),
+    failure_reason TEXT NOT NULL DEFAULT '',
+    instrument TEXT NOT NULL DEFAULT '',
+    raw_json TEXT,
+    verified_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_payments_booking ON payments(booking_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
+
+  /* Server-issued mock transactions. A mock success is only honoured when the
+     transaction id exists here and belongs to the order being verified. */
+  CREATE TABLE IF NOT EXISTS mock_transactions (
+    id TEXT PRIMARY KEY,
+    payment_id TEXT NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
+    booking_id TEXT NOT NULL,
+    provider_order_id TEXT NOT NULL,
+    outcome TEXT NOT NULL CHECK (outcome IN ('success','failed','pending','cancelled')),
+    method TEXT NOT NULL DEFAULT '',
+    instrument TEXT NOT NULL DEFAULT '',
+    amount_paise INTEGER NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'INR',
+    consumed_at TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_mock_txn_payment ON mock_transactions(payment_id);
+
+  /* Webhook deliveries are recorded so a retry can never double-process. */
+  CREATE TABLE IF NOT EXISTS payment_webhook_events (
+    id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    event_type TEXT NOT NULL DEFAULT '',
+    payload_hash TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'received',
+    result TEXT NOT NULL DEFAULT '',
+    received_at TEXT NOT NULL,
+    processed_at TEXT
+  );
 
   CREATE TABLE IF NOT EXISTS platform_settings (
     key TEXT PRIMARY KEY,

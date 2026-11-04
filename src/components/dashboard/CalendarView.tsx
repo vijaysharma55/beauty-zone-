@@ -10,10 +10,13 @@ interface CalendarViewProps {
 
 const STATUS_COLOR: Record<BookingStatus, string> = {
   requested: 'bg-blue-500',
+  pending_payment: 'bg-amber-500',
+  advance_paid: 'bg-emerald-600',
   confirmed: 'bg-emerald-500',
   completed: 'bg-slate-400',
   declined: 'bg-rose-500',
   cancelled: 'bg-rose-500',
+  expired: 'bg-slate-400',
 };
 
 export const CalendarView: React.FC<CalendarViewProps> = ({ bookings }) => {
@@ -163,7 +166,17 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ bookings }) => {
                 <div key={b.id} className="rounded-xl border border-slate-100 bg-slate-50 p-4">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[10px] font-bold font-mono text-[#8a641f]">{b.reference}</span>
-                    <Badge tone={b.status === 'requested' ? 'blue' : b.status === 'confirmed' ? 'green' : 'slate'}>
+                    <Badge
+                      tone={
+                        b.status === 'requested'
+                          ? 'blue'
+                          : b.status === 'pending_payment'
+                            ? 'amber'
+                            : b.status === 'confirmed' || b.status === 'advance_paid'
+                              ? 'green'
+                              : 'slate'
+                      }
+                    >
                       {b.status}
                     </Badge>
                   </div>

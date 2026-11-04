@@ -30,7 +30,15 @@ import {
   formatDate,
 } from '../ui';
 
-export type BookingStatus = 'requested' | 'confirmed' | 'declined' | 'completed' | 'cancelled';
+export type BookingStatus =
+  | 'requested'
+  | 'pending_payment'
+  | 'advance_paid'
+  | 'confirmed'
+  | 'declined'
+  | 'completed'
+  | 'cancelled'
+  | 'expired';
 
 export interface Booking {
   id: string;
@@ -54,6 +62,13 @@ export interface Booking {
   estimatedTotal: number;
   advancePaid: number;
   advanceRef: string | null;
+  paymentStatus?: string;
+  amountPaise?: number;
+  advancePaise?: number;
+  remainingPaise?: number;
+  paymentRequired?: boolean;
+  confirmed?: boolean;
+  confirmedAt?: string | null;
   status: BookingStatus;
   source: string;
   createdAt: string;
@@ -62,18 +77,34 @@ export interface Booking {
 
 const STATUS_TONE: Record<BookingStatus, 'blue' | 'green' | 'red' | 'slate' | 'amber'> = {
   requested: 'blue',
+  pending_payment: 'amber',
+  advance_paid: 'green',
   confirmed: 'green',
   completed: 'slate',
   declined: 'red',
   cancelled: 'red',
+  expired: 'slate',
 };
 
 const STATUS_LABEL: Record<BookingStatus, string> = {
   requested: 'New request',
+  pending_payment: 'Awaiting payment',
+  advance_paid: 'Advance paid',
   confirmed: 'Confirmed',
   completed: 'Completed',
   declined: 'Declined',
   cancelled: 'Cancelled',
+  expired: 'Expired',
+};
+
+const PAYMENT_LABEL: Record<string, string> = {
+  not_required: 'Pay at salon',
+  unpaid: 'Payment due',
+  pending: 'Payment pending',
+  failed: 'Payment failed',
+  cancelled: 'Payment cancelled',
+  advance_paid: 'Advance paid',
+  paid: 'Paid in full',
 };
 
 const NEXT_ACTIONS: Partial<Record<BookingStatus, Array<{ status: BookingStatus; label: string }>>> = {
@@ -81,7 +112,14 @@ const NEXT_ACTIONS: Partial<Record<BookingStatus, Array<{ status: BookingStatus;
     { status: 'confirmed', label: 'Confirm' },
     { status: 'declined', label: 'Decline' },
   ],
+  // Unpaid bookings are confirmed automatically once the advance clears, so the
+  // owner can only decline or cancel while the checkout is open.
+  pending_payment: [{ status: 'cancelled', label: 'Cancel' }],
   confirmed: [
+    { status: 'completed', label: 'Mark completed' },
+    { status: 'cancelled', label: 'Cancel' },
+  ],
+  advance_paid: [
     { status: 'completed', label: 'Mark completed' },
     { status: 'cancelled', label: 'Cancel' },
   ],
@@ -156,7 +194,11 @@ export const BookingsPage: React.FC = () => {
   const upcoming = useMemo(
     () =>
       bookings.filter(
-        (b) => b.status === 'requested' || b.status === 'confirmed'
+        (b) =>
+          b.status === 'requested' ||
+          b.status === 'confirmed' ||
+          b.status === 'advance_paid' ||
+          b.status === 'pending_payment'
       ).length,
     [bookings]
   );
@@ -234,6 +276,7 @@ export const BookingsPage: React.FC = () => {
               >
                 <option value="all">All statuses</option>
                 <option value="requested">New requests</option>
+                <option value="pending_payment">Awaiting payment</option>
                 <option value="confirmed">Confirmed</option>
                 <option value="completed">Completed</option>
                 <option value="declined">Declined</option>
@@ -334,11 +377,31 @@ export const BookingsPage: React.FC = () => {
                       </div>
                     )}
 
-                    <p className="mt-2 text-[11px] text-slate-400">
-                      Submitted {formatDate(booking.createdAt)}
-                      {booking.estimatedTotal ? ` · Estimated ${formatMoney(booking.estimatedTotal)}` : ''}
-                      {booking.advancePaid ? ` · Advance ${formatMoney(booking.advancePaid)} paid` : ''}
+                    <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-400">
+                      <span>Submitted {formatDate(booking.createdAt)}</span>
+                      {booking.estimatedTotal ? <span>· Estimated {formatMoney(booking.estimatedTotal)}</span> : null}
+                      {booking.advancePaid ? <span>· Advance {formatMoney(booking.advancePaid)} paid</span> : null}
+                      {booking.paymentStatus ? (
+                        <span
+                          className={`rounded-full px-1.5 py-0.5 font-semibold ${
+                            booking.paymentStatus === 'advance_paid' || booking.paymentStatus === 'paid'
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : booking.paymentStatus === 'not_required'
+                                ? 'bg-slate-100 text-slate-600'
+                                : 'bg-amber-50 text-amber-700'
+                          }`}
+                        >
+                          {PAYMENT_LABEL[booking.paymentStatus] || booking.paymentStatus}
+                        </span>
+                      ) : null}
                     </p>
+                    {booking.status === 'pending_payment' && (
+                      <p className="mt-1 text-[11px] text-amber-700">
+                        Waiting for the client's advance payment
+                        {booking.advancePaise ? ` (${formatMoney(booking.advancePaise / 100)})` : ''}. Confirmation is
+                        issued automatically once the payment is verified.
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex shrink-0 flex-wrap gap-1.5 sm:flex-col sm:items-stretch">

@@ -256,10 +256,17 @@ export function validatePassword(password) {
 }
 
 export class HttpError extends Error {
-  constructor(status, message, details) {
+  constructor(status, message, details, code) {
     super(message);
     this.status = status;
-    this.details = details;
+    if (typeof details === 'string' && code === undefined) {
+      // A string third argument is a machine-readable error code.
+      this.code = details;
+      this.details = undefined;
+    } else {
+      this.details = details;
+      this.code = code;
+    }
   }
 }
 

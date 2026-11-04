@@ -14,8 +14,9 @@
     "clean": "rm -rf dist data",
     "lint": "tsc --noEmit",
     "test:api": "node --test server/tests/api.test.js",
-    "test": "node --test server/tests/unit.test.js server/tests/api.test.js",
-    "test:unit": "node --test server/tests/unit.test.js",
+    "test:payments": "node --test server/tests/payments.test.js",
+    "test": "node --test server/tests/unit.test.js server/tests/payment-unit.test.js server/tests/api.test.js server/tests/payments.test.js",
+    "test:unit": "node --test server/tests/unit.test.js server/tests/payment-unit.test.js",
     "verify": "npm run lint && npm test && npm run build"
   },
   "dependencies": {

@@ -24,6 +24,8 @@ import { adminRouter } from './routes/admin.js';
 import { aiRouter } from './routes/ai.js';
 import { bookingsRouter } from './routes/bookings.js';
 import { loyaltyRouter } from './routes/loyalty.js';
+import { paymentsRouter } from './routes/payments.js';
+import { resolvePaymentConfig } from './payments/config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -68,6 +70,10 @@ app.use(subdomainMiddleware);
 // Raw body for image uploads must be registered before the JSON parser.
 app.use('/api/salon/uploads', express.raw({ type: 'image/*', limit: '5mb' }));
 
+// Razorpay signs the exact bytes it sends, so the webhook keeps its raw body.
+app.use('/api/public/payments/razorpay/webhook', express.raw({ type: '*/*', limit: '1mb' }));
+app.use('/api/payments/razorpay/webhook', express.raw({ type: '*/*', limit: '1mb' }));
+
 app.use(express.json({ limit: '2mb' }));
 
 app.use('/api', (req, res, next) => {
@@ -90,6 +96,9 @@ app.use('/api/ai', aiRouter);
 // /api/public/bookings — visitor appointment requests
 app.use('/api/public', bookingsRouter);
 app.use('/api/public', loyaltyRouter);
+// /api/public/payments — booking checkout (mock + Razorpay), also at /api/payments
+app.use('/api/public/payments', paymentsRouter);
+app.use('/api/payments', paymentsRouter);
 
 // Uploaded images are public assets (they are embedded in public salon websites).
 app.use(
@@ -189,6 +198,20 @@ if (!process.env.VERCEL) {
     console.log(`\n  BeautyZone running on http://0.0.0.0:${PORT}`);
     console.log(`  Environment: ${isProd ? 'production' : 'development'}`);
     console.log(`  Data directory: ${DATA_PATH}`);
+    const paymentConfig = resolvePaymentConfig();
+    if (paymentConfig.mock) {
+      console.log('  Payments: MOCK test mode (no real money will be charged)');
+      console.log('    Test UPI IDs: success@mockupi · failure@mockupi · pending@mockupi');
+    } else if (paymentConfig.mode === 'razorpay') {
+      console.log(
+        `  Payments: Razorpay ${paymentConfig.razorpayConfigured ? '(credentials loaded)' : '(MISSING CREDENTIALS)'}`
+      );
+    } else {
+      console.log(`  Payments: disabled — ${paymentConfig.reason || 'no provider configured'}`);
+    }
+    if (paymentConfig.mockBlockedInProduction) {
+      console.error('[startup] PAYMENT_MODE=mock is not allowed in production. Configure Razorpay instead.');
+    }
     if (seeded) {
       console.log('\n  Seeded demo accounts:');
       console.log(`    Super admin : ${process.env.SEED_ADMIN_EMAIL || 'admin@beautyzone.app'} / ${process.env.SEED_ADMIN_PASSWORD || 'Admin@12345'}`);

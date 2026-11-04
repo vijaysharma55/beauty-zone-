@@ -789,11 +789,34 @@ test('visitor can book a live salon and the owner sees it', async () => {
   assert.ok(created.data.booking.reference, 'booking reference issued');
   // 12-hour input is normalised to 24-hour storage.
   assert.equal(created.data.booking.time, '14:30');
+  // An advance is due, so the booking starts unconfirmed.
+  assert.equal(created.data.booking.status, 'pending_payment');
+  assert.equal(created.data.payment.required, true);
 
   const owner = await loginAs('owner@test.local', 'Owner@12345');
   const list = await owner.get('/api/salon/bookings');
   assert.equal(list.status, 200);
   assert.ok(list.data.bookings.some((b) => b.reference === created.data.booking.reference));
+
+  // Payment protection: the owner cannot confirm an unpaid booking.
+  const blocked = await owner.patch(`/api/salon/bookings/${created.data.booking.id}`, { status: 'confirmed' });
+  assert.equal(blocked.status, 409);
+
+  // Complete a mock test payment (development mode defaults to mock payments).
+  const order = await anon.post('/api/public/payments/orders', { bookingId: created.data.booking.id });
+  assert.equal(order.status, 201);
+  const checkout = await anon.post('/api/public/payments/mock/checkout', {
+    orderId: order.data.payment.id,
+    method: 'upi',
+    upiId: 'success@mockupi',
+  });
+  assert.equal(checkout.status, 200);
+  const paid = await anon.post('/api/public/payments/mock/complete', {
+    orderId: order.data.payment.id,
+    transactionId: checkout.data.transactionId,
+  });
+  assert.equal(paid.status, 200);
+  assert.equal(paid.data.booking.status, 'confirmed');
 
   const confirm = await owner.patch(`/api/salon/bookings/${created.data.booking.id}`, { status: 'confirmed' });
   assert.equal(confirm.status, 200);
