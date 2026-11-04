@@ -7,6 +7,7 @@ import {
   livePayload, getLiveSalon, isoNow, uuid,
 } from '../supabase-store.js';
 import { generateSlots, FALLBACK_TIMINGS, DEFAULT_SLOT_MINUTES, DEFAULT_LEAD_MINUTES } from '../availability.js';
+import { RAZORPAY_KEY_ID, razorpayEnabled, createRazorpayOrder, verifyCheckoutSignature, fetchCapturedPayment, processRazorpayEvent, readServiceRow, insertServiceRow, patchServiceRow } from '../razorpay.js';
 
 export const supabaseOperationsRouter = Router();
 const hasBearer = (req) => /^Bearer\s+\S+/i.test(String(req.get('authorization') || ''));
@@ -287,20 +288,72 @@ supabaseOperationsRouter.get('/salon/subscription/payments', asyncRoute(async(re
   const rows=await rest(req.sb,'subscription_payments','salon_id=eq.'+encodeURIComponent(salon.id)+'&select=*&order=created_at.desc&limit=100');
   res.json({payments:rows});
 }));
-supabaseOperationsRouter.post('/salon/subscription/payments', asyncRoute(async(req,res)=>{
+
+const SUBSCRIPTION_PRICES = { starter: 149900, pro: 299900, elite: 599900 };
+const paymentOrderResponse = (order, paymentId) => ({
+  keyId: RAZORPAY_KEY_ID, orderId: order.id, amount: Number(order.amount),
+  currency: order.currency, paymentRecordId: paymentId,
+  name: 'BeautyZone', description: 'BeautyZone subscription',
+});
+
+supabaseOperationsRouter.get('/salon/subscription/payment-config', asyncRoute(async(req,res)=>{
+  owner(req.sb);
+  res.json({enabled:razorpayEnabled(),keyId:razorpayEnabled()?RAZORPAY_KEY_ID:null,currency:'INR'});
+}));
+
+supabaseOperationsRouter.post('/salon/subscription/checkout', asyncRoute(async(req,res)=>{
   const salon=await ownSalonOrFail(req.sb);
-  const provider=s(req.body?.provider,20,true);
-  if(!['razorpay','phonepe','cashfree','upi','manual'].includes(provider)) fail(400,'Unsupported payment provider.');
+  if(!razorpayEnabled()) fail(503,'Online payments are not configured yet. Contact BeautyZone support.');
   const plan=s(req.body?.plan,20,true);
-  if(!['trial','starter','pro','elite'].includes(plan)) fail(400,'Invalid subscription plan.');
-  const amountPaise=num(req.body?.amountPaise,1,100000000);
-  const rows=await write(req.sb,'subscription_payments',{
-    salon_id:salon.id,provider,provider_reference:s(req.body?.providerReference,150,true),
-    amount_paise:amountPaise,currency:'INR',status:'pending',plan,
-    metadata:isObject(req.body?.metadata)?req.body.metadata:{},
+  const amount=SUBSCRIPTION_PRICES[plan];
+  if(!amount)fail(400,'Choose a valid paid subscription plan.');
+  const now=new Date(),periodEnd=new Date(now.getTime()+30*86400000);
+  const record=await write(req.sb,'subscription_payments',{
+    salon_id:salon.id,subscription_id:(await getSubscription(req.sb,salon.id))?.id||null,
+    provider:'razorpay',provider_reference:null,provider_order_id:null,provider_payment_id:null,
+    amount_paise:amount,currency:'INR',status:'pending',plan,
+    period_start:now.toISOString(),period_end:periodEnd.toISOString(),
+    metadata:{purpose:'salon_subscription',createdFrom:'salon_billing_page'},
   });
-  await audit(req.sb,'subscription.payment_created','subscription_payment',rows[0]?.id,{provider,plan,amountPaise});
-  res.status(201).json({payment:rows[0]});
+  const payment=record[0];
+  try{
+    const order=await createRazorpayOrder({
+      amountPaise:amount,
+      receipt:'bzsub_'+payment.id.replace(/-/g,'').slice(0,30),
+      notes:{beautyzonePaymentId:payment.id,salonId:salon.id,plan,purpose:'subscription'},
+    });
+    await patchServiceRow('subscription_payments','id=eq.'+encodeURIComponent(payment.id),{
+      provider_order_id:order.id,metadata:{purpose:'salon_subscription',razorpayOrderId:order.id},updated_at:isoNow(),
+    });
+    await audit(req.sb,'subscription.razorpay_order_created','subscription_payment',payment.id,{plan,amountPaise:amount,orderId:order.id});
+    res.status(201).json(paymentOrderResponse(order,payment.id));
+  }catch(error){
+    await patchServiceRow('subscription_payments','id=eq.'+encodeURIComponent(payment.id),{status:'failed',metadata:{purpose:'salon_subscription',orderCreationError:String(error.message).slice(0,300)},updated_at:isoNow()}).catch(()=>{});
+    throw error;
+  }
+}));
+
+supabaseOperationsRouter.post('/salon/subscription/verify', asyncRoute(async(req,res)=>{
+  const salon=await ownSalonOrFail(req.sb);
+  if(!razorpayEnabled())fail(503,'Online payments are not configured.');
+  const paymentId=s(req.body?.paymentRecordId,80,true);
+  const orderId=s(req.body?.razorpayOrderId,100,true);
+  const providerPaymentId=s(req.body?.razorpayPaymentId,100,true);
+  const signature=s(req.body?.razorpaySignature,128,true);
+  if(!verifyCheckoutSignature(orderId,providerPaymentId,signature))fail(400,'Razorpay checkout signature is invalid.');
+  const row=await one(req.sb,'subscription_payments','id=eq.'+encodeURIComponent(paymentId)+'&salon_id=eq.'+encodeURIComponent(salon.id)+'&provider=eq.razorpay&select=*&limit=1');
+  if(!row||row.provider_order_id!==orderId)fail(404,'Payment order does not belong to this salon.');
+  const payment=await fetchCapturedPayment(providerPaymentId,orderId,row.amount_paise);
+  await processRazorpayEvent('checkout-subscription-'+providerPaymentId,{
+    event:'payment.captured',payload:{payment:{entity:payment}},
+  });
+  const updated=await readServiceRow('subscription_payments','id=eq.'+encodeURIComponent(row.id)+'&select=id,status,provider_payment_id,verified_at');
+  await audit(req.sb,'subscription.razorpay_payment_verified','subscription_payment',row.id,{orderId,paymentId:providerPaymentId});
+  res.json({success:true,status:updated?.status||'pending',paymentId:providerPaymentId});
+}));
+
+supabaseOperationsRouter.post('/salon/subscription/payments', asyncRoute(async(req,res)=>{
+  fail(410,'Manual UPI/bank references are retired. Use the Razorpay subscription checkout.');
 }));
 
 // Owner appointment list / status changes.
@@ -565,6 +618,57 @@ supabaseOperationsRouter.get('/public/availability',asyncRoute(async(req,res)=>{
   res.set('Cache-Control','no-store');
   res.json({date:result.date,day:result.day,open:result.open||null,close:result.close||null,closed:Boolean(result.closed),slots:result.slots||[],reason:result.reason||null,source,salonName,degraded:source==='default'});
 }));
+supabaseOperationsRouter.get('/public/payments/config',(req,res)=>{
+  res.json({enabled:razorpayEnabled(),keyId:razorpayEnabled()?RAZORPAY_KEY_ID:null,currency:'INR',bookingAdvancePercent:25});
+});
+
+supabaseOperationsRouter.post('/public/bookings/:bookingId/payment-order',asyncRoute(async(req,res)=>{
+  if(!razorpayEnabled())fail(503,'Online payments are not configured yet.');
+  const reference=s(req.body?.reference,80,true);
+  const phone=s(req.body?.phone,40,true);
+  const booking=await readServiceRow('bookings','id=eq.'+encodeURIComponent(req.params.bookingId)
+    +'&reference=eq.'+encodeURIComponent(reference)
+    +'&phone=eq.'+encodeURIComponent(phone)
+    +'&select=id,reference,phone,estimated_total,advance_paid,status,salon_id&limit=1');
+  if(!booking)fail(404,'Booking reference and mobile number do not match.');
+  if(!['requested','confirmed'].includes(booking.status))fail(409,'This booking is not eligible for an advance payment.');
+  const target=Math.ceil(Number(booking.estimated_total||0)*0.25);
+  const due=Math.max(0,target-Number(booking.advance_paid||0));
+  if(due<=0)return res.json({alreadyPaid:true,amount:0});
+  const pending=await readServiceRow('booking_payments','booking_id=eq.'+encodeURIComponent(booking.id)+'&status=eq.pending&select=id,provider_order_id,amount_paise&limit=1');
+  if(pending?.provider_order_id){
+    return res.json({keyId:RAZORPAY_KEY_ID,orderId:pending.provider_order_id,amount:Number(pending.amount_paise),currency:'INR',paymentRecordId:pending.id,description:'25% booking advance'});
+  }
+  const order=await createRazorpayOrder({
+    amountPaise:due,
+    receipt:'bzbk_'+booking.id.replace(/-/g,'').slice(0,30),
+    notes:{bookingId:booking.id,bookingReference:booking.reference,purpose:'booking_advance'},
+  });
+  const paymentRow=await insertServiceRow('booking_payments',{
+    booking_id:booking.id,provider:'razorpay',provider_order_id:order.id,
+    amount_paise:due,currency:'INR',status:'pending',
+    metadata:{bookingReference:booking.reference,purpose:'booking_advance'},
+  });
+  if(!paymentRow?.id)fail(502,'Could not save the Razorpay booking payment order.');
+  res.status(201).json({keyId:RAZORPAY_KEY_ID,orderId:order.id,amount:Number(order.amount),currency:order.currency,paymentRecordId:paymentRow.id,description:'25% booking advance'});
+}));
+
+supabaseOperationsRouter.post('/public/booking-payments/verify',asyncRoute(async(req,res)=>{
+  if(!razorpayEnabled())fail(503,'Online payments are not configured.');
+  const reference=s(req.body?.reference,80,true),phone=s(req.body?.phone,40,true);
+  const orderId=s(req.body?.razorpayOrderId,100,true),paymentId=s(req.body?.razorpayPaymentId,100,true);
+  const signature=s(req.body?.razorpaySignature,128,true);
+  if(!verifyCheckoutSignature(orderId,paymentId,signature))fail(400,'Razorpay checkout signature is invalid.');
+  const paymentRow=await readServiceRow('booking_payments','provider_order_id=eq.'+encodeURIComponent(orderId)+'&provider=eq.razorpay&select=*&limit=1');
+  if(!paymentRow)fail(404,'Booking payment order not found.');
+  const booking=await readServiceRow('bookings','id=eq.'+encodeURIComponent(paymentRow.booking_id)+'&reference=eq.'+encodeURIComponent(reference)+'&phone=eq.'+encodeURIComponent(phone)+'&select=id,reference&limit=1');
+  if(!booking)fail(404,'Booking reference and mobile number do not match.');
+  const gatewayPayment=await fetchCapturedPayment(paymentId,orderId,paymentRow.amount_paise);
+  await processRazorpayEvent('checkout-booking-'+paymentId,{event:'payment.captured',payload:{payment:{entity:gatewayPayment}}});
+  const updated=await readServiceRow('booking_payments','id=eq.'+encodeURIComponent(paymentRow.id)+'&select=id,status,provider_payment_id,captured_at');
+  res.json({success:true,status:updated?.status||'pending',paymentId});
+}));
+
 supabaseOperationsRouter.post('/public/bookings',asyncRoute(async(req,res)=>{
   const b=req.body||{};
   const name=s(b.fullName,120,true),phone=s(b.phone,40,true);
