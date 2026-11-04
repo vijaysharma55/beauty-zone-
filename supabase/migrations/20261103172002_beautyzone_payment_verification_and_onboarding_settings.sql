@@ -72,7 +72,7 @@ begin
   select coalesce((value #>> '{}')::integer,14) into v_trial_days from public.platform_settings where key='trialDays';
   v_trial_days:=greatest(0,least(coalesce(v_trial_days,14),365));
   select coalesce(value #>> '{}','starter') into v_default_plan from public.platform_settings where key='defaultPlan';
-  if v_default_plan not in ('trial','starter','pro','elite') then v_default_plan:='starter'; end if;
+  if v_default_plan not in ('trial','starter') then v_default_plan:='starter'; end if;
 
   insert into public.salons(
     owner_id,name,slug,tagline,description,logo_url,cover_image,gallery,
