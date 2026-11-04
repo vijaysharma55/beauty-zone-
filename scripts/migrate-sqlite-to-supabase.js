@@ -23,7 +23,12 @@ const APP_URL = String(process.env.APP_URL || '').replace(/\/+$/, '');
 const EXPORT_TABLES = ['users','salons','services','staff','subscriptions','bookings','salon_versions','loyalty_accounts','loyalty_transactions','loyalty_vouchers','waitlist','stylist_inquiries','platform_settings','audit_logs'];
 const cleanEmail = (v) => String(v || '').trim().toLowerCase();
 const validEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
-const normalizePhone = (v) => String(v || '').replace(/\D/g, '');
+const normalizePhone = (v) => {
+  const digits = String(v || '').replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) return digits.slice(-10);
+  if (digits.length === 11 && digits.startsWith('0')) return digits.slice(-10);
+  return digits;
+};
 const json = (v, fallback) => { if (v === null || v === undefined || v === '') return fallback; try { return JSON.parse(v); } catch { return fallback; } };
 const bool = (v) => v === true || v === 1 || v === '1';
 const iso = (v) => v ? new Date(v).toISOString() : new Date(0).toISOString();
@@ -163,10 +168,22 @@ export async function runMigration({apply=false,sendRecovery=false,exportPath=nu
         throw new Error('Role conflict: '+p.email+' is already a super admin in Supabase. Review the legacy record before changing its role.');
       }
       profileMap.set(p.legacyId,uid);
-      await supa('/rest/v1/profiles?id=eq.'+encodeURIComponent(uid),{
-        method:'PATCH',headers:{Prefer:'return=minimal'},
-        body:JSON.stringify({legacy_user_id:p.legacyId,name:p.name,role:p.role,status:p.status,auth_provider:'password',email_verified:p.email_verified,updated_at:p.updated_at}),
-      });
+      const profilePayload={
+        id:uid,legacy_user_id:p.legacyId,email:p.email,name:p.name,role:p.role,status:p.status,
+        auth_provider:['google','phone'].includes(p.legacy_provider)?p.legacy_provider:'password',
+        email_verified:Boolean(p.email_verified||user.email_confirmed_at),
+        created_at:p.created_at,updated_at:p.updated_at,
+      };
+      if(existingProfile){
+        const {id,created_at,...patch}=profilePayload;
+        await supa('/rest/v1/profiles?id=eq.'+encodeURIComponent(uid),{
+          method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(patch),
+        });
+      }else{
+        await supa('/rest/v1/profiles',{
+          method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify(profilePayload),
+        });
+      }
       const confirmedProfile=await supa('/rest/v1/profiles?id=eq.'+encodeURIComponent(uid)+'&select=id,legacy_user_id');
       if(!Array.isArray(confirmedProfile)||!confirmedProfile[0]||confirmedProfile[0].legacy_user_id!==p.legacyId){
         throw new Error('Profile mapping did not persist for '+p.email+'. Stop and reconcile before importing child records.');
@@ -200,7 +217,7 @@ export async function runMigration({apply=false,sendRecovery=false,exportPath=nu
     const reconciliation={};
     const profileRows=plan.profiles.map(p=>({legacy_user_id:p.legacyId}));
     reconciliation.profiles=await reconcileTable('profiles',profileRows,'legacy_user_id');
-    for(const table of order) reconciliation[table]=await reconcileTable(table,importRows[table]);
+    for(const table of order) reconciliation[table]=await reconcileTable(table,importRows[table],table==='platform_settings'?'key':'id');
     const missingTables=Object.entries(reconciliation).filter(([,value])=>value.missing>0).map(([name,value])=>({table:name,missing:value.missing,expected:value.expected,found:value.found}));
     const incompleteProfiles=profileMap.size!==plan.profiles.length;
     report.reconciliation={
