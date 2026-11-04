@@ -32,7 +32,7 @@ import {
 import { WhatsAppIcon } from './SocialIcons';
 import { BookingSummaryModal } from './BookingSummaryModal';
 import { useBrand } from '../context/BrandContext';
-import { api } from '../lib/api';
+import { api, customerApi } from '../lib/api';
 import { openRazorpayCheckout } from '../lib/razorpay';
 import { useAvailability, FALLBACK_SLOTS } from '../hooks/useAvailability';
 
@@ -437,7 +437,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     if (!clean) return;
 
     try {
-      const res = await api.post<{
+      const res = await customerApi.post<{
         valid: boolean;
         voucher: {
           code: string;
@@ -463,7 +463,14 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
       }
     }
 
-    // Local fallback check for voucher
+    // Demo/local vouchers are preview-only. A published salon accepts only
+    // vouchers verified by the signed-in customer through Supabase OTP.
+    if (salonSlug) {
+      setPromoError('Sign in and verify the mobile number that owns this voucher before applying it.');
+      return;
+    }
+
+    // Local fallback check for a non-published enquiry preview only.
     const storedCustomer = getStoredLoyaltyCustomer();
     const matchedRedeemed = storedCustomer.redeemedRewards.find(
       (r) => r.voucherCode.toUpperCase() === clean
@@ -672,8 +679,10 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   // UI amounts are rupees; the Supabase booking/payment API stores paise.
   const advanceRequired = useMemo(() => {
     if (form.locationType !== 'home') return 0;
-    return Math.ceil(totalEstimatedAmount * 25) / 100;
-  }, [form.locationType, totalEstimatedAmount]);
+    // The server derives the payable base from the approved service snapshot;
+    // travel is collected at the salon after the visit, not in this advance.
+    return Math.ceil(Math.max(0, treatmentPrice - promoDiscount) * 25) / 100;
+  }, [form.locationType, treatmentPrice, promoDiscount]);
   const balanceAtDoorstep = Math.max(
     0,
     totalEstimatedAmount - (form.advancePaymentVerified ? advanceRequired : 0)
@@ -748,7 +757,8 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     setAttemptCount((n) => n + 1);
 
     try {
-      const saved = await api.post<{ booking: { id: string; reference: string } }>('/public/bookings', {
+      const bookingClient = appliedPromo && salonSlug ? customerApi : api;
+      const saved = await bookingClient.post<{ booking: { id: string; reference: string } }>('/public/bookings', {
         slug: salonSlug || undefined,
         fullName: form.fullName.trim(),
         phone: form.phone.trim(),
@@ -764,7 +774,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
         distanceKm: form.locationType === 'home' ? form.distanceKm : null,
         bridalTrial: form.bridalTrialRequired,
         notes: form.specialNotes.trim(),
-        promoCode: appliedPromo?.code || null,
+        promoCode: salonSlug ? appliedPromo?.code || null : null,
         // Store paise; the browser never claims that an advance has been paid.
         estimatedTotal: Math.round(totalEstimatedAmount * 100),
         reference: ref,
@@ -1751,7 +1761,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                       </div>
                       <p className="text-amber-800 text-[11px] leading-relaxed">
                         {salonSlug
-                          ? <>A 25% advance of <strong>{formatPrice(advanceRequired)}</strong> is collected securely after you save the appointment request. The remaining balance is payable after the service.</>
+                          ? <>A 25% advance of the approved service amount (<strong>{formatPrice(advanceRequired)}</strong>) is collected after you save the request. The travel fee is included in the remaining balance and is payable after the service.</>
                           : 'Submit your home-service request first. The BeautyZone team will review the location and confirm any applicable advance before payment.'}
                       </p>
                       <p className="text-[11px] text-amber-800">
