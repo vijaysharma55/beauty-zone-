@@ -251,7 +251,7 @@ export const DEFAULT_WHITE_LABEL_CONFIG: WhiteLabelConfig = {
       'Book HD Airbrush bridal makeovers, chemical-free Moroccan hair botox, 24K gold facials, and doorstep salon services with certified senior artists.',
     seoKeywords:
       'luxury salon, bridal makeup studio, hair botox, hydrafacial, nail art extensions, home salon service',
-    canonicalUrl: 'https://www.luminaluxestudio.com',
+    canonicalUrl: 'https://beauty-zone-pearl.vercel.app/',
     ogTitle: 'Lumina Luxe — Signature Bridal, Hair & Skin Luxury Studio',
     ogDescription:
       '4.9 ★ Rated across 3,500+ clients. Visit our luxury studio branches or book doorstep salon & bridal services.',
@@ -738,6 +738,10 @@ export function loadWhiteLabelConfig(): WhiteLabelConfig {
       domainSeo: {
         ...DEFAULT_WHITE_LABEL_CONFIG.domainSeo,
         ...(parsed.domainSeo || {}),
+        // Migrate the former template default without overriding custom canonical URLs.
+        canonicalUrl: /^https:\/\/www\.luminaluxestudio\.com\/?$/.test(parsed.domainSeo?.canonicalUrl || '')
+          ? DEFAULT_WHITE_LABEL_CONFIG.domainSeo.canonicalUrl
+          : (parsed.domainSeo?.canonicalUrl ?? DEFAULT_WHITE_LABEL_CONFIG.domainSeo.canonicalUrl),
       },
       branches:
         Array.isArray(parsed.branches) && parsed.branches.length > 0

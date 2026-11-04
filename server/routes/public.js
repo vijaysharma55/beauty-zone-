@@ -3,6 +3,7 @@ import { db, findSalonBySlug, getStaffForSalon, serializeSalon, serializeStaff, 
 import { getLiveContent, hasLiveApproval } from '../workflow.js';
 import { rateLimit } from '../security.js';
 import { tenantInfoFromReq } from '../subdomain.js';
+import { listLiveSalonSlugs } from '../sitemap.js';
 import {
   generateSlots,
   FALLBACK_TIMINGS,
@@ -93,6 +94,19 @@ function livePayload(salon) {
   );
   return { salon: merged, services, staff };
 }
+
+// A paginated, slug-only feed for build-time sitemap generation. Unlike the
+// directory endpoint, it is not capped at the first 60 salons.
+publicRouter.get('/sitemap-salons', rateLimit({ windowMs: 60_000, max: 120, key: 'sitemap-salons' }), (req, res) => {
+  const offsetText = String(req.query.offset ?? '0');
+  if (!/^\d+$/.test(offsetText) || !Number.isSafeInteger(Number(offsetText))) {
+    return res.status(400).json({ error: 'Invalid sitemap offset.' });
+  }
+  const offset = Number(offsetText);
+  const pageSize = 100;
+  const rows = listLiveSalonSlugs(db, { limit: pageSize + 1, offset });
+  return res.json({ slugs: rows.slice(0, pageSize), nextOffset: rows.length > pageSize ? offset + pageSize : null });
+});
 
 publicRouter.get(
   '/salons',

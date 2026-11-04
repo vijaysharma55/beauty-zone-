@@ -185,14 +185,21 @@ export const BrandProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // OpenGraph & Twitter Cards
       upsertMetaTag('property', 'og:title', effectiveOgTitle);
       upsertMetaTag('property', 'og:description', effectiveOgDesc);
-      upsertMetaTag('property', 'og:image', effectiveOgImage);
+      let ogImage = effectiveOgImage;
+      if (window.location.pathname === '/') {
+        try { ogImage = new URL(effectiveOgImage, window.location.origin).href; } catch { /* Preserve a custom value if it is not a URL. */ }
+      }
+      upsertMetaTag('property', 'og:image', ogImage);
       upsertMetaTag('name', 'twitter:card', brand.domainSeo?.twitterCardType || 'summary_large_image');
       upsertMetaTag('name', 'twitter:title', effectiveOgTitle);
       upsertMetaTag('name', 'twitter:description', effectiveOgDesc);
       upsertMetaTag('name', 'twitter:image', effectiveOgImage);
 
       if (brand.domainSeo?.canonicalUrl) {
-        upsertLinkTag('canonical', brand.domainSeo.canonicalUrl);
+        const canonical = window.location.pathname === '/' && /^https:\/\/www\.luminaluxestudio\.com\/?$/.test(brand.domainSeo.canonicalUrl)
+          ? DEFAULT_WHITE_LABEL_CONFIG.domainSeo.canonicalUrl
+          : brand.domainSeo.canonicalUrl;
+        upsertLinkTag('canonical', canonical);
       }
 
       if (brand.domainSeo?.googleSiteVerification) {

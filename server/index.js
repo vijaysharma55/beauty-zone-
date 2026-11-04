@@ -150,14 +150,14 @@ if (isProd) {
       express.static(distDir, {
         index: false,
         setHeaders: (res, filePath) => {
-          if (filePath.endsWith('index.html')) res.set('Cache-Control', 'no-store');
+          if (['index.html', 'spa.html', 'robots.txt', 'sitemap.xml'].includes(path.basename(filePath))) res.set('Cache-Control', 'no-store');
           else res.set('Cache-Control', 'public, max-age=31536000, immutable');
         },
       })
     );
     app.get('*', (req, res) => {
       res.set('Cache-Control', 'no-store');
-      res.sendFile(path.join(distDir, 'index.html'));
+      res.sendFile(path.join(distDir, req.path === '/' ? 'index.html' : 'spa.html'));
     });
   } else {
     app.get('*', (req, res) => res.status(503).send('Frontend build not found. Run `npm run build` first.'));

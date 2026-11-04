@@ -4,6 +4,7 @@ import { SALON_SERVICES } from './salonData';
 const SERVICES_STORAGE_KEY = 'whitelabel_salon_services_v3';
 
 export const getStoredServices = (): ServiceItem[] => {
+  if (typeof localStorage === 'undefined') return SALON_SERVICES;
   try {
     localStorage.removeItem('whitelabel_salon_services_v2');
     const raw = localStorage.getItem(SERVICES_STORAGE_KEY);

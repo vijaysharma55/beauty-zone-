@@ -8,14 +8,14 @@
   },
   "scripts": {
     "dev": "tsx server/index.js",
-    "build": "vite build",
+    "build": "vite build && node scripts/prerender.mjs",
     "start": "NODE_ENV=production node server/index.js",
     "preview": "NODE_ENV=production node server/index.js",
     "clean": "rm -rf dist data",
     "lint": "tsc --noEmit",
     "test:api": "node --test server/tests/api.test.js",
     "test:payments": "node --test server/tests/payments.test.js",
-    "test": "node --test server/tests/unit.test.js server/tests/payment-unit.test.js server/tests/advance-unit.test.js server/tests/api.test.js server/tests/payments.test.js server/tests/owner-payments.test.js",
+    "test": "node --test server/tests/unit.test.js server/tests/payment-unit.test.js server/tests/advance-unit.test.js server/tests/api.test.js server/tests/payments.test.js server/tests/owner-payments.test.js server/tests/sitemap.test.js",
     "test:unit": "node --test server/tests/unit.test.js server/tests/payment-unit.test.js server/tests/advance-unit.test.js",
     "verify": "npm run lint && npm test && npm run build",
     "test:owner": "node --test server/tests/owner-payments.test.js"
