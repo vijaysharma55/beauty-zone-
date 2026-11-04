@@ -91,7 +91,7 @@ async function customerRequest<T>(path: string, options: RequestInit = {}): Prom
   let res: Response;
   try {
     res = await fetch(`${BASE}${path}`, {
-      credentials: 'same-origin',
+      credentials: 'omit',
       ...options,
       headers,
     });
