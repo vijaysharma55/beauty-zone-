@@ -1,7 +1,28 @@
 import React, { useRef, useState } from 'react';
 import { ImagePlus, Loader2, Link2, Trash2, AlertCircle } from 'lucide-react';
 import { optimizeImageFile } from '../../lib/imageUtils';
+import { api } from '../../lib/api';
 import { Button, Input } from '../ui';
+
+export async function uploadOrInlineImage(
+  file: File,
+  kind: 'logo' | 'cover' | 'gallery' | 'staff' = 'staff'
+): Promise<string> {
+  const dataUrl = await optimizeImageFile(file);
+  try {
+    const response = await fetch(dataUrl);
+    const blob = await response.blob();
+    const baseName = (file.name || 'image').replace(/\.[^.]+$/, '') || 'image';
+    const optimizedFile = new File([blob], `${baseName}.jpg`, {
+      type: blob.type && blob.type.startsWith('image/') ? blob.type : 'image/jpeg',
+    });
+    const uploaded = await api.upload(optimizedFile, kind);
+    if (uploaded?.url) return uploaded.url;
+  } catch {
+    // Keep optimized dataUrl fallback if upload endpoint is unavailable or rate-limited.
+  }
+  return dataUrl;
+}
 
 export const ImageUploader: React.FC<{
   label: string;
@@ -10,7 +31,7 @@ export const ImageUploader: React.FC<{
   onChange: (url: string) => void;
   hint?: string;
   previewClassName?: string;
-}> = ({ label, value, onChange, hint, previewClassName = 'h-24 w-24 rounded-xl' }) => {
+}> = ({ label, value, kind = 'staff', onChange, hint, previewClassName = 'h-24 w-24 rounded-xl' }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
@@ -22,9 +43,9 @@ export const ImageUploader: React.FC<{
     setError('');
     setUploading(true);
     try {
-      // FileReader API via optimizeImageFile for local preview & optimization
-      const dataUrl = await optimizeImageFile(file);
-      onChange(dataUrl);
+      const uploadKind = kind === 'service' ? 'gallery' : kind;
+      const url = await uploadOrInlineImage(file, uploadKind);
+      onChange(url);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not read image file.');
     } finally {
@@ -63,7 +84,7 @@ export const ImageUploader: React.FC<{
             onClick={() => inputRef.current?.click()}
           >
             {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
-            {value ? 'Replace Image' : 'Upload Image (FileReader)'}
+            {value ? 'Replace Photo' : 'Upload Photo'}
           </Button>
           <Button type="button" variant="ghost" size="sm" onClick={() => setShowUrl((v) => !v)}>
             <Link2 className="h-3.5 w-3.5" /> Use URL

@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..');
-const PORT = 4100 + Math.floor(Math.random() * 500);
+const PORT = 5200 + Math.floor(Math.random() * 800);
 const BASE = `http://127.0.0.1:${PORT}`;
 const ORIGIN = BASE;
 
@@ -982,3 +982,325 @@ test('specialist online-booking switch round-trips and stays tenant-scoped', asy
   assert.equal(on.status, 200);
   assert.equal(on.data.staff.bookingEnabled, true);
 });
+
+/* ------------------------------------------------------------------ */
+/* Staff Profiles, Consent, Demo Protection & Publishing Lock          */
+/* ------------------------------------------------------------------ */
+
+test('rich staff profile CRUD, work-photo consent gating and live public reflection', async () => {
+  const owner = await loginAs('owner@test.local', 'Owner@12345');
+  const anon = makeClient();
+
+  // 1. Add a staff member with qualifications, genuine rating and unconsented work photos.
+  const created = await owner.post('/api/salon/staff', {
+    name: 'Rhea Deshmukh',
+    roleTitle: 'Senior Nail & Couture Artist',
+    bio: 'Specialist in sculpted gel extensions and hand-painted bridal nail art.',
+    photoUrl: '/images/bridal_nail_art_1792647953738.jpg',
+    experience: '6+ Years',
+    rating: 4.9,
+    reviewCount: 44,
+    specialties: ['Gel Extensions', 'Bridal Nail Art', 'Chrome Finish'],
+    qualifications: ['International Nail Tech Diploma', 'Hygiene & Sterilization Certified'],
+    workPhotos: [
+      { url: '/images/bridal_nail_art_1792647953738.jpg', caption: 'Royal Bridal Nail Set' },
+    ],
+    workPhotosConsent: false,
+    active: true,
+    bookingEnabled: true,
+  });
+  assert.equal(created.status, 201);
+  const staffId = created.data.staff.id;
+  assert.deepEqual(created.data.staff.qualifications, [
+    'International Nail Tech Diploma',
+    'Hygiene & Sterilization Certified',
+  ]);
+  assert.equal(created.data.staff.workPhotos.length, 1);
+  assert.equal(created.data.staff.workPhotosConsent, false);
+
+  // 2. Owner dashboard returns stored workPhotos while public live endpoint hides them without consent.
+  const pubBeforeConsent = await anon.get('/api/public/salons/lumina-luxe');
+  assert.equal(pubBeforeConsent.status, 200);
+  const publicMemberNoConsent = pubBeforeConsent.data.staff.find((s) => s.id === staffId);
+  assert.ok(publicMemberNoConsent, 'newly added staff appears automatically on live public salon site');
+  assert.equal(publicMemberNoConsent.name, 'Rhea Deshmukh');
+  assert.equal(publicMemberNoConsent.roleTitle, 'Senior Nail & Couture Artist');
+  assert.equal(publicMemberNoConsent.rating, 4.9);
+  assert.deepEqual(publicMemberNoConsent.workPhotos, [], 'unconsented work photos must never be exposed publicly');
+  assert.equal(publicMemberNoConsent.workPhotosConsent, false);
+
+  // 3. Enabling workPhotosConsent exposes consented work photos immediately on public profiles; clearing rating omits rating.
+  const updated = await owner.patch(`/api/salon/staff/${staffId}`, {
+    workPhotosConsent: true,
+    rating: 0,
+    reviewCount: 0,
+  });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.data.staff.workPhotosConsent, true);
+  assert.equal(updated.data.staff.rating, null, 'zero rating normalizes to null so no fake rating renders');
+
+  const pubAfterConsent = await anon.get('/api/public/salons/lumina-luxe');
+  const publicMemberWithConsent = pubAfterConsent.data.staff.find((s) => s.id === staffId);
+  assert.equal(publicMemberWithConsent.workPhotosConsent, true);
+  assert.equal(publicMemberWithConsent.workPhotos.length, 1);
+  assert.equal(publicMemberWithConsent.workPhotos[0].caption, 'Royal Bridal Nail Set');
+  assert.equal(publicMemberWithConsent.rating, null);
+
+  // 4. Removing the staff member removes them immediately from the public website.
+  const delRes = await owner.del(`/api/salon/staff/${staffId}`);
+  assert.equal(delRes.status, 200);
+  const pubAfterDelete = await anon.get('/api/public/salons/lumina-luxe');
+  assert.equal(pubAfterDelete.data.staff.some((s) => s.id === staffId), false);
+});
+
+test('demo staff profiles can never be saved or booked', async () => {
+  const owner = await loginAs('owner@test.local', 'Owner@12345');
+  const anon = makeClient();
+
+  const saveDemoFlag = await owner.post('/api/salon/staff', {
+    name: 'Aarohi Verma',
+    roleTitle: 'Creative Bridal Director',
+    isDemo: true,
+  });
+  assert.equal(saveDemoFlag.status, 400);
+  assert.equal(saveDemoFlag.data.code, 'DEMO_STAFF_NOT_SAVEABLE');
+
+  const bookDemoId = await anon.post('/api/public/bookings', {
+    slug: 'lumina-luxe',
+    fullName: 'Riya Gupta',
+    phone: '9876543210',
+    service: 'HD Bridal Makeup',
+    stylist: 'Aarohi Verma',
+    stylistId: 'demo-staff-1',
+    date: nextMondayDate(),
+    time: '11:00 AM',
+  });
+  assert.equal(bookDemoId.status, 400);
+  assert.equal(bookDemoId.data.code, 'DEMO_STAFF_NOT_BOOKABLE');
+
+  const waitlistDemo = await anon.post('/api/public/waitlist', {
+    slug: 'lumina-luxe',
+    name: 'Riya Gupta',
+    phone: '9876543210',
+    service: 'HD Bridal Makeup',
+    stylistId: 'demo-staff-2',
+    preferredDate: nextMondayDate(),
+  });
+  assert.equal(waitlistDemo.status, 400);
+  assert.equal(waitlistDemo.data.code, 'DEMO_STAFF_NOT_BOOKABLE');
+
+  const inquiryDemo = await anon.post('/api/public/stylist-inquiry', {
+    stylistId: 'demo-staff-1',
+    stylistName: 'Aarohi Verma',
+    senderName: 'Riya Gupta',
+    senderPhone: '9876543210',
+    message: 'Are you available next month?',
+  });
+  assert.equal(inquiryDemo.status, 400);
+  assert.equal(inquiryDemo.data.code, 'DEMO_STAFF_NOT_AVAILABLE');
+});
+
+test('unpublished salon websites block booking API calls and automatically activate booking on publish', async () => {
+  const anon = makeClient();
+  const admin = await loginAs('admin@test.local', 'Admin@12345');
+
+  // Register a brand-new salon owner whose website starts unpublished.
+  const studioOwner = makeClient();
+  const slug = `atelier-blush-${Date.now().toString(36)}`;
+  const reg = await studioOwner.post('/api/auth/register', {
+    name: 'Devika Singh',
+    email: `${slug}@test.local`,
+    password: 'StudioPassword@123',
+    dateOfBirth: '1995-06-15',
+  });
+  assert.equal(reg.status, 201);
+
+  // Verify email via devVerificationUrl token if provided.
+  if (reg.data.devVerificationUrl) {
+    const token = new URL(reg.data.devVerificationUrl, 'http://localhost').searchParams.get('token');
+    if (token) {
+      await studioOwner.post('/api/auth/verify-email', { token });
+    }
+  }
+
+  const onboard = await studioOwner.post('/api/salon/onboarding', {
+    name: 'Atelier Blush Studio',
+    slug,
+    city: 'Jaipur',
+    addressLine: '14 Prithviraj Road, C-Scheme',
+    phone: '+91 98290 12345',
+    email: `${slug}@test.local`,
+  });
+  assert.equal(onboard.status, 201);
+  const newSalonSlug = onboard.data.salon.slug;
+  const newSalonId = onboard.data.salon.id;
+  assert.equal(onboard.data.salon.published, false);
+
+  // Add salon profile details, a service and a real salon staff member across templates.
+  await studioOwner.patch('/api/salon', {
+    tagline: 'Couture Skin & Bridal',
+    description: 'Bespoke skin and bridal studio in Jaipur.',
+    state: 'Rajasthan',
+    templateId: 'blush',
+  });
+
+  const svcRes = await studioOwner.post('/api/salon/services', {
+    name: 'Couture Bridal Makeup',
+    category: 'bridal',
+    description: 'Full bridal look with draping.',
+    price: 15000,
+    durationMinutes: 120,
+    active: true,
+  });
+  assert.equal(svcRes.status, 201);
+
+  const staffRes = await studioOwner.post('/api/salon/staff', {
+    name: 'Ishita Menon',
+    roleTitle: 'Lead Couture Artist',
+    bio: 'Luxury bridal specialist.',
+    experience: '9+ Years',
+    rating: 4.8,
+    reviewCount: 31,
+    specialties: ['Couture Bridal', 'Airbrush'],
+    qualifications: ['London Makeup Academy Graduate'],
+    active: true,
+    bookingEnabled: true,
+  });
+  assert.equal(staffRes.status, 201);
+  const realStaffId = staffRes.data.staff.id;
+
+  // BEFORE PUBLISH: Direct API booking, waitlist and inquiry bypass attempts MUST fail with 403.
+  const blockedBooking = await anon.post('/api/public/bookings', {
+    slug: newSalonSlug,
+    fullName: 'Bypass Visitor',
+    phone: '9811122233',
+    service: 'Couture Bridal Makeup',
+    stylistId: realStaffId,
+    stylist: 'Ishita Menon',
+    date: nextMondayDate(),
+    time: '11:00 AM',
+  });
+  assert.equal(blockedBooking.status, 403);
+  assert.equal(blockedBooking.data.code, 'WEBSITE_NOT_PUBLISHED');
+
+  const blockedBySalonId = await anon.post('/api/public/bookings', {
+    salonId: newSalonId,
+    fullName: 'Bypass Visitor',
+    phone: '9811122233',
+    service: 'Couture Bridal Makeup',
+    date: nextMondayDate(),
+    time: '11:00 AM',
+  });
+  assert.equal(blockedBySalonId.status, 403);
+  assert.equal(blockedBySalonId.data.code, 'WEBSITE_NOT_PUBLISHED');
+
+  const blockedWaitlist = await anon.post('/api/public/waitlist', {
+    slug: newSalonSlug,
+    name: 'Bypass Visitor',
+    phone: '9811122233',
+    service: 'Couture Bridal Makeup',
+    preferredDate: nextMondayDate(),
+  });
+  assert.equal(blockedWaitlist.status, 403);
+  assert.equal(blockedWaitlist.data.code, 'WEBSITE_NOT_PUBLISHED');
+
+  const blockedInquiry = await anon.post('/api/public/stylist-inquiry', {
+    salonId: newSalonSlug,
+    stylistId: realStaffId,
+    stylistName: 'Ishita Menon',
+    userName: 'Bypass Visitor',
+    userPhone: '9811122233',
+    message: 'Testing unpublished inquiry lock.',
+  });
+  assert.equal(blockedInquiry.status, 403);
+  assert.equal(blockedInquiry.data.code, 'WEBSITE_NOT_PUBLISHED');
+
+  // Submit for approval -> Admin approves -> Owner publishes website.
+  const sub = await studioOwner.post('/api/salon/submit');
+  assert.equal(sub.status, 201);
+  const rev = await admin.post(`/api/admin/approvals/${sub.data.version.id}/review`, {
+    action: 'approve',
+    note: 'Approved for launch.',
+  });
+  assert.equal(rev.status, 200);
+
+  // Approved but STILL unpublished: booking must STILL be blocked until owner publishes!
+  const stillUnpublished = await anon.post('/api/public/bookings', {
+    slug: newSalonSlug,
+    fullName: 'Pre-Publish Visitor',
+    phone: '9811122233',
+    service: 'Couture Bridal Makeup',
+    stylistId: realStaffId,
+    date: nextMondayDate(),
+    time: '11:00 AM',
+  });
+  assert.equal(stillUnpublished.status, 403);
+  assert.equal(stillUnpublished.data.code, 'WEBSITE_NOT_PUBLISHED');
+
+  // Publish website -> booking activates automatically with real salon staff!
+  const pub = await studioOwner.post('/api/salon/publish');
+  assert.equal(pub.status, 200);
+  assert.equal(pub.data.salon.published, true);
+
+  const liveSite = await anon.get(`/api/public/salons/${newSalonSlug}`);
+  assert.equal(liveSite.status, 200);
+  assert.equal(liveSite.data.staff.length, 1);
+  assert.equal(liveSite.data.staff[0].id, realStaffId);
+  assert.equal(liveSite.data.staff.some((s) => s.isDemo), false);
+
+  const liveBooking = await anon.post('/api/public/bookings', {
+    slug: newSalonSlug,
+    fullName: 'Aditi Rao',
+    phone: '9811122233',
+    service: 'Couture Bridal Makeup',
+    stylistId: realStaffId,
+    date: nextMondayDate(),
+    time: '11:30 AM',
+  });
+  assert.equal(liveBooking.status, 201);
+  assert.equal(liveBooking.data.booking.stylistId, realStaffId);
+  assert.equal(liveBooking.data.booking.stylist, 'Ishita Menon');
+
+  // Cross-tenant isolation: Lumina Luxe's staff ID cannot be booked on Atelier Blush Studio.
+  const luminaSite = await anon.get('/api/public/salons/lumina-luxe');
+  const luminaStaffId = luminaSite.data.staff[0].id;
+  const crossTenantBooking = await anon.post('/api/public/bookings', {
+    slug: newSalonSlug,
+    fullName: 'Cross Tenant Client',
+    phone: '9811122233',
+    service: 'Couture Bridal Makeup',
+    stylistId: luminaStaffId,
+    date: nextMondayDate(),
+    time: '02:00 PM',
+  });
+  assert.equal(crossTenantBooking.status, 400);
+  assert.equal(crossTenantBooking.data.code, 'INVALID_SALON_STAFF');
+
+  // Disabling online booking for a specialist blocks booking that specialist with 409.
+  await studioOwner.patch(`/api/salon/staff/${realStaffId}`, { bookingEnabled: false });
+  const disabledStaffBooking = await anon.post('/api/public/bookings', {
+    slug: newSalonSlug,
+    fullName: 'Client Two',
+    phone: '9811122244',
+    service: 'Couture Bridal Makeup',
+    stylistId: realStaffId,
+    date: nextMondayDate(),
+    time: '03:00 PM',
+  });
+  assert.equal(disabledStaffBooking.status, 409);
+  assert.equal(disabledStaffBooking.data.code, 'STAFF_NOT_BOOKABLE');
+
+  // Unpublishing immediately disables booking API again.
+  await studioOwner.post('/api/salon/unpublish');
+  const afterUnpublish = await anon.post('/api/public/bookings', {
+    slug: newSalonSlug,
+    fullName: 'Client Three',
+    phone: '9811122255',
+    service: 'Couture Bridal Makeup',
+    date: nextMondayDate(),
+    time: '04:00 PM',
+  });
+  assert.equal(afterUnpublish.status, 403);
+  assert.equal(afterUnpublish.data.code, 'WEBSITE_NOT_PUBLISHED');
+});
+

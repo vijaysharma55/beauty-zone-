@@ -150,6 +150,9 @@ db.exec(`
     bio TEXT NOT NULL DEFAULT '',
     photo_url TEXT NOT NULL DEFAULT '',
     specialties_json TEXT NOT NULL DEFAULT '[]',
+    qualifications_json TEXT NOT NULL DEFAULT '[]',
+    work_photos_json TEXT NOT NULL DEFAULT '[]',
+    work_photos_consent INTEGER NOT NULL DEFAULT 0,
     rating REAL,
     review_count INTEGER NOT NULL DEFAULT 0,
     experience TEXT NOT NULL DEFAULT '',
@@ -503,13 +506,24 @@ export function serializeService(row) {
   };
 }
 
-export function serializeStaff(row) {
-  let specialties = [];
-  try {
-    specialties = JSON.parse(row.specialties_json || '[]');
-  } catch {
-    specialties = [];
-  }
+export function serializeStaff(row, options = {}) {
+  const publicView = Boolean(options && typeof options === 'object' && options.publicView);
+  const specialties = safeJson(row.specialties_json, []);
+  const qualifications = safeJson(row.qualifications_json, []);
+  const rawWorkPhotos = safeJson(row.work_photos_json, []);
+  const workPhotos = (Array.isArray(rawWorkPhotos) ? rawWorkPhotos : [])
+    .map((item) => {
+      if (typeof item === 'string' && item.trim()) return { url: item.trim(), caption: '' };
+      if (item && typeof item === 'object' && typeof item.url === 'string' && item.url.trim()) {
+        return { url: item.url.trim(), caption: typeof item.caption === 'string' ? item.caption : '' };
+      }
+      return null;
+    })
+    .filter(Boolean);
+  const workPhotosConsent = Boolean(row.work_photos_consent);
+  const parsedRating = row.rating !== null && row.rating !== undefined && row.rating !== '' ? Number(row.rating) : null;
+  const genuineRating = parsedRating !== null && Number.isFinite(parsedRating) && parsedRating > 0 ? parsedRating : null;
+
   return {
     id: row.id,
     salonId: row.salon_id,
@@ -517,9 +531,13 @@ export function serializeStaff(row) {
     roleTitle: row.role_title,
     bio: row.bio,
     photoUrl: row.photo_url,
-    specialties: Array.isArray(specialties) ? specialties : [],
-    rating: Number.isFinite(Number(row.rating)) && row.rating !== null ? Number(row.rating) : null,
-    reviewCount: Number(row.review_count) || 0,
+    specialties: Array.isArray(specialties) ? specialties.filter(Boolean) : [],
+    qualifications: Array.isArray(qualifications) ? qualifications.filter(Boolean) : [],
+    // Work photos are strictly gated behind explicit staff consent on public payloads.
+    workPhotos: publicView ? (workPhotosConsent ? workPhotos : []) : workPhotos,
+    workPhotosConsent,
+    rating: genuineRating,
+    reviewCount: genuineRating !== null ? Math.max(0, Number(row.review_count) || 0) : 0,
     experience: row.experience || '',
     active: !!row.active,
     bookingEnabled: row.booking_enabled === undefined || row.booking_enabled === null ? true : !!row.booking_enabled,
@@ -790,15 +808,75 @@ export function seedIfEmpty(hashPassword) {
   services.forEach((s, i) => seedService(salonId, s, i));
 
   const staffMembers = [
-    { name: 'Ananya Rathore', role_title: 'Creative Director — Bridal', bio: 'Celebrity bridal artist with 12+ years of editorial and wedding experience.', photo_url: '/images/stylist_bridal_ananya_1790677391838.jpg', specialties: ['HD Bridal', 'Airbrush', 'Draping'], rating: 5.0, review_count: 420, experience: '12+ Years' },
-    { name: 'Vikram Singh', role_title: 'Master Hair Stylist', bio: 'Balayage and precision-cut specialist trained in London and Milan.', photo_url: '/images/stylist_hair_vikram_1790677441310.jpg', specialties: ['Balayage', 'Keratin', 'Precision Cuts'], rating: 4.9, review_count: 310, experience: '11+ Years' },
-    { name: 'Meera Nair', role_title: 'Senior Skin Therapist', bio: 'Clinical aesthetician focused on evidence-led glow and acne care.', photo_url: '/images/stylist_skin_meera_1790677415028.jpg', specialties: ['HydraFacial', 'Peels', 'Acne Care'], rating: 5.0, review_count: 285, experience: '9+ Years' },
-    { name: 'Zoya Khan', role_title: 'Nail Couture Artist', bio: 'Russian manicure and sculpted gel extension specialist.', photo_url: '/images/stylist_nail_zoya_1790677427488.jpg', specialties: ['Gel Extensions', 'Nail Art', 'Spa Manicure'], rating: 4.8, review_count: 195, experience: '7+ Years' },
+    {
+      name: 'Ananya Rathore',
+      role_title: 'Creative Director — Bridal',
+      bio: 'Celebrity bridal artist with 12+ years of editorial and luxury wedding experience across palace venues.',
+      photo_url: '/images/stylist_bridal_ananya_1790677391838.jpg',
+      specialties: ['HD Bridal', 'Airbrush', 'Draping', 'Polki & Veil Styling'],
+      qualifications: ['Temptu USA Certified Airbrush Specialist', 'London Academy Makeup Diploma', 'Senior Bridal Academy Educator'],
+      work_photos: [
+        { url: '/images/bridal_makeup_jaipur_1790672008691.jpg', caption: 'Royal Palace HD Bridal Makeover' },
+        { url: '/images/jaipur_royal_bride_1792647664582.jpg', caption: 'Couture Reception & Dupatta Draping' },
+      ],
+      work_photos_consent: 1,
+      rating: 5.0,
+      review_count: 420,
+      experience: '12+ Years',
+    },
+    {
+      name: 'Vikram Singh',
+      role_title: 'Master Hair Stylist',
+      bio: 'Balayage, bond-repair and precision-cut specialist trained in London and Milan.',
+      photo_url: '/images/stylist_hair_vikram_1790677441310.jpg',
+      specialties: ['Balayage', 'Keratin', 'Precision Cuts', 'Moroccan Nanoplastia'],
+      qualifications: ['Toni&Guy Advanced Cut & Color Diploma', 'Olaplex Certified Master Colorist'],
+      work_photos: [
+        { url: '/images/hair_styling_luxe_1790672021591.jpg', caption: 'Hand-Painted French Balayage & Gloss' },
+        { url: '/images/luxury_hair_nanoplastia_1792647835332.jpg', caption: 'Silk Finish Moroccan Nanoplastia' },
+      ],
+      work_photos_consent: 1,
+      rating: 4.9,
+      review_count: 310,
+      experience: '11+ Years',
+    },
+    {
+      name: 'Meera Nair',
+      role_title: 'Senior Skin Therapist',
+      bio: 'Clinical aesthetician focused on evidence-led facial rituals, barrier repair and pre-bridal glow care.',
+      photo_url: '/images/stylist_skin_meera_1790677415028.jpg',
+      specialties: ['HydraFacial', 'Peels', 'Acne Care', '24K Gold Glow'],
+      qualifications: ['CIDESCO International Aesthetics Diploma', 'Clinical Dermabrasion & Facial Therapy Certification'],
+      work_photos: [
+        { url: '/images/skin_spa_treatment_1790672037475.jpg', caption: '7-Step HydraFacial Glow Ritual' },
+        { url: '/images/prebridal_spa_ritual_1790676123541.jpg', caption: 'Pre-Bridal Botanical Spa Therapy' },
+      ],
+      work_photos_consent: 1,
+      rating: 5.0,
+      review_count: 285,
+      experience: '9+ Years',
+    },
+    {
+      name: 'Zoya Khan',
+      role_title: 'Nail Couture Artist',
+      bio: 'Russian dry manicure and sculpted gel extension specialist known for intricate bridal nail art.',
+      photo_url: '/images/stylist_nail_zoya_1790677427488.jpg',
+      specialties: ['Gel Extensions', 'Nail Art', 'Spa Manicure', 'Russian Manicure'],
+      qualifications: ['International Nail Couture Diploma', 'Certified Russian E-File Manicure Specialist'],
+      work_photos: [
+        { url: '/images/nail_art_luxe_1790676094903.jpg', caption: 'Sculpted Gel Extensions & Foil Art' },
+        { url: '/images/bridal_nail_art_1792647953738.jpg', caption: 'Bridal Swarovski & Gold Leaf Couture' },
+      ],
+      work_photos_consent: 1,
+      rating: 4.8,
+      review_count: 195,
+      experience: '7+ Years',
+    },
   ];
   staffMembers.forEach((m, i) => {
     db.prepare(
-      `INSERT INTO staff (id, salon_id, name, role_title, bio, photo_url, specialties_json, rating, review_count, experience, active, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`
+      `INSERT INTO staff (id, salon_id, name, role_title, bio, photo_url, specialties_json, qualifications_json, work_photos_json, work_photos_consent, rating, review_count, experience, active, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`
     ).run(
       newId(),
       salonId,
@@ -807,6 +885,9 @@ export function seedIfEmpty(hashPassword) {
       m.bio,
       m.photo_url,
       JSON.stringify(m.specialties),
+      JSON.stringify(m.qualifications || []),
+      JSON.stringify(m.work_photos || []),
+      m.work_photos_consent ?? 0,
       m.rating,
       m.review_count,
       m.experience,

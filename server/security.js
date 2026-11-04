@@ -274,8 +274,9 @@ export function isSafeImageUrl(value) {
   if (!value) return true;
   if (typeof value !== 'string') return false;
   if (value.length > 2_000_000) return false;
-  // Allow our own upload paths and data URLs for images only; block javascript: etc.
+  // Allow our own upload paths, static public images, and data URLs for images only; block javascript: etc.
   if (/^\/api\/uploads\/[A-Za-z0-9._-]+$/.test(value)) return true;
+  if (/^\/images\/[A-Za-z0-9._-]+$/.test(value)) return true;
   if (/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=\s]+$/.test(value)) return true;
   try {
     const u = new URL(value);

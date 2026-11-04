@@ -15,9 +15,10 @@ import {
 import { api, errorMessage } from '../../lib/api';
 import { useAvailability, type Slot } from '../../hooks/useAvailability';
 import type { Salon, SalonService, SalonStaff } from '../../types/auth';
+import { DEMO_PREVIEW_SERVICES } from '../../data/demoStaffData';
 import { PaymentCheckout } from '../payment/PaymentCheckout';
 import { StylistSelectGrid, type StylistOption } from '../StylistSelectGrid';
-import { StylistProfileModal, type StylistProfile } from '../StylistProfileModal';
+import { StylistProfileModal, staffToProfile, type StylistProfile } from '../StylistProfileModal';
 import {
   formatPaise,
   getBookingConfirmation,
@@ -37,6 +38,8 @@ interface SalonBookingPanelProps {
   primary: string;
   background: string;
   surface: string;
+  selectedStaffId?: string;
+  onSelectStaffId?: (id: string) => void;
 }
 
 type SubmitState = 'idle' | 'submitting' | 'done' | 'failed';
@@ -52,14 +55,10 @@ const todayIso = () => {
 const money = (value: number) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
 
 /**
- * Booking panel rendered on a published salon website.
+ * Shared booking panel rendered across all salon templates (`luxe`, `minimal`, `noir`, `blush`).
  *
- * - Slots come from the salon's own opening hours via /api/public/availability.
- * - Only specialists flagged `bookingEnabled` can be selected.
- * - Requests are persisted server-side and appear in the owner's dashboard, so
- *   there is no gap between what a visitor submits and what the owner sees.
- * - If the availability service is unreachable the picker still works from a
- *   static grid, and a failure to save exposes a Retry + WhatsApp recovery path.
+ * - Unpublished websites render in preview-only mode (real booking disabled on both UI and API).
+ * - Published websites automatically enable real salon staff selection and booking.
  */
 export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
   salon,
@@ -69,17 +68,31 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
   primary,
   background,
   surface,
+  selectedStaffId,
+  onSelectStaffId,
 }) => {
-  const bookableServices = useMemo(() => services.filter((s) => s.active), [services]);
-  const bookableStaff = useMemo(
-    () => staff.filter((m) => m.active && m.bookingEnabled !== false),
-    [staff]
-  );
+  const isWebsiteLive = Boolean(salon.published && !salon.suspended);
+  const templateId = salon.templateId || 'luxe';
+  const panelRadius =
+    templateId === 'noir' ? 'rounded-none' : templateId === 'minimal' ? 'rounded-xl' : 'rounded-2xl';
+  const headingClass = templateId === 'minimal' ? 'font-sans font-semibold' : 'font-serif';
+
+  const bookableServices = useMemo(() => {
+    const activeReal = services.filter((s) => s.active);
+    if (isWebsiteLive) return activeReal;
+    return activeReal.length > 0 ? activeReal : [...DEMO_PREVIEW_SERVICES];
+  }, [services, isWebsiteLive]);
+
+  const visibleStaff = useMemo(() => {
+    if (isWebsiteLive) {
+      return staff.filter((m) => m.active && !m.isDemo && m.bookingEnabled !== false);
+    }
+    return staff.filter((m) => m.active);
+  }, [staff, isWebsiteLive]);
 
   const [serviceName, setServiceName] = useState(bookableServices[0]?.name || '');
-  // `staffId` is the canonical booking selection; `stylist` keeps the display
-  // name used by the WhatsApp fallback and the confirmation summary.
-  const [staffId, setStaffId] = useState('');
+  const [internalStaffId, setInternalStaffId] = useState('');
+  const staffId = selectedStaffId !== undefined ? selectedStaffId : internalStaffId;
   const [stylist, setStylist] = useState('');
   const [profileStaffId, setProfileStaffId] = useState<string | null>(null);
   const [date, setDate] = useState('');
@@ -101,58 +114,65 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
   const [confirmation, setConfirmation] = useState<ConfirmationPayload | null>(null);
   const [confirmationError, setConfirmationError] = useState('');
 
+  useEffect(() => {
+    if (!bookableServices.some((s) => s.name === serviceName)) {
+      setServiceName(bookableServices[0]?.name || '');
+    }
+  }, [bookableServices, serviceName]);
+
   const staffOptions: StylistOption[] = useMemo(
     () =>
-      bookableStaff.map((member) => ({
+      visibleStaff.map((member) => ({
         id: member.id,
         name: member.name,
-        role: member.roleTitle || 'Salon specialist',
+        role: member.roleTitle || '',
         photo: member.photoUrl || undefined,
         specialty: member.specialties?.[0],
-        rating: member.rating ?? null,
-        reviewCount: member.reviewCount ?? 0,
-        experience: member.experience,
+        rating:
+          member.rating !== null && member.rating !== undefined && Number(member.rating) > 0
+            ? Number(member.rating)
+            : null,
+        reviewCount: Number(member.reviewCount) || 0,
+        experience: member.experience || '',
+        isDemo: Boolean(member.isDemo),
+        bookingDisabled: !isWebsiteLive || Boolean(member.isDemo) || member.bookingEnabled === false,
       })),
-    [bookableStaff]
+    [visibleStaff, isWebsiteLive]
   );
 
   const selectedStaff = useMemo(
-    () => bookableStaff.find((member) => member.id === staffId) || null,
-    [bookableStaff, staffId]
+    () => (isWebsiteLive ? visibleStaff.find((member) => member.id === staffId && !member.isDemo) || null : null),
+    [visibleStaff, staffId, isWebsiteLive]
   );
+
+  useEffect(() => {
+    setStylist(selectedStaff ? selectedStaff.name : '');
+  }, [selectedStaff]);
 
   const profileStaff = useMemo(
-    () => bookableStaff.find((member) => member.id === profileStaffId) || null,
-    [bookableStaff, profileStaffId]
+    () => staff.find((member) => member.id === profileStaffId) || null,
+    [staff, profileStaffId]
   );
 
+  const branchLabel = [salon.addressLine, salon.city].filter(Boolean).join(', ');
+
   const profileStaffData: StylistProfile | null = useMemo(
-    () =>
-      profileStaff
-        ? {
-            id: profileStaff.id,
-            name: profileStaff.name,
-            role: profileStaff.roleTitle,
-            experience: profileStaff.experience,
-            rating: profileStaff.rating ?? null,
-            reviewCount: profileStaff.reviewCount ?? 0,
-            bio: profileStaff.bio,
-            avatar: profileStaff.photoUrl,
-            specialties: profileStaff.specialties,
-            joinedAt: profileStaff.createdAt,
-          }
-        : null,
-    [profileStaff]
+    () => (profileStaff ? staffToProfile(profileStaff, { branch: branchLabel }) : null),
+    [profileStaff, branchLabel]
   );
 
   /** Empty id means “any available specialist”. */
   const handleStaffSelect = (id: string) => {
-    const member = bookableStaff.find((item) => item.id === id);
-    setStaffId(member ? member.id : '');
+    if (!isWebsiteLive) return;
+    const member = visibleStaff.find((item) => item.id === id && !item.isDemo);
+    const nextId = member ? member.id : '';
+    setInternalStaffId(nextId);
+    onSelectStaffId?.(nextId);
     setStylist(member ? member.name : '');
   };
 
   useEffect(() => {
+    if (!isWebsiteLive) return;
     let active = true;
     getPaymentConfig()
       .then((config) => {
@@ -162,7 +182,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
     return () => {
       active = false;
     };
-  }, []);
+  }, [isWebsiteLive]);
 
   const selectedService = useMemo(
     () => bookableServices.find((s) => s.name === serviceName) || bookableServices[0],
@@ -174,7 +194,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
     date: date || undefined,
     slug: salon.slug,
     durationMinutes: duration,
-    enabled: Boolean(date),
+    enabled: Boolean(date && isWebsiteLive),
   });
 
   const slots: Slot[] = availability.slots;
@@ -233,12 +253,25 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
     setCheckoutOpen(false);
   };
 
-  const paymentRequired = Boolean(payConfig?.available && payConfig?.advanceRequired && selectedService?.price);
+  const paymentRequired = Boolean(
+    isWebsiteLive && payConfig?.available && payConfig?.advanceRequired && selectedService?.price
+  );
   const advancePercent = payConfig?.advancePercent ?? 25;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError('');
+    if (!isWebsiteLive) {
+      setSubmitState('failed');
+      setSubmitError('Online booking is disabled while this salon website is unpublished.');
+      return;
+    }
+    if (staffId && (staffId.startsWith('demo-') || selectedStaff?.isDemo)) {
+      setSubmitState('failed');
+      setSubmitError('Demo staff profiles are sample previews only and cannot be booked.');
+      return;
+    }
+
     const next: Record<string, string> = {};
     if (fullName.trim().length < 2) next.fullName = 'Please enter your name.';
     if (phone.replace(/\D/g, '').length < 8) next.phone = 'Enter a valid phone number.';
@@ -263,7 +296,6 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
         locationType: 'salon',
         branch: salon.city || '',
         notes: notes.trim(),
-        // The server overrides this with the salon's published price.
         amountPaise: selectedService ? Math.round(selectedService.price * 100) : 0,
       });
 
@@ -316,8 +348,6 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
     );
   };
 
-  // Calendar / confirmation details come from the server, which refuses to
-  // return them for an unpaid booking.
   useEffect(() => {
     if (submitState !== 'done' || !serverBooking?.confirmed) return;
     let active = true;
@@ -353,12 +383,13 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
 
   const inputStyle: React.CSSProperties = {
     width: '100%',
-    borderRadius: '0.75rem',
+    borderRadius: templateId === 'noir' ? '0' : '0.75rem',
     border: `1px solid ${primary}22`,
     backgroundColor: background,
     color: primary,
     padding: '0.65rem 0.8rem',
     fontSize: '0.875rem',
+    opacity: isWebsiteLive ? 1 : 0.7,
   };
 
   const labelStyle: React.CSSProperties = {
@@ -371,7 +402,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
     marginBottom: '0.35rem',
   };
 
-  if (bookableServices.length === 0) return null;
+  if (isWebsiteLive && bookableServices.length === 0) return null;
 
   if (submitState === 'done') {
     const confirmed = paymentState === 'confirmed' && Boolean(serverBooking?.confirmed);
@@ -380,7 +411,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
       <section id="book" className="scroll-mt-24 py-16" style={{ backgroundColor: `${accent}12` }}>
         <div className="mx-auto max-w-2xl px-4 sm:px-6">
           <div
-            className="rounded-2xl border p-8 text-center"
+            className={`${panelRadius} border p-8 text-center`}
             style={{ borderColor: confirmed ? `${accent}44` : '#fcd34d', backgroundColor: surface }}
           >
             <div
@@ -393,7 +424,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
             >
               {confirmed ? <CheckCircle2 className="h-7 w-7" /> : <Clock className="h-7 w-7" />}
             </div>
-            <h2 className="mt-4 font-serif text-2xl font-bold" style={{ color: primary }}>
+            <h2 className={`mt-4 ${headingClass} text-2xl font-bold`} style={{ color: primary }}>
               {confirmed ? 'Booking Confirmed!' : 'Awaiting payment'}
             </h2>
             <p className="mt-2 text-sm" style={{ color: `${primary}AA` }}>
@@ -430,7 +461,10 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
             )}
 
             {confirmed && (
-              <div className="mx-auto mt-4 max-w-md rounded-xl border px-4 py-3 text-left text-xs" style={{ borderColor: `${primary}18`, backgroundColor: background }}>
+              <div
+                className="mx-auto mt-4 max-w-md rounded-xl border px-4 py-3 text-left text-xs"
+                style={{ borderColor: `${primary}18`, backgroundColor: background }}
+              >
                 <div className="flex justify-between">
                   <span style={{ color: `${primary}99` }}>Advance paid</span>
                   <span className="font-semibold" style={{ color: primary }}>
@@ -487,7 +521,12 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
                     Send confirmation on WhatsApp
                   </a>
                 ) : whatsappUrl ? (
-                  <a href={whatsappUrl} target="_blank" rel="noreferrer" className="action-base secondary-action action-md">
+                  <a
+                    href={whatsappUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="action-base secondary-action action-md"
+                  >
                     Send on WhatsApp
                   </a>
                 ) : null)}
@@ -535,19 +574,44 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
     <section id="book" className="scroll-mt-24 py-16" style={{ backgroundColor: `${accent}12` }}>
       <div className="mx-auto max-w-3xl px-4 sm:px-6">
         <p className="text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: accent }}>
-          Book an appointment
+          {isWebsiteLive ? 'Book an appointment' : 'Booking preview'}
         </p>
-        <h2 className="mt-1 font-serif text-3xl font-bold" style={{ color: primary }}>
-          Reserve your slot
+        <h2 className={`mt-1 ${headingClass} text-3xl font-bold`} style={{ color: primary }}>
+          {isWebsiteLive ? 'Reserve your slot' : 'Appointment booking preview'}
         </h2>
         <p className="mt-2 max-w-xl text-sm" style={{ color: `${primary}99` }}>
-          Pick a service, choose a time that suits you, and we'll confirm by phone or WhatsApp.
+          {isWebsiteLive
+            ? "Pick a service, select your preferred specialist and choose a time that suits you — we'll confirm by phone or WhatsApp."
+            : 'Preview how clients will browse your services and specialists across templates. Online booking activates automatically once your salon website is published.'}
         </p>
+
+        {!isWebsiteLive && (
+          <div
+            data-testid="booking-unpublished-banner"
+            className={`mt-5 flex items-start gap-3 border p-4 ${panelRadius}`}
+            style={{
+              backgroundColor: '#FFFBEB',
+              borderColor: '#F59E0B',
+              color: '#78350F',
+            }}
+          >
+            <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+            <div className="text-xs leading-relaxed">
+              <p className="font-bold uppercase tracking-wider text-amber-900">
+                Website Unpublished · Real Booking Disabled
+              </p>
+              <p className="mt-0.5 text-amber-800">
+                You can inspect every staff card and open <strong>View Full Profile</strong> below. Live client
+                bookings unlock automatically as soon as your website is published.
+              </p>
+            </div>
+          </div>
+        )}
 
         <form
           onSubmit={submit}
           noValidate
-          className="mt-8 rounded-2xl border p-5 sm:p-6"
+          className={`mt-8 border p-5 sm:p-6 ${panelRadius}`}
           style={{ borderColor: `${accent}33`, backgroundColor: surface }}
         >
           <div className="grid gap-4 sm:grid-cols-2">
@@ -562,6 +626,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
                 />
                 <select
                   id="sb-service"
+                  disabled={!isWebsiteLive}
                   value={serviceName}
                   onChange={(e) => setServiceName(e.target.value)}
                   style={{ ...inputStyle, paddingLeft: '2.25rem' }}
@@ -578,13 +643,20 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
             <div className="sm:col-span-2">
               <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
                 <label style={{ ...labelStyle, marginBottom: 0 }}>
-                  Select Preferred Stylist / Staff
+                  {staffOptions.some((s) => s.isDemo)
+                    ? 'Sample Staff Preview (Demo · Not Bookable)'
+                    : 'Select Preferred Stylist / Staff'}
                 </label>
                 <span
                   className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide"
                   style={{ backgroundColor: `${accent}1A`, color: primary }}
                 >
-                  {selectedStaff ? (
+                  {!isWebsiteLive ? (
+                    <>
+                      <Lock className="h-3 w-3" style={{ color: accent }} />
+                      Preview mode
+                    </>
+                  ) : selectedStaff ? (
                     <>
                       <Star className="h-3 w-3" style={{ color: accent, fill: accent }} />
                       {selectedStaff.name}
@@ -607,16 +679,20 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
                 primary={primary}
                 background={background}
                 surface={surface}
+                templateId={templateId}
+                bookingDisabled={!isWebsiteLive}
                 anyLabel="Any Available Stylist"
                 anyDescription="Best match for your service"
                 emptyMessage="No specialist is accepting online bookings right now — we'll assign the best match."
-                className="grid grid-cols-2 gap-3 sm:grid-cols-3"
+                className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 sm:grid-cols-3"
               />
 
               <p className="mt-2 text-[11px] leading-snug" style={{ color: `${primary}88` }}>
-                {selectedStaff
-                  ? `${selectedStaff.name} will be reserved for your appointment.`
-                  : "We'll assign the best specialist for your chosen service."}
+                {!isWebsiteLive
+                  ? 'Publish your website to activate real staff selection and client appointment scheduling.'
+                  : selectedStaff
+                    ? `${selectedStaff.name} will be reserved for your appointment.`
+                    : "We'll assign the best specialist for your chosen service."}
               </p>
             </div>
 
@@ -632,6 +708,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
                 <input
                   id="sb-date"
                   type="date"
+                  disabled={!isWebsiteLive}
                   min={todayIso()}
                   value={date}
                   onChange={(e) => {
@@ -642,7 +719,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
                 />
               </div>
               {errors.date && <p className="mt-1 text-[11px] font-semibold text-rose-600">{errors.date}</p>}
-              {!errors.date && availability.open && availability.close && (
+              {isWebsiteLive && !errors.date && availability.open && availability.close && (
                 <p className="mt-1 text-[11px]" style={{ color: `${primary}77` }}>
                   Open {availability.open} – {availability.close}
                 </p>
@@ -661,14 +738,18 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
                 <select
                   id="sb-time"
                   value={time}
-                  disabled={availability.status === 'loading' || availability.closed || slots.length === 0}
+                  disabled={
+                    !isWebsiteLive || availability.status === 'loading' || availability.closed || slots.length === 0
+                  }
                   onChange={(e) => {
                     setErrors((prev) => ({ ...prev, time: '' }));
                     setTime(e.target.value);
                   }}
                   style={{ ...inputStyle, paddingLeft: '2.25rem' }}
                 >
-                  {availability.status === 'loading' ? (
+                  {!isWebsiteLive ? (
+                    <option value="">Available after publishing</option>
+                  ) : availability.status === 'loading' ? (
                     <option value={time}>{availability.retrying ? 'Retrying…' : 'Checking availability…'}</option>
                   ) : availability.closed ? (
                     <option value="">Closed on this day</option>
@@ -684,12 +765,12 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
                 </select>
               </div>
               {errors.time && <p className="mt-1 text-[11px] font-semibold text-rose-600">{errors.time}</p>}
-              {availability.status === 'loading' && (
+              {isWebsiteLive && availability.status === 'loading' && (
                 <p className="mt-1 flex items-center gap-1.5 text-[11px]" style={{ color: `${primary}77` }}>
                   <Loader2 className="h-3 w-3 animate-spin" /> Loading times…
                 </p>
               )}
-              {availability.usingFallback && (
+              {isWebsiteLive && availability.usingFallback && (
                 <div
                   className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2"
                   style={{ borderColor: '#fcd34d', backgroundColor: '#fffbeb' }}
@@ -711,6 +792,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
               </label>
               <input
                 id="sb-name"
+                disabled={!isWebsiteLive}
                 value={fullName}
                 onChange={(e) => {
                   setErrors((prev) => ({ ...prev, fullName: '' }));
@@ -732,6 +814,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
                 id="sb-phone"
                 type="tel"
                 inputMode="tel"
+                disabled={!isWebsiteLive}
                 value={phone}
                 onChange={(e) => {
                   setErrors((prev) => ({ ...prev, phone: '' }));
@@ -751,6 +834,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
             <textarea
               id="sb-notes"
               rows={2}
+              disabled={!isWebsiteLive}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Allergies, occasion, number of people…"
@@ -759,7 +843,10 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
           </div>
 
           {selectedService && (
-            <div className="mt-4 rounded-xl border px-3.5 py-3 text-sm" style={{ borderColor: `${accent}33`, backgroundColor: background, color: `${primary}AA` }}>
+            <div
+              className="mt-4 rounded-xl border px-3.5 py-3 text-sm"
+              style={{ borderColor: `${accent}33`, backgroundColor: background, color: `${primary}AA` }}
+            >
               <p>
                 Estimated total{' '}
                 <strong style={{ color: primary }}>{money(selectedService.price)}</strong> · {duration} minutes
@@ -781,7 +868,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
                   ({advancePercent}%) · balance at the salon
                 </p>
               )}
-              {payConfig?.mock && (
+              {payConfig?.mock && isWebsiteLive && (
                 <p className="mt-1 text-[11px] font-semibold" style={{ color: '#b45309' }}>
                   TEST MODE — No real money will be charged.
                 </p>
@@ -798,27 +885,37 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>{submitError}</span>
               </p>
-              <div className="flex shrink-0 flex-wrap gap-2">
-                <button type="submit" className="action-base danger-action action-sm">
-                  <RefreshCw className="h-3.5 w-3.5" /> Retry
-                </button>
-                {whatsappUrl && (
-                  <a
-                    href={whatsappUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="action-base primary-action action-sm"
-                  >
-                    Confirm on WhatsApp
-                  </a>
-                )}
-              </div>
+              {isWebsiteLive && (
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <button type="submit" className="action-base danger-action action-sm">
+                    <RefreshCw className="h-3.5 w-3.5" /> Retry
+                  </button>
+                  {whatsappUrl && (
+                    <a
+                      href={whatsappUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="action-base primary-action action-sm"
+                    >
+                      Confirm on WhatsApp
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
           <div className="mt-6 flex flex-wrap items-center gap-3">
-            <button type="submit" disabled={submitState === 'submitting'} className="action-base primary-action action-md">
-              {submitState === 'submitting' ? (
+            <button
+              type="submit"
+              disabled={!isWebsiteLive || submitState === 'submitting'}
+              className="action-base primary-action action-md disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {!isWebsiteLive ? (
+                <>
+                  <Lock className="h-4 w-4" /> Booking Activates After Publishing
+                </>
+              ) : submitState === 'submitting' ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" /> Sending request…
                 </>
@@ -827,23 +924,29 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
               )}
             </button>
             <p className="text-xs" style={{ color: `${primary}88` }}>
-              {paymentRequired
-                ? `You will pay the ${advancePercent}% advance on the next step.`
-                : 'No online payment is configured — the salon will confirm your request.'}
+              {!isWebsiteLive
+                ? 'Booking requests are disabled until this salon website is published.'
+                : paymentRequired
+                  ? `You will pay the ${advancePercent}% advance on the next step.`
+                  : 'No online payment is configured — the salon will confirm your request.'}
             </p>
           </div>
         </form>
       </div>
 
+      {/* Closed by default: opens only when clicking “View Full Profile” */}
       <StylistProfileModal
         profile={profileStaffData}
-        selected={Boolean(profileStaff && staffId === profileStaff.id)}
+        selected={Boolean(profileStaff && staffId === profileStaff.id && isWebsiteLive)}
+        websitePublished={isWebsiteLive}
+        templateId={templateId}
         accent={accent}
         primary={primary}
         background={background}
         surface={surface}
         onClose={() => setProfileStaffId(null)}
         onSelect={(profile) => {
+          if (!isWebsiteLive || profile.isDemo) return;
           handleStaffSelect(profile.id);
           setProfileStaffId(null);
         }}

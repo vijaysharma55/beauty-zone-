@@ -36,7 +36,9 @@ import {
 import { WhatsAppIcon } from './SocialIcons';
 import { BookingSummaryModal } from './BookingSummaryModal';
 import { StylistSelectGrid, type StylistOption } from './StylistSelectGrid';
-import { StylistProfileModal, type StylistProfile } from './StylistProfileModal';
+import { StylistProfileModal, staffToProfile, type StylistProfile } from './StylistProfileModal';
+import type { SalonStaff } from '../types/auth';
+import { DEMO_SALON_STAFF } from '../data/demoStaffData';
 import { useBrand } from '../context/BrandContext';
 import { api } from '../lib/api';
 import { useAvailability, FALLBACK_SLOTS } from '../hooks/useAvailability';
@@ -70,6 +72,10 @@ interface BookingSectionProps {
   salonSlug?: string | null;
   /** Service duration in minutes used when generating the slot grid. */
   defaultDurationMinutes?: number;
+  /** Live salon staff loaded from the database when available. */
+  liveStaff?: SalonStaff[] | null;
+  /** Controls whether real booking is enabled (false when salon website is unpublished). */
+  websitePublished?: boolean;
 }
 
 /** Legacy static grid — kept as the last-resort render when a date is not chosen yet. */
@@ -205,6 +211,8 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   preselectedPromoCode,
   salonSlug = null,
   defaultDurationMinutes = 60,
+  liveStaff = null,
+  websitePublished = true,
 }) => {
   const { brand, formatPrice, convertPrice, t } = useBrand();
   const catalogServices = services.length > 0 ? services : SALON_SERVICES;
@@ -289,53 +297,118 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   const [profileStylistId, setProfileStylistId] = useState<string | null>(null);
   const stylistCatalog = brand.stylists || [];
 
-  const stylistOptions: StylistOption[] = useMemo(
-    () =>
-      stylistCatalog.map((stylist) => ({
-        id: stylist.id,
-        name: stylist.name,
-        role: stylist.role,
-        photo: stylist.avatar,
-        specialty: stylist.specialties?.[0] || stylist.role,
-        rating: stylist.ratings,
-        reviewCount: stylist.reviewCount,
-        experience: stylist.experience,
-      })),
-    [stylistCatalog]
-  );
+  const dbDrivenStaff = useMemo<SalonStaff[] | null>(() => {
+    if (!websitePublished) {
+      return [...DEMO_SALON_STAFF];
+    }
+    if (liveStaff !== null) {
+      return liveStaff.filter((member) => member.active && !member.isDemo && member.bookingEnabled !== false);
+    }
+    return null;
+  }, [liveStaff, websitePublished]);
 
-  const selectedStylist = useMemo(
-    () => stylistCatalog.find((stylist) => stylist.id === form.preferredStylistId) || null,
-    [stylistCatalog, form.preferredStylistId]
-  );
+  const stylistOptions: StylistOption[] = useMemo(() => {
+    if (dbDrivenStaff !== null) {
+      return dbDrivenStaff.map((member) => ({
+        id: member.id,
+        name: member.name,
+        role: member.roleTitle || '',
+        photo: member.photoUrl || undefined,
+        specialty: member.specialties?.[0],
+        rating:
+          member.rating !== null && member.rating !== undefined && Number(member.rating) > 0
+            ? Number(member.rating)
+            : null,
+        reviewCount: Number(member.reviewCount) || 0,
+        experience: member.experience || '',
+        isDemo: Boolean(member.isDemo),
+        bookingDisabled: !websitePublished || Boolean(member.isDemo) || member.bookingEnabled === false,
+      }));
+    }
+    return stylistCatalog.map((stylist) => ({
+      id: stylist.id,
+      name: stylist.name,
+      role: stylist.role,
+      photo: stylist.avatar,
+      specialty: stylist.specialties?.[0] || stylist.role,
+      rating: Number(stylist.ratings) > 0 ? Number(stylist.ratings) : null,
+      reviewCount: Number(stylist.reviewCount) || 0,
+      experience: stylist.experience,
+    }));
+  }, [dbDrivenStaff, stylistCatalog, websitePublished]);
 
-  const profileStylist = useMemo(
-    () => stylistCatalog.find((stylist) => stylist.id === profileStylistId) || null,
-    [stylistCatalog, profileStylistId]
-  );
-
-  const profileStylistData: StylistProfile | null = useMemo(
-    () =>
-      profileStylist
+  const selectedStylist = useMemo(() => {
+    if (!websitePublished) return null;
+    if (dbDrivenStaff !== null) {
+      const found = dbDrivenStaff.find((member) => member.id === form.preferredStylistId && !member.isDemo);
+      return found
         ? {
-            id: profileStylist.id,
-            name: profileStylist.name,
-            role: profileStylist.role,
-            branch: profileStylist.branch,
-            experience: profileStylist.experience,
-            rating: profileStylist.ratings,
-            reviewCount: profileStylist.reviewCount,
-            bio: profileStylist.bio,
-            avatar: profileStylist.avatar,
-            specialties: profileStylist.specialties,
-            certifications: profileStylist.certifications,
+            id: found.id,
+            name: found.name,
+            role: found.roleTitle || '',
+            avatar: found.photoUrl || '',
+            ratings:
+              found.rating !== null && found.rating !== undefined && Number(found.rating) > 0
+                ? Number(found.rating)
+                : null,
           }
-        : null,
-    [profileStylist]
-  );
+        : null;
+    }
+    const found = stylistCatalog.find((stylist) => stylist.id === form.preferredStylistId);
+    return found
+      ? {
+          id: found.id,
+          name: found.name,
+          role: found.role,
+          avatar: found.avatar || '',
+          ratings: Number(found.ratings) > 0 ? Number(found.ratings) : null,
+        }
+      : null;
+  }, [dbDrivenStaff, stylistCatalog, form.preferredStylistId, websitePublished]);
+
+  const profileStylistData: StylistProfile | null = useMemo(() => {
+    if (!profileStylistId) return null;
+    if (dbDrivenStaff !== null) {
+      const member =
+        dbDrivenStaff.find((m) => m.id === profileStylistId) ||
+        liveStaff?.find((m) => m.id === profileStylistId) ||
+        null;
+      return member ? staffToProfile(member, { branch: form.selectedBranch }) : null;
+    }
+    const profileStylist = stylistCatalog.find((stylist) => stylist.id === profileStylistId);
+    if (!profileStylist) return null;
+    return {
+      id: profileStylist.id,
+      name: profileStylist.name,
+      role: profileStylist.role,
+      branch: profileStylist.branch,
+      experience: profileStylist.experience,
+      rating: Number(profileStylist.ratings) > 0 ? Number(profileStylist.ratings) : null,
+      reviewCount: Number(profileStylist.reviewCount) || 0,
+      bio: profileStylist.bio,
+      avatar: profileStylist.avatar,
+      specialties: profileStylist.specialties,
+      certifications: profileStylist.certifications,
+      workPhotos: (profileStylist.portfolio || []).map((item) => ({
+        url: item.image,
+        caption: item.title,
+      })),
+      workPhotosConsent: Boolean(profileStylist.portfolio && profileStylist.portfolio.length > 0),
+    };
+  }, [profileStylistId, dbDrivenStaff, liveStaff, stylistCatalog, form.selectedBranch]);
 
   /** Selects a specialist by id (empty string = any available stylist). */
   const handleStylistSelect = (stylistId: string) => {
+    if (!websitePublished || stylistId.startsWith('demo-')) return;
+    if (dbDrivenStaff !== null) {
+      const found = dbDrivenStaff.find((member) => member.id === stylistId && !member.isDemo);
+      setForm((prev) => ({
+        ...prev,
+        preferredStylistId: found ? found.id : '',
+        preferredStylist: found ? found.name : 'Any Available Stylist',
+      }));
+      return;
+    }
     const found = stylistCatalog.find((stylist) => stylist.id === stylistId);
     setForm((prev) => ({
       ...prev,
@@ -484,8 +557,25 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   }, [preselectedBranch]);
 
   useEffect(() => {
-    if (preselectedStylistName) {
+    if (preselectedStylistName && websitePublished) {
       const wanted = preselectedStylistName.trim();
+      if (wanted.startsWith('demo-')) return;
+      if (dbDrivenStaff !== null) {
+        const matched = dbDrivenStaff.find(
+          (member) =>
+            !member.isDemo &&
+            (member.name.toLowerCase() === wanted.toLowerCase() || member.id === preselectedStylistName)
+        );
+        if (matched) {
+          setForm((prev) => ({
+            ...prev,
+            preferredStylist: matched.name,
+            preferredStylistId: matched.id,
+            locationType: 'salon',
+          }));
+        }
+        return;
+      }
       const matched = (brand.stylists || []).find(
         (stylist) =>
           stylist.name.toLowerCase() === wanted.toLowerCase() || stylist.id === preselectedStylistName
@@ -497,7 +587,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
         locationType: 'salon',
       }));
     }
-  }, [preselectedStylistName, brand.stylists]);
+  }, [preselectedStylistName, brand.stylists, dbDrivenStaff, websitePublished]);
 
   useEffect(() => {
     if (preselectedPromoCode) {
@@ -830,6 +920,17 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError(null);
+
+    if (!websitePublished) {
+      setSubmitState('failed');
+      setSubmitError('Online booking is disabled while this salon website is unpublished.');
+      return;
+    }
+    if (form.preferredStylistId.startsWith('demo-')) {
+      setSubmitState('failed');
+      setSubmitError('Demo staff profiles are sample previews only and cannot be booked.');
+      return;
+    }
 
     const errors = validateForm();
     setFieldErrors(errors);
@@ -1394,6 +1495,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                       selectedId={form.preferredStylistId}
                       onSelect={handleStylistSelect}
                       onViewProfile={(id) => setProfileStylistId(id)}
+                      bookingDisabled={!websitePublished}
                       emptyMessage="Our specialist roster is being updated — we will assign the best available artist for your appointment."
                     />
 
@@ -1876,8 +1978,8 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
                             <span>
                               {selectedStylist.name}
                               <span className="text-[10px] text-[#4A4A4A]">
-                                {' '}
-                                · {selectedStylist.role} · ★ {selectedStylist.ratings.toFixed(1)}
+                                {selectedStylist.role ? ` · ${selectedStylist.role}` : ''}
+                                {selectedStylist.ratings ? ` · ★ ${selectedStylist.ratings.toFixed(1)}` : ''}
                               </span>
                             </span>
                             <button
@@ -2251,9 +2353,11 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
 
       <StylistProfileModal
         profile={profileStylistData}
-        selected={Boolean(profileStylist && form.preferredStylistId === profileStylist.id)}
+        selected={Boolean(profileStylistData && form.preferredStylistId === profileStylistData.id && websitePublished)}
+        websitePublished={websitePublished}
         onClose={() => setProfileStylistId(null)}
         onSelect={(profile) => {
+          if (!websitePublished || profile.isDemo) return;
           handleStylistSelect(profile.id);
           setProfileStylistId(null);
         }}

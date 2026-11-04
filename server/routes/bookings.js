@@ -20,14 +20,14 @@
  */
 
 import { Router } from 'express';
-import { db, newId, nowIso, audit } from '../db.js';
+import { db, newId, nowIso, audit, findSalonById, findSalonByOwner, findSalonBySlug } from '../db.js';
 import { str, int, bool, ValidationError, HttpError, rateLimit, sanitizeText } from '../security.js';
 import { asyncHandler } from '../middleware.js';
 import { findLiveSalon } from './public.js';
 import { sendMail } from '../mailer.js';
 import { generateSlots } from '../availability.js';
 import { creditLoyaltyPointsForCompletedBooking } from './loyalty.js';
-import { getLiveContent } from '../workflow.js';
+import { getLiveContent, hasLiveApproval } from '../workflow.js';
 import { resolvePaymentConfig } from '../payments/config.js';
 import { toPaise } from '../payments/amounts.js';
 import {
@@ -120,14 +120,24 @@ function parsePayload(body) {
     throw new ValidationError('Location type must be salon or home.');
   }
 
+  const stylistId = str(b.stylistId, { max: 80, field: 'Specialist id' });
+  if (b.isDemo === true || /^demo[-_:]/i.test(stylistId)) {
+    throw new HttpError(
+      400,
+      'Demo staff profiles are for preview only and cannot be booked.',
+      'DEMO_STAFF_NOT_BOOKABLE'
+    );
+  }
+
   return {
     slug,
+    salonId: str(b.salonId, { max: 80, field: 'Salon id' }),
     fullName,
     phone,
     service,
     category: str(b.serviceCategory, { max: 40, field: 'Category' }),
     stylist: str(b.stylist, { max: 120, field: 'Specialist' }),
-    stylistId: str(b.stylistId, { max: 80, field: 'Specialist id' }),
+    stylistId,
     date,
     time,
     locationType,
@@ -149,23 +159,31 @@ function parsePayload(body) {
 /**
  * Resolves a preferred specialist id against the salon's roster.
  *
- * Returns the staff row only when it belongs to the salon, is active and still
- * accepts online bookings; otherwise the booking keeps the free-text name so a
- * stale roster id can never block a booking or mis-assign it.
+ * - Rejects cross-tenant staff ids so one salon's staff can never be booked on
+ *   another salon's website.
+ * - Rejects inactive or online-booking-disabled staff rows.
+ * - Unknown non-database strings (e.g. legacy free-text catalogue ids) return
+ *   null so the booking keeps the free-text name without mis-assigning.
  */
 function resolveBookableStaff(salonId, staffId) {
   if (!salonId || !staffId) return null;
-  try {
-    const row = db
-      .prepare('SELECT * FROM staff WHERE id = ? AND salon_id = ? AND active = 1')
-      .get(staffId, salonId);
-    if (!row) return null;
-    if (row.booking_enabled !== undefined && row.booking_enabled !== null && !row.booking_enabled) return null;
-    return row;
-  } catch (err) {
-    console.error('[bookings] staff lookup failed', err.message);
-    return null;
+  const anyStaffRow = db.prepare('SELECT * FROM staff WHERE id = ?').get(staffId);
+  if (!anyStaffRow) return null;
+  if (anyStaffRow.salon_id !== salonId) {
+    throw new HttpError(
+      400,
+      'Selected specialist does not belong to this salon.',
+      'INVALID_SALON_STAFF'
+    );
   }
+  if (!anyStaffRow.active || (anyStaffRow.booking_enabled !== undefined && anyStaffRow.booking_enabled !== null && !anyStaffRow.booking_enabled)) {
+    throw new HttpError(
+      409,
+      'This specialist is not currently accepting online bookings.',
+      'STAFF_NOT_BOOKABLE'
+    );
+  }
+  return anyStaffRow;
 }
 
 /**
@@ -394,18 +412,40 @@ bookingsRouter.post(
     const payConfig = resolvePaymentConfig();
     expireStaleBookingHolds(payConfig);
 
-    // Tenant resolution: explicit slug wins, then the subdomain the request came in on.
+    // Tenant resolution: explicit slug or salonId wins, then the subdomain the request came in on.
     const candidateSlug = data.slug || (req.tenantSalon ? req.tenantSalon.slug : '');
     let salon = null;
-    if (candidateSlug) {
-      try {
-        salon = findLiveSalon(candidateSlug);
-      } catch (err) {
-        console.error('[bookings] salon lookup failed', err.message);
-        salon = null;
+    if (candidateSlug || data.salonId) {
+      const salonRow = candidateSlug ? findSalonBySlug(candidateSlug) : findSalonById(data.salonId);
+      if (!salonRow) {
+        throw new HttpError(404, 'This salon is not accepting online bookings right now.', 'SALON_NOT_FOUND');
       }
-      if (!salon) {
-        throw new HttpError(404, 'This salon is not accepting online bookings right now.');
+      if (!salonRow.website_published || !hasLiveApproval(salonRow)) {
+        throw new HttpError(
+          403,
+          'Online booking is disabled because this salon website is not published yet.',
+          'WEBSITE_NOT_PUBLISHED'
+        );
+      }
+      salon = salonRow;
+    } else if (req.user?.role === 'salon_owner') {
+      const ownSalon = findSalonByOwner(req.user.id);
+      if (ownSalon && (!ownSalon.website_published || !hasLiveApproval(ownSalon))) {
+        throw new HttpError(
+          403,
+          'Online booking is disabled because your salon website is not published yet.',
+          'WEBSITE_NOT_PUBLISHED'
+        );
+      }
+      if (ownSalon) salon = ownSalon;
+    } else {
+      const flagship = findSalonBySlug('lumina-luxe');
+      if (flagship && (!flagship.website_published || !hasLiveApproval(flagship))) {
+        throw new HttpError(
+          403,
+          'Online booking is disabled because this salon website is not published yet.',
+          'WEBSITE_NOT_PUBLISHED'
+        );
       }
     }
 
@@ -691,7 +731,56 @@ bookingsRouter.post(
   createLimiter,
   asyncHandler(async (req, res) => {
     const b = req.body || {};
-    const fullName = str(b.fullName, { min: 2, max: 120, field: 'Name', required: true });
+    const rawStylistId = str(b.stylistId ?? b.preferredStylistId, { max: 80, field: 'Stylist ID' }) || '';
+    if (b.isDemo === true || /^demo[-_:]/i.test(rawStylistId)) {
+      throw new HttpError(
+        400,
+        'Demo staff profiles are for preview only and cannot be booked.',
+        'DEMO_STAFF_NOT_BOOKABLE'
+      );
+    }
+
+    const slug = str(b.slug, { max: 60, field: 'Salon' });
+    const rawSalonId = str(b.salonId, { max: 80, field: 'Salon ID' });
+    let salon = null;
+    if (slug) {
+      const salonRow = findSalonBySlug(slug);
+      if (!salonRow) {
+        throw new HttpError(404, 'Salon not found.', 'SALON_NOT_FOUND');
+      }
+      if (!salonRow.website_published || !hasLiveApproval(salonRow)) {
+        throw new HttpError(
+          403,
+          'Waitlist booking is disabled until this salon website is published.',
+          'WEBSITE_NOT_PUBLISHED'
+        );
+      }
+      salon = salonRow;
+    } else if (rawSalonId) {
+      const salonRow = db.prepare('SELECT * FROM salons WHERE id = ?').get(rawSalonId);
+      if (!salonRow) {
+        throw new HttpError(404, 'Salon not found.', 'SALON_NOT_FOUND');
+      }
+      if (!salonRow.website_published || !hasLiveApproval(salonRow)) {
+        throw new HttpError(
+          403,
+          'Waitlist booking is disabled until this salon website is published.',
+          'WEBSITE_NOT_PUBLISHED'
+        );
+      }
+      salon = salonRow;
+    } else if (req.tenantSalon) {
+      if (!req.tenantSalon.website_published || !hasLiveApproval(req.tenantSalon)) {
+        throw new HttpError(
+          403,
+          'Waitlist booking is disabled until this salon website is published.',
+          'WEBSITE_NOT_PUBLISHED'
+        );
+      }
+      salon = req.tenantSalon;
+    }
+
+    const fullName = str(b.fullName ?? b.name, { min: 2, max: 120, field: 'Name', required: true });
     const phoneRaw = str(b.phone, { min: 6, max: 40, field: 'Phone', required: true });
     const phone = phoneRaw.replace(/[^\d+\-\s()]/g, '');
     if (phone.replace(/\D/g, '').length < 8) {
@@ -699,17 +788,8 @@ bookingsRouter.post(
     }
     const email = str(b.email, { max: 120, field: 'Email' }) || null;
     const service = str(b.service, { min: 2, max: 160, field: 'Service', required: true });
-    const date = str(b.date, { max: 10, field: 'Date', required: true });
-    const time = normaliseTime(b.time);
-    const slug = str(b.slug, { max: 60, field: 'Salon' });
-
-    let salon = null;
-    if (slug) {
-      salon = findLiveSalon(slug);
-      if (!salon) {
-        throw new HttpError(404, 'Salon not found.');
-      }
-    }
+    const date = str(b.date ?? b.preferredDate, { max: 10, field: 'Date', required: true });
+    const time = normaliseTime(b.time || '11:00 AM');
 
     const id = newId();
     const ts = nowIso();

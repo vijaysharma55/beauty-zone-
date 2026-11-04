@@ -520,37 +520,74 @@ salonRouter.delete('/services/:serviceId', (req, res) => {
 /* Staff                                                               */
 /* ------------------------------------------------------------------ */
 
+function serializeStaffWorkPhotos(workPhotos) {
+  if (!Array.isArray(workPhotos)) throw new ValidationError('Work photos must be a list of images');
+  if (workPhotos.length > 20) throw new ValidationError('A staff member can have at most 20 work photos');
+  return JSON.stringify(
+    workPhotos
+      .map((item) => {
+        const url = typeof item === 'string' ? item : item?.url;
+        const caption = typeof item === 'object' && item ? sanitizeText(item.caption || item.title || '', 200) : '';
+        const v = str(url, { max: 2_000_000, field: 'Work photo' });
+        if (v && !isSafeImageUrl(v)) {
+          throw new ValidationError('Work photos must be valid http(s) URLs or uploaded images');
+        }
+        return v ? { url: v, caption } : null;
+      })
+      .filter(Boolean)
+  );
+}
+
 function staffPayload(body, { partial = false } = {}) {
+  if (body?.isDemo === true || (typeof body?.id === 'string' && /^demo[-_:]/i.test(body.id.trim()))) {
+    throw new ValidationError('Demo staff profiles are for preview only and cannot be saved as salon employees.');
+  }
   const out = {};
   if (!partial || body.name !== undefined) out.name = str(body.name, { min: 1, max: 120, field: 'Staff name', required: true });
-  if (!partial || body.roleTitle !== undefined) out.role_title = str(body.roleTitle, { max: 120, field: 'Role' });
-  if (!partial || body.bio !== undefined) out.bio = sanitizeText(str(body.bio, { max: 1500, field: 'Bio' }), 1500);
+  if (!partial || body.roleTitle !== undefined || body.designation !== undefined) {
+    out.role_title = str(body.roleTitle ?? body.designation, { max: 120, field: 'Designation' });
+  }
+  if (!partial || body.bio !== undefined) out.bio = sanitizeText(str(body.bio, { max: 2000, field: 'Bio' }), 2000);
   if (!partial || body.photoUrl !== undefined) out.photo_url = imageField('Photo')(body.photoUrl);
   if (!partial || body.specialties !== undefined) {
     const list = Array.isArray(body.specialties) ? body.specialties : [];
-    if (list.length > 20) throw new ValidationError('A staff member can have at most 20 specialties');
+    if (list.length > 25) throw new ValidationError('A staff member can have at most 25 specialties');
     out.specialties_json = JSON.stringify(
-      list.map((s) => str(s, { max: 60, field: 'Specialty' })).filter(Boolean)
+      list.map((s) => str(s, { max: 80, field: 'Specialty' })).filter(Boolean)
     );
   }
+  const rawQualifications = body.qualifications !== undefined ? body.qualifications : body.certifications;
+  if (!partial || rawQualifications !== undefined) {
+    const list = Array.isArray(rawQualifications) ? rawQualifications : [];
+    if (list.length > 20) throw new ValidationError('A staff member can have at most 20 qualifications');
+    out.qualifications_json = JSON.stringify(
+      list.map((q) => str(q, { max: 160, field: 'Qualification' })).filter(Boolean)
+    );
+  }
+  if (!partial || body.workPhotos !== undefined) {
+    out.work_photos_json = serializeStaffWorkPhotos(body.workPhotos || []);
+  }
+  if (!partial || body.workPhotosConsent !== undefined) {
+    out.work_photos_consent = bool(body.workPhotosConsent, false) ? 1 : 0;
+  }
   if (!partial || body.rating !== undefined) {
-    if (body.rating === null || body.rating === '') out.rating = null;
+    if (body.rating === null || body.rating === '' || body.rating === undefined) out.rating = null;
     else {
       const rating = Number(body.rating);
       if (!Number.isFinite(rating) || rating < 0 || rating > 5) {
         throw new ValidationError('Rating must be between 0 and 5');
       }
-      out.rating = Math.round(rating * 10) / 10;
+      out.rating = rating > 0 ? Math.round(rating * 10) / 10 : null;
     }
   }
   if (!partial || body.reviewCount !== undefined) {
     out.review_count =
-      body.reviewCount === null || body.reviewCount === ''
+      body.reviewCount === null || body.reviewCount === '' || body.reviewCount === undefined
         ? 0
         : int(body.reviewCount, { min: 0, max: 1_000_000, field: 'Review count' });
   }
   if (!partial || body.experience !== undefined) {
-    out.experience = str(body.experience, { max: 40, field: 'Experience' });
+    out.experience = str(body.experience, { max: 80, field: 'Experience' });
   }
   if (body.active !== undefined) out.active = bool(body.active, true) ? 1 : 0;
   // "Accepts online booking" — when off the specialist is still shown on the
@@ -567,12 +604,25 @@ salonRouter.get('/staff', (req, res) => {
 
 salonRouter.post('/staff', (req, res) => {
   const salon = requireOwnSalon(req);
+  if (
+    req.body?.isDemo === true ||
+    (typeof req.body?.id === 'string' && /^demo[-_:]/i.test(req.body.id.trim()))
+  ) {
+    return res.status(400).json({
+      error: 'Demo staff profiles are for preview only and cannot be saved as salon employees.',
+      code: 'DEMO_STAFF_NOT_SAVEABLE',
+    });
+  }
   const data = staffPayload(req.body || {});
   const id = newId();
   const ts = nowIso();
   db.prepare(
-    `INSERT INTO staff (id, salon_id, name, role_title, bio, photo_url, specialties_json, rating, review_count, experience, active, booking_enabled, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO staff (
+       id, salon_id, name, role_title, bio, photo_url,
+       specialties_json, qualifications_json, work_photos_json, work_photos_consent,
+       rating, review_count, experience, active, booking_enabled, sort_order, created_at, updated_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     salon.id,
@@ -581,6 +631,9 @@ salonRouter.post('/staff', (req, res) => {
     data.bio,
     data.photo_url,
     data.specialties_json,
+    data.qualifications_json ?? '[]',
+    data.work_photos_json ?? '[]',
+    data.work_photos_consent ?? 0,
     data.rating ?? null,
     data.review_count ?? 0,
     data.experience ?? '',

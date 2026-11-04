@@ -1,7 +1,20 @@
-import React, { useEffect, useState } from 'react';
-import { Pencil, Plus, Trash2, Users } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Award,
+  Eye,
+  ImagePlus,
+  Images,
+  Link2,
+  Loader2,
+  Pencil,
+  Plus,
+  ShieldCheck,
+  Star,
+  Trash2,
+  Users,
+} from 'lucide-react';
 import { api, errorMessage } from '../../lib/api';
-import type { SalonStaff } from '../../types/auth';
+import type { SalonStaff, StaffWorkPhoto } from '../../types/auth';
 import {
   Alert,
   Badge,
@@ -16,7 +29,8 @@ import {
   Toggle,
   Switch,
 } from '../ui';
-import { ImageUploader } from './ImageUploader';
+import { ImageUploader, uploadOrInlineImage } from './ImageUploader';
+import { StylistProfileModal, staffToProfile } from '../StylistProfileModal';
 
 interface Draft {
   name: string;
@@ -24,6 +38,9 @@ interface Draft {
   bio: string;
   photoUrl: string;
   specialties: string;
+  qualifications: string;
+  workPhotos: StaffWorkPhoto[];
+  workPhotosConsent: boolean;
   experience: string;
   rating: string;
   reviewCount: string;
@@ -37,6 +54,9 @@ const emptyDraft: Draft = {
   bio: '',
   photoUrl: '',
   specialties: '',
+  qualifications: '',
+  workPhotos: [],
+  workPhotosConsent: false,
   experience: '',
   rating: '',
   reviewCount: '',
@@ -61,11 +81,17 @@ export const StaffPage: React.FC = () => {
   const [editing, setEditing] = useState<SalonStaff | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [saving, setSaving] = useState(false);
+  const [uploadingWorkPhotos, setUploadingWorkPhotos] = useState(false);
+  const [workPhotoUrlInput, setWorkPhotoUrlInput] = useState('');
+  const [showWorkPhotoUrl, setShowWorkPhotoUrl] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SalonStaff | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [previewMember, setPreviewMember] = useState<SalonStaff | null>(null);
+  const workPhotoInputRef = useRef<HTMLInputElement | null>(null);
 
   const load = async () => {
     try {
+      setError('');
       const res = await api.get<{ staff: SalonStaff[] }>('/salon/staff');
       setStaff(res.staff);
     } catch (err) {
@@ -76,12 +102,14 @@ export const StaffPage: React.FC = () => {
   };
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
   const openCreate = () => {
     setEditing(null);
     setDraft(emptyDraft);
+    setWorkPhotoUrlInput('');
+    setShowWorkPhotoUrl(false);
     setError('');
     setModalOpen(true);
   };
@@ -90,26 +118,77 @@ export const StaffPage: React.FC = () => {
     setEditing(member);
     setDraft({
       name: member.name,
-      roleTitle: member.roleTitle,
-      bio: member.bio,
-      photoUrl: member.photoUrl,
-      specialties: member.specialties.join(', '),
+      roleTitle: member.roleTitle || '',
+      bio: member.bio || '',
+      photoUrl: member.photoUrl || '',
+      specialties: (member.specialties || []).join(', '),
+      qualifications: (member.qualifications || []).join('\n'),
+      workPhotos: Array.isArray(member.workPhotos) ? member.workPhotos.map((p) => ({ ...p })) : [],
+      workPhotosConsent: Boolean(member.workPhotosConsent),
       experience: member.experience || '',
-      rating: member.rating != null ? String(member.rating) : '',
-      reviewCount: member.reviewCount != null ? String(member.reviewCount) : '',
+      rating:
+        member.rating !== null && member.rating !== undefined && Number(member.rating) > 0
+          ? String(member.rating)
+          : '',
+      reviewCount:
+        member.reviewCount !== null && member.reviewCount !== undefined && Number(member.reviewCount) > 0
+          ? String(member.reviewCount)
+          : '',
       active: member.active,
       bookingEnabled: member.bookingEnabled !== false,
     });
+    setWorkPhotoUrlInput('');
+    setShowWorkPhotoUrl(false);
     setError('');
     setModalOpen(true);
+  };
+
+  const handleWorkPhotoFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploadingWorkPhotos(true);
+    setError('');
+    try {
+      const remainingSlots = Math.max(0, 20 - draft.workPhotos.length);
+      const selectedFiles = Array.from(files).slice(0, remainingSlots);
+      const uploaded: StaffWorkPhoto[] = [];
+      for (const file of selectedFiles) {
+        const url = await uploadOrInlineImage(file, 'staff');
+        uploaded.push({ url, caption: '' });
+      }
+      setDraft((prev) => ({
+        ...prev,
+        workPhotos: [...prev.workPhotos, ...uploaded],
+      }));
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setUploadingWorkPhotos(false);
+      if (workPhotoInputRef.current) workPhotoInputRef.current.value = '';
+    }
+  };
+
+  const addWorkPhotoByUrl = () => {
+    const trimmed = workPhotoUrlInput.trim();
+    if (!trimmed) return;
+    if (draft.workPhotos.length >= 20) {
+      setError('A staff member can have at most 20 work photos.');
+      return;
+    }
+    setDraft((prev) => ({
+      ...prev,
+      workPhotos: [...prev.workPhotos, { url: trimmed, caption: '' }],
+    }));
+    setWorkPhotoUrlInput('');
+    setShowWorkPhotoUrl(false);
   };
 
   const save = async (e?: React.FormEvent) => {
     e?.preventDefault();
     setError('');
-    if (!draft.name.trim()) return setError('Please enter a name.');
+    if (!draft.name.trim()) return setError('Please enter the staff member’s full name.');
     setSaving(true);
     try {
+      const parsedRating = draft.rating.trim() === '' ? null : Number(draft.rating);
       const payload = {
         name: draft.name.trim(),
         roleTitle: draft.roleTitle.trim(),
@@ -119,24 +198,34 @@ export const StaffPage: React.FC = () => {
           .split(',')
           .map((s) => s.trim())
           .filter(Boolean)
+          .slice(0, 25),
+        qualifications: draft.qualifications
+          .split(/\r?\n/)
+          .map((q) => q.trim())
+          .filter(Boolean)
           .slice(0, 20),
+        workPhotos: draft.workPhotos
+          .filter((p) => Boolean(p.url?.trim()))
+          .slice(0, 20)
+          .map((p) => ({ url: p.url.trim(), caption: (p.caption || '').trim() })),
+        workPhotosConsent: draft.workPhotosConsent,
         experience: draft.experience.trim(),
-        rating: draft.rating.trim() === '' ? null : Number(draft.rating),
-        reviewCount: draft.reviewCount.trim() === '' ? 0 : Number(draft.reviewCount),
+        rating: parsedRating !== null && Number.isFinite(parsedRating) && parsedRating > 0 ? parsedRating : null,
+        reviewCount: draft.reviewCount.trim() === '' ? 0 : Math.max(0, Math.round(Number(draft.reviewCount) || 0)),
         active: draft.active,
         bookingEnabled: draft.bookingEnabled,
       };
       if (editing) {
         const res = await api.patch<{ staff: SalonStaff }>(`/salon/staff/${editing.id}`, payload);
         setStaff((prev) => prev.map((s) => (s.id === editing.id ? res.staff : s)));
-        setNotice('Team member updated.');
+        setNotice('Team member updated across your website and booking templates.');
       } else {
         const res = await api.post<{ staff: SalonStaff }>('/salon/staff', payload);
         setStaff((prev) => [...prev, res.staff]);
-        setNotice('Team member added.');
+        setNotice('Team member added and synced to your booking templates.');
       }
       setModalOpen(false);
-      setTimeout(() => setNotice(''), 3500);
+      setTimeout(() => setNotice(''), 4000);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -155,13 +244,11 @@ export const StaffPage: React.FC = () => {
 
   const toggleBooking = async (member: SalonStaff) => {
     const next = !(member.bookingEnabled !== false);
-    // Optimistic update so the switch responds instantly.
     setStaff((prev) => prev.map((s) => (s.id === member.id ? { ...s, bookingEnabled: next } : s)));
     try {
       const res = await api.patch<{ staff: SalonStaff }>(`/salon/staff/${member.id}`, { bookingEnabled: next });
       setStaff((prev) => prev.map((s) => (s.id === member.id ? res.staff : s)));
     } catch (err) {
-      // Roll back on failure.
       setStaff((prev) => prev.map((s) => (s.id === member.id ? { ...s, bookingEnabled: !next } : s)));
       setError(errorMessage(err));
     }
@@ -174,8 +261,8 @@ export const StaffPage: React.FC = () => {
       await api.del(`/salon/staff/${deleteTarget.id}`);
       setStaff((prev) => prev.filter((s) => s.id !== deleteTarget.id));
       setDeleteTarget(null);
-      setNotice('Team member removed.');
-      setTimeout(() => setNotice(''), 3500);
+      setNotice('Team member removed from your salon roster and booking templates.');
+      setTimeout(() => setNotice(''), 4000);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -188,7 +275,7 @@ export const StaffPage: React.FC = () => {
       <PageHeader
         eyebrow="Your people"
         title="Team & staff"
-        description="Introduce the artists and specialists clients will meet at your salon."
+        description="Manage your salon specialists, credentials and portfolio galleries. Changes sync automatically across all website and booking templates."
         actions={
           <Button variant="gold" onClick={openCreate}>
             <Plus className="h-4 w-4" /> Add team member
@@ -206,7 +293,7 @@ export const StaffPage: React.FC = () => {
           <EmptyState
             icon={<Users className="h-6 w-6" />}
             title="No team members yet"
-            description="Add stylists, therapists and artists so clients can choose who they'd like to see."
+            description="Add stylists, therapists and artists so clients can view their full profiles and book with them."
             action={
               <Button variant="gold" onClick={openCreate}>
                 <Plus className="h-4 w-4" /> Add your first team member
@@ -216,79 +303,136 @@ export const StaffPage: React.FC = () => {
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {staff.map((member) => (
-            <Card key={member.id} className="flex flex-col p-5">
-              <div className="flex items-start gap-3">
-                {member.photoUrl ? (
-                  <img src={member.photoUrl} alt={member.name} className="h-12 w-12 rounded-full object-cover" />
-                ) : (
-                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#D09A40]/15 font-serif text-lg font-bold text-[#8a641f]">
-                    {initials(member.name)}
-                  </span>
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-slate-900">{member.name}</p>
-                      <p className="truncate text-xs text-slate-500">{member.roleTitle || 'Team member'}</p>
+          {staff.map((member) => {
+            const hasGenuineRating =
+              member.rating !== null && member.rating !== undefined && Number(member.rating) > 0;
+            const workPhotoCount = Array.isArray(member.workPhotos) ? member.workPhotos.length : 0;
+            const qualificationCount = Array.isArray(member.qualifications) ? member.qualifications.length : 0;
+
+            return (
+              <Card key={member.id} className="flex flex-col justify-between p-5">
+                <div>
+                  <div className="flex items-start gap-3">
+                    {member.photoUrl ? (
+                      <img
+                        src={member.photoUrl}
+                        alt={member.name}
+                        className="h-14 w-14 shrink-0 rounded-full object-cover object-top border border-[#D09A40]/30"
+                      />
+                    ) : (
+                      <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#D09A40]/15 font-serif text-lg font-bold text-[#8a641f]">
+                        {initials(member.name)}
+                      </span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-slate-900">{member.name}</p>
+                          {member.roleTitle && (
+                            <p className="truncate text-xs text-slate-500">{member.roleTitle}</p>
+                          )}
+                        </div>
+                        <Toggle
+                          checked={member.active}
+                          onChange={() => toggleActive(member)}
+                          label={`${member.active ? 'Hide' : 'Show'} ${member.name} on the website`}
+                          hideLabel
+                        />
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        {!member.active && <Badge tone="amber">Hidden</Badge>}
+                        {hasGenuineRating && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-[#D09A40]/15 px-2 py-0.5 text-[11px] font-semibold text-[#6d4f14]">
+                            <Star className="h-3 w-3 fill-[#D09A40] text-[#D09A40]" />
+                            {Number(member.rating).toFixed(1)}
+                            {Number(member.reviewCount) > 0 && <span>({member.reviewCount})</span>}
+                          </span>
+                        )}
+                        {member.experience && (
+                          <Badge tone="slate">{member.experience}</Badge>
+                        )}
+                      </div>
                     </div>
-                    <Toggle
-                      checked={member.active}
-                      onChange={() => toggleActive(member)}
-                      label={`${member.active ? 'Hide' : 'Show'} ${member.name} on the website`}
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2">
+                    <span className="text-[11px] font-semibold text-slate-600">Online booking</span>
+                    <Switch
+                      checked={member.bookingEnabled !== false}
+                      onChange={() => toggleBooking(member)}
+                      label={`${
+                        member.bookingEnabled !== false ? 'Stop' : 'Start'
+                      } accepting online bookings for ${member.name}`}
                       hideLabel
                     />
                   </div>
-                  {!member.active && (
-                    <div className="mt-1">
-                      <Badge tone="amber">Hidden</Badge>
+
+                  {member.bio && <p className="mt-3 line-clamp-2 text-sm text-slate-600">{member.bio}</p>}
+
+                  {member.specialties.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {member.specialties.slice(0, 4).map((s) => (
+                        <Badge key={s} tone="gold">
+                          {s}
+                        </Badge>
+                      ))}
+                      {member.specialties.length > 4 && (
+                        <Badge tone="slate">+{member.specialties.length - 4}</Badge>
+                      )}
+                    </div>
+                  )}
+
+                  {(qualificationCount > 0 || workPhotoCount > 0) && (
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                      {qualificationCount > 0 && (
+                        <span className="inline-flex items-center gap-1">
+                          <Award className="h-3.5 w-3.5 text-[#D09A40]" />
+                          {qualificationCount} {qualificationCount === 1 ? 'qualification' : 'qualifications'}
+                        </span>
+                      )}
+                      {workPhotoCount > 0 && (
+                        <span
+                          className={`inline-flex items-center gap-1 ${
+                            member.workPhotosConsent ? 'text-emerald-700' : 'text-amber-700'
+                          }`}
+                        >
+                          <Images className="h-3.5 w-3.5" />
+                          {workPhotoCount} work {workPhotoCount === 1 ? 'photo' : 'photos'} (
+                          {member.workPhotosConsent ? 'consented' : 'consent pending'})
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
-              </div>
-              <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2">
-                <span className="text-[11px] font-semibold text-slate-600">Online booking</span>
-                <Switch
-                  checked={member.bookingEnabled !== false}
-                  onChange={() => toggleBooking(member)}
-                  label={`${
-                    member.bookingEnabled !== false ? 'Stop' : 'Start'
-                  } accepting online bookings for ${member.name}`}
-                  hideLabel
-                />
-              </div>
-              {member.bio && <p className="mt-3 line-clamp-3 text-sm text-slate-600">{member.bio}</p>}
-              {member.specialties.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {member.specialties.map((s) => (
-                    <Badge key={s} tone="gold">
-                      {s}
-                    </Badge>
-                  ))}
+
+                <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3">
+                  <Button variant="secondary" size="sm" onClick={() => setPreviewMember(member)}>
+                    <Eye className="h-3.5 w-3.5" /> View Full Profile
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => openEdit(member)}>
+                    <Pencil className="h-3.5 w-3.5" /> Edit
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto text-red-600 hover:bg-red-50 hover:text-red-700"
+                    onClick={() => setDeleteTarget(member)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Remove
+                  </Button>
                 </div>
-              )}
-              <div className="mt-4 flex gap-1.5 border-t border-slate-100 pt-3">
-                <Button variant="secondary" size="sm" onClick={() => openEdit(member)}>
-                  <Pencil className="h-3.5 w-3.5" /> Edit
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                  onClick={() => setDeleteTarget(member)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" /> Remove
-                </Button>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       )}
 
+      {/* Add / Edit Staff Modal */}
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editing ? 'Edit team member' : 'Add team member'}
+        maxWidth="max-w-2xl"
         footer={
           <>
             <Button variant="ghost" onClick={() => setModalOpen(false)}>
@@ -312,7 +456,7 @@ export const StaffPage: React.FC = () => {
                 required
               />
             </Field>
-            <Field label="Role / title" htmlFor="staff-role">
+            <Field label="Designation / job title" htmlFor="staff-role">
               <Input
                 id="staff-role"
                 value={draft.roleTitle}
@@ -321,24 +465,18 @@ export const StaffPage: React.FC = () => {
               />
             </Field>
           </div>
+
           <ImageUploader
-            label="Photo"
+            label="Profile photo"
             kind="staff"
             value={draft.photoUrl}
             onChange={(url) => setDraft({ ...draft, photoUrl: url })}
-            hint="A friendly square portrait works best."
+            hint="Clear portrait photo (PNG, JPG, WEBP or GIF)."
             previewClassName="h-20 w-20 rounded-full"
           />
-          <Field label="Specialities" htmlFor="staff-specialties" hint="Separate with commas (max 20).">
-            <Input
-              id="staff-specialties"
-              value={draft.specialties}
-              onChange={(e) => setDraft({ ...draft, specialties: e.target.value })}
-              placeholder="HD Bridal, Airbrush, Draping"
-            />
-          </Field>
+
           <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Experience" htmlFor="staff-experience" hint="Shown in the profile modal.">
+            <Field label="Professional experience" htmlFor="staff-experience" hint="e.g. 8+ Years">
               <Input
                 id="staff-experience"
                 value={draft.experience}
@@ -346,19 +484,19 @@ export const StaffPage: React.FC = () => {
                 placeholder="8+ Years"
               />
             </Field>
-            <Field label="Rating (0–5)" htmlFor="staff-rating">
+            <Field label="Rating (optional)" htmlFor="staff-rating" hint="Genuine rating (0.1–5) only.">
               <Input
                 id="staff-rating"
                 type="number"
-                min={0}
+                min={0.1}
                 max={5}
                 step="0.1"
                 value={draft.rating}
                 onChange={(e) => setDraft({ ...draft, rating: e.target.value })}
-                placeholder="4.9"
+                placeholder="Leave blank if unrated"
               />
             </Field>
-            <Field label="Client reviews" htmlFor="staff-reviews">
+            <Field label="Client reviews" htmlFor="staff-reviews" hint="Verified review count.">
               <Input
                 id="staff-reviews"
                 type="number"
@@ -366,18 +504,164 @@ export const StaffPage: React.FC = () => {
                 step="1"
                 value={draft.reviewCount}
                 onChange={(e) => setDraft({ ...draft, reviewCount: e.target.value })}
-                placeholder="120"
+                placeholder="0"
               />
             </Field>
           </div>
+
           <Field label="Short bio" htmlFor="staff-bio">
             <Textarea
               id="staff-bio"
+              rows={3}
               value={draft.bio}
               onChange={(e) => setDraft({ ...draft, bio: e.target.value })}
-              placeholder="Experience, signature style and certifications…"
+              placeholder="Background, signature techniques and client approach…"
             />
           </Field>
+
+          <Field
+            label="Skills & specialties"
+            htmlFor="staff-specialties"
+            hint="Separate skills with commas (up to 25)."
+          >
+            <Input
+              id="staff-specialties"
+              value={draft.specialties}
+              onChange={(e) => setDraft({ ...draft, specialties: e.target.value })}
+              placeholder="HD Bridal, Airbrush, Saree Draping, Editorial Styling"
+            />
+          </Field>
+
+          <Field
+            label="Qualifications & certifications"
+            htmlFor="staff-qualifications"
+            hint="Enter one qualification or certification per line (up to 20)."
+          >
+            <Textarea
+              id="staff-qualifications"
+              rows={3}
+              value={draft.qualifications}
+              onChange={(e) => setDraft({ ...draft, qualifications: e.target.value })}
+              placeholder={'CIDESCO Certified Aesthetician\nLondon Academy Bridal Makeup Diploma'}
+            />
+          </Field>
+
+          {/* Work Photos / Portfolio Gallery + Explicit Consent */}
+          <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-slate-800">Work photos / portfolio gallery</p>
+                <p className="text-xs text-slate-500">
+                  Showcase transformations and portfolio work (up to 20 photos).
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <input
+                  ref={workPhotoInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => handleWorkPhotoFiles(e.target.files)}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  loading={uploadingWorkPhotos}
+                  onClick={() => workPhotoInputRef.current?.click()}
+                >
+                  {uploadingWorkPhotos ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <ImagePlus className="h-3.5 w-3.5" />
+                  )}
+                  Upload work photos
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowWorkPhotoUrl((prev) => !prev)}
+                >
+                  <Link2 className="h-3.5 w-3.5" /> Add URL
+                </Button>
+              </div>
+            </div>
+
+            {showWorkPhotoUrl && (
+              <div className="flex gap-2">
+                <Input
+                  value={workPhotoUrlInput}
+                  onChange={(e) => setWorkPhotoUrlInput(e.target.value)}
+                  placeholder="https://example.com/portfolio-photo.jpg"
+                  aria-label="Work photo URL"
+                />
+                <Button type="button" variant="secondary" size="sm" onClick={addWorkPhotoByUrl}>
+                  Add
+                </Button>
+              </div>
+            )}
+
+            {draft.workPhotos.length > 0 && (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {draft.workPhotos.map((photo, index) => (
+                  <div
+                    key={`${photo.url}-${index}`}
+                    className="group relative overflow-hidden rounded-xl border border-slate-200 bg-white"
+                  >
+                    <img
+                      src={photo.url}
+                      alt={photo.caption || `Work photo ${index + 1}`}
+                      className="aspect-[4/5] w-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDraft((prev) => ({
+                          ...prev,
+                          workPhotos: prev.workPhotos.filter((_, idx) => idx !== index),
+                        }))
+                      }
+                      className="absolute right-1.5 top-1.5 rounded-lg bg-white/95 p-1.5 text-red-600 shadow transition-opacity hover:bg-red-50"
+                      aria-label={`Remove work photo ${index + 1}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                    <input
+                      value={photo.caption || ''}
+                      onChange={(e) =>
+                        setDraft((prev) => ({
+                          ...prev,
+                          workPhotos: prev.workPhotos.map((item, idx) =>
+                            idx === index ? { ...item, caption: e.target.value } : item
+                          ),
+                        }))
+                      }
+                      placeholder="Optional caption…"
+                      className="w-full border-t border-slate-100 px-2.5 py-1.5 text-xs focus:outline-none"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <Switch
+                checked={draft.workPhotosConsent}
+                onChange={(v) => setDraft({ ...draft, workPhotosConsent: v })}
+                label="Staff member consents to displaying work photos publicly"
+                description="Work photos are only displayed on public staff profiles when this staff member's consent is confirmed."
+              />
+              {draft.workPhotos.length > 0 && !draft.workPhotosConsent && (
+                <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-amber-700">
+                  <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+                  These work photos are saved privately and hidden from public profiles until consent is enabled.
+                </p>
+              )}
+            </div>
+          </div>
+
           <Toggle
             checked={draft.active}
             onChange={(v) => setDraft({ ...draft, active: v })}
@@ -387,11 +671,12 @@ export const StaffPage: React.FC = () => {
             checked={draft.bookingEnabled}
             onChange={(v) => setDraft({ ...draft, bookingEnabled: v })}
             label="Accepts online bookings"
-            description="When off, clients can still see this specialist but cannot pick them for an online appointment."
+            description="When off, clients can still view this specialist's profile on the website but cannot select them for online booking."
           />
         </form>
       </Modal>
 
+      {/* Delete confirmation modal */}
       <Modal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
@@ -410,9 +695,15 @@ export const StaffPage: React.FC = () => {
       >
         <p className="text-sm text-slate-600">
           <strong className="text-slate-900">{deleteTarget?.name}</strong> will be removed from your team roster and
-          public website.
+          all booking templates.
         </p>
       </Modal>
+
+      {/* Client-facing Full Profile preview modal (closed by default) */}
+      <StylistProfileModal
+        profile={previewMember ? staffToProfile(previewMember) : null}
+        onClose={() => setPreviewMember(null)}
+      />
     </div>
   );
 };
