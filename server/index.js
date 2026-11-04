@@ -15,6 +15,7 @@ import {
   asyncHandler,
   notFound,
   errorHandler,
+  requireAuth,
 } from './middleware.js';
 import { subdomainMiddleware } from './subdomain.js';
 import { authRouter } from './routes/auth.js';
@@ -25,6 +26,7 @@ import { aiRouter } from './routes/ai.js';
 import { bookingsRouter } from './routes/bookings.js';
 import { loyaltyRouter } from './routes/loyalty.js';
 import { paymentsRouter } from './routes/payments.js';
+import { salonPaymentsRouter } from './routes/salon-payments.js';
 import { receiptsRouter } from './routes/receipts.js';
 import { whatsappWebhookRouter } from './notifications/whatsapp-webhook.js';
 import { resolvePaymentConfig } from './payments/config.js';
@@ -95,6 +97,8 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/auth', authRouter);
 app.use('/api/salon', salonRouter);
+// Salon-owner payment settings, transaction ledger, manual UPI verification and WhatsApp receipt retry.
+app.use('/api/salon', requireAuth, salonPaymentsRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/public', publicRouter);
 app.use('/api/ai', aiRouter);

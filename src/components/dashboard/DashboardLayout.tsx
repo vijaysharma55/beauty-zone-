@@ -3,6 +3,7 @@ import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react
 import {
   Calendar,
   CreditCard,
+  Wallet,
   ExternalLink,
   LayoutDashboard,
   LogOut,
@@ -30,6 +31,7 @@ const navItems = [
   { to: '/dashboard/services', label: 'Services & Prices', icon: Scissors },
   { to: '/dashboard/staff', label: 'Team', icon: Users },
   { to: '/dashboard/bookings', label: 'Bookings', icon: Calendar },
+  { to: '/dashboard/payments', label: 'Advance & Payments', icon: Wallet },
   { to: '/dashboard/analytics', label: 'Analytics', icon: TrendingUp },
   { to: '/dashboard/approval', label: 'Approvals', icon: FileCheck2 },
   { to: '/dashboard/preview', label: 'Preview', icon: Eye },
