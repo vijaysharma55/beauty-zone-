@@ -55,11 +55,11 @@ export const AdminSubscriptions: React.FC = () => {
       ]);
       setSubscriptions(res.subscriptions);
       setPayments(paymentRes.payments || []);
-      setPaymentsLoading(false);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
       setLoading(false);
+      setPaymentsLoading(false);
     }
   }, []);
 
