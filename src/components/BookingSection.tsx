@@ -748,31 +748,32 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     setAttemptCount((n) => n + 1);
 
     try {
-      if (salonSlug) {
-        await api.post('/public/bookings', {
-          slug: salonSlug,
-          fullName: form.fullName.trim(),
-          phone: form.phone.trim(),
-          service: form.selectedService,
-          serviceCategory: form.serviceCategory,
-          stylist: form.preferredStylist,
-          date: form.appointmentDate,
-          time: form.timeSlot,
-          locationType: form.locationType,
-          branch: form.locationType === 'salon' ? form.selectedBranch : null,
-          address: form.locationType === 'home' ? form.homeAddress.trim() : null,
-          locality: form.locationType === 'home' ? form.locality : null,
-          distanceKm: form.locationType === 'home' ? form.distanceKm : null,
-          bridalTrial: form.bridalTrialRequired,
-          notes: form.specialNotes.trim(),
-          promoCode: appliedPromo?.code || null,
-          estimatedTotal: totalEstimatedAmount,
-          advancePaid: form.locationType === 'home' ? advanceRequired : 0,
-          advanceRef: form.advancePaymentVerified ? form.advancePaymentRef : null,
-          reference: ref,
-        });
-      }
-      setBookingRefCode(ref);
+      const saved = await api.post<{ booking: { id: string; reference: string } }>('/public/bookings', {
+        slug: salonSlug || undefined,
+        fullName: form.fullName.trim(),
+        phone: form.phone.trim(),
+        service: form.selectedService,
+        serviceCategory: form.serviceCategory,
+        stylist: form.preferredStylist,
+        date: form.appointmentDate,
+        time: form.timeSlot,
+        locationType: form.locationType,
+        branch: form.locationType === 'salon' ? form.selectedBranch : null,
+        address: form.locationType === 'home' ? form.homeAddress.trim() : null,
+        locality: form.locationType === 'home' ? form.locality : null,
+        distanceKm: form.locationType === 'home' ? form.distanceKm : null,
+        bridalTrial: form.bridalTrialRequired,
+        notes: form.specialNotes.trim(),
+        promoCode: appliedPromo?.code || null,
+        // Store paise; the browser never claims that an advance has been paid.
+        estimatedTotal: Math.round(totalEstimatedAmount * 100),
+        reference: ref,
+      });
+      setSavedBookingId(saved.booking.id);
+      setBookingRefCode(saved.booking.reference || ref);
+      setPaymentError('');
+      setPaymentMessage('');
+      setForm((prev) => ({ ...prev, advancePaymentVerified: false, advancePaymentRef: '' }));
       setSubmitState('idle');
       setIsSubmitted(true);
       setIsSummaryModalOpen(true);
@@ -801,7 +802,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     const locationDetails =
       form.locationType === 'salon'
         ? `Salon Branch: ${form.selectedBranch}`
-        : `Doorstep Home Service (${form.locality}, ~${form.distanceKm} km): ${form.homeAddress} | Travel Fee: ${formatPrice(distanceFee)} | Advance Paid: ${formatPrice(advanceRequired)} (Ref: ${form.advancePaymentRef})`;
+        : `Doorstep Home Service (${form.locality}, ~${form.distanceKm} km): ${form.homeAddress} | Travel Fee: ${formatPrice(distanceFee)} | Advance ${form.advancePaymentVerified ? 'PAID' : 'PENDING'}: ${formatPrice(advanceRequired)}`;
 
     const promoLine = appliedPromo
       ? `\n*Loyalty Voucher:* ${appliedPromo.code} (-${formatPrice(appliedPromo.discountAmount)})`
