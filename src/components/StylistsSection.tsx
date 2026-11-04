@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Stylist, GalleryItem } from '../types';
 import { Award, Star, MapPin, Calendar, Sparkles, CheckCircle2, X, Eye, Plus, Camera, ImagePlus, Loader2, Trash2, MessageCircle, Briefcase, Heart, UserPlus } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
@@ -140,14 +140,38 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
   const [selectedStylist, setSelectedStylist] = useState<Stylist | null>(null);
   const [chatWithStylist, setChatWithStylist] = useState<Stylist | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'bridal' | 'hair' | 'skin' | 'nails'>('all');
-  const [followedStylists, setFollowedStylists] = useState<string[]>(() => {
+  const [followedStylists, setFollowedStylists] = useState<string[]>([]);
+  const [followedStylistsLoaded, setFollowedStylistsLoaded] = useState(false);
+
+  // Read browser storage after mount so this component is safe in SSR/pre-render
+  // environments and malformed or unavailable storage never breaks the page.
+  useEffect(() => {
     try {
-      const saved = localStorage.getItem('followed_stylists');
-      return saved ? JSON.parse(saved) : [];
+      const saved = window.localStorage.getItem('followed_stylists');
+      const parsed: unknown = saved ? JSON.parse(saved) : [];
+      setFollowedStylists(
+        Array.isArray(parsed) && parsed.every((id) => typeof id === 'string')
+          ? parsed
+          : []
+      );
     } catch {
-      return [];
+      setFollowedStylists([]);
+    } finally {
+      setFollowedStylistsLoaded(true);
     }
-  });
+  }, []);
+
+  useEffect(() => {
+    if (!followedStylistsLoaded) return;
+    try {
+      window.localStorage.setItem(
+        'followed_stylists',
+        JSON.stringify(followedStylists)
+      );
+    } catch {
+      // Following still works for this session when browser storage is unavailable.
+    }
+  }, [followedStylists, followedStylistsLoaded]);
 
   const manager = useCardCollection<Stylist>(
     brand.stylists,
@@ -156,15 +180,13 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
   );
 
   const toggleFollow = (stylistId: string, name: string) => {
-    setFollowedStylists((prev) => {
-      const isFollowing = prev.includes(stylistId);
-      const next = isFollowing ? prev.filter((id) => id !== stylistId) : [...prev, stylistId];
-      localStorage.setItem('followed_stylists', JSON.stringify(next));
-      if (!isFollowing) {
-        manager.notify(`You're now following ${name.split(' ')[0]} for special offers!`);
-      }
-      return next;
-    });
+    const isFollowing = followedStylists.includes(stylistId);
+    setFollowedStylists((prev) =>
+      isFollowing ? prev.filter((id) => id !== stylistId) : [...prev, stylistId]
+    );
+    if (!isFollowing) {
+      manager.notify(`You're now following ${name.split(' ')[0]} for special offers!`);
+    }
   };
 
   const filteredStylists =
