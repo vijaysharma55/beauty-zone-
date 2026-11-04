@@ -182,7 +182,7 @@ export interface PlatformSettings {
   allowRegistrations: boolean;
   trialDays: number;
   maintenanceMessage: string;
-  defaultPlan: 'trial' | 'starter' | 'pro' | 'elite';
+  defaultPlan: 'trial' | 'starter';
 }
 
 export type TemplateId = 'luxe' | 'minimal' | 'noir' | 'blush';
