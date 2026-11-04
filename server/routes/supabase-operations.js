@@ -51,6 +51,7 @@ const ownSalonOrFail = async (ctx) => {
   return salon;
 };
 const audit = (ctx, action, targetType=null, targetId=null, metadata=null) => writeAudit(ctx,action,targetType,targetId,metadata);
+const quoteFilterValue = (value) => '"' + String(value).replace(/\\/g,'\\\\').replace(/"/g,'\\"') + '"';
 const settingsDefaults = {platformName:'BeautyZone',supportEmail:'support@beautyzone.app',allowRegistrations:true,trialDays:14,maintenanceMessage:'',defaultPlan:'starter'};
 const redirectUrl = (req, path) => {
   const configured = String(process.env.APP_URL || '').trim();
@@ -629,8 +630,11 @@ supabaseOperationsRouter.get('/admin/audit-logs', asyncRoute(async(req,res)=>{
 supabaseOperationsRouter.get('/public/salons', asyncRoute(async(req,res)=>{
   const city=s(req.query.city,100),q=s(req.query.q,100);
   let query='select=*&website_published=eq.true&status=in.(approved,pending)&suspended=eq.false&order=published_at.desc&limit=60';
-  if(city&&city.toLowerCase()!=='all')query+='&city=ilike.'+encodeURIComponent(city);
-  if(q)query+='&or=(name.ilike.*'+encodeURIComponent(q)+'*,tagline.ilike.*'+encodeURIComponent(q)+'*,city.ilike.*'+encodeURIComponent(q)+'*)';
+  if(city&&city.toLowerCase()!=='all')query+='&city=ilike.'+encodeURIComponent(quoteFilterValue(city));
+  if(q){
+    const pattern=encodeURIComponent(quoteFilterValue('*'+q+'*'));
+    query+='&or=(name.ilike.'+pattern+',tagline.ilike.'+pattern+',city.ilike.'+pattern+')';
+  }
   const salons=await rest(req.sb,'salons',query);
   const result=await Promise.all(salons.map(async row=>{
     const versions=await rest(req.sb,'salon_versions','salon_id=eq.'+row.id+'&status=eq.approved&select=snapshot&order=version.desc&limit=1');
