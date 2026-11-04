@@ -121,20 +121,54 @@ export async function runMigration({apply=false,sendRecovery=false,exportPath=nu
   if(apply&&(!SUPABASE_URL||!SERVICE_KEY))throw new Error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in the migration environment. Never add the service-role key to VITE_* or Git.');
   if(exportPath&&(!process.env.MIGRATION_EXPORT_PASSPHRASE||process.env.MIGRATION_EXPORT_PASSPHRASE.length<16))throw new Error('Set MIGRATION_EXPORT_PASSPHRASE (minimum 16 characters) to create an encrypted export.');
   if(sendRecovery&&!apply)throw new Error('--send-recovery requires --apply.');
+  if(apply&&!sendRecovery)throw new Error('For safety, --apply requires --send-recovery so newly created legacy accounts receive a password-setup or confirmation email.');
   const db=new DatabaseSync(SQLITE_PATH,{readOnly:true});
   try{
     const source=readSource(db);const plan=buildMigrationPlan(source);
-    const report={mode:apply?'apply':'dry-run',sqlitePath:SQLITE_PATH,sourceCounts:Object.fromEntries(EXPORT_TABLES.map(t=>[t,source[t].length])),plannedCounts:Object.fromEntries(Object.entries(plan).filter(([k,v])=>Array.isArray(v)).map(([k,v])=>[k,v.length])),skippedInvalidEmails:plan.skippedUsers.length,legacyGoogleCount:plan.profiles.filter(p=>p.legacy_provider==='google').length,imported:{},identity:{created:0,matched:0,recoveryQueued:0,errors:[]}};
+    const report={mode:apply?'apply':'dry-run',sqlitePath:SQLITE_PATH,sourceCounts:Object.fromEntries(EXPORT_TABLES.map(t=>[t,source[t].length])),plannedCounts:Object.fromEntries(Object.entries(plan).filter(([k,v])=>Array.isArray(v)).map(([k,v])=>[k,v.length])),skippedInvalidEmails:plan.skippedUsers.length,legacyGoogleCount:plan.profiles.filter(p=>p.legacy_provider==='google').length,imported:{},identity:{created:0,matched:0,recoveryQueued:0,confirmationQueued:0,errors:[]}};
     if(exportPath){const safe={exportedAt:new Date().toISOString(),data:source};safe.data.users=safe.data.users.map(({password_hash,google_sub,email_verification_token_hash,email_verification_expires,password_reset_token_hash,password_reset_expires,failed_logins,locked_until,...u})=>u);delete safe.data.sessions;const encrypted=encryptedExport(safe,process.env.MIGRATION_EXPORT_PASSPHRASE||'');fs.mkdirSync(path.dirname(path.resolve(exportPath)),{recursive:true});fs.writeFileSync(exportPath,encrypted,{mode:0o600,flag:'wx'});report.exportPath=path.resolve(exportPath);report.exportEncrypted=true;}
     if(!apply)return report;
     const authUsers=await listAuthUsers();const profileMap=new Map();
     for(const p of plan.profiles){
       let user=authUsers.get(p.email);
-      if(!user){const password=crypto.randomBytes(48).toString('base64url')+'Aa1!';user=await supa('/auth/v1/admin/users',{method:'POST',body:JSON.stringify({email:p.email,password,email_confirm:p.email_verified,user_metadata:{name:p.name,legacy_user_id:p.legacyId,legacy_auth_provider:p.legacy_provider},app_metadata:{beautyzone_legacy_migration:true}})});report.identity.created++;}
-      else report.identity.matched++;
-      const uid=user.id;profileMap.set(p.legacyId,uid);
-      await supa('/rest/v1/profiles?id=eq.'+encodeURIComponent(uid),{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({legacy_user_id:p.legacyId,name:p.name,role:p.role,status:p.status,auth_provider:'password',email_verified:p.email_verified,updated_at:p.updated_at})});
-      if(sendRecovery){await supa('/auth/v1/recover?redirect_to='+encodeURIComponent((APP_URL||'http://localhost:3000')+'/reset-password'),{method:'POST',body:JSON.stringify({email:p.email})});report.identity.recoveryQueued++;}
+      let created=false;
+      if(!user){
+        const password=crypto.randomBytes(48).toString('base64url')+'Aa1!';
+        user=await supa('/auth/v1/admin/users',{method:'POST',body:JSON.stringify({
+          email:p.email,password,email_confirm:p.email_verified,
+          user_metadata:{name:p.name,legacy_user_id:p.legacyId,legacy_auth_provider:p.legacy_provider},
+          app_metadata:{beautyzone_legacy_migration:true},
+        })});
+        report.identity.created++;
+        created=true;
+      }else report.identity.matched++;
+      const uid=user.id;
+      const existingProfiles=await supa('/rest/v1/profiles?id=eq.'+encodeURIComponent(uid)+'&select=id,role,legacy_user_id');
+      const existingProfile=Array.isArray(existingProfiles)?existingProfiles[0]:null;
+      if(existingProfile?.legacy_user_id && existingProfile.legacy_user_id!==p.legacyId){
+        throw new Error('Identity conflict: '+p.email+' is already mapped to a different legacy user ID. Resolve manually before migration.');
+      }
+      if(existingProfile?.role==='customer' && p.role!=='customer'){
+        throw new Error('Role conflict: '+p.email+' is already a customer account. It will not be silently promoted to '+p.role+'.');
+      }
+      profileMap.set(p.legacyId,uid);
+      await supa('/rest/v1/profiles?id=eq.'+encodeURIComponent(uid),{
+        method:'PATCH',headers:{Prefer:'return=minimal'},
+        body:JSON.stringify({legacy_user_id:p.legacyId,name:p.name,role:p.role,status:p.status,auth_provider:'password',email_verified:p.email_verified,updated_at:p.updated_at}),
+      });
+      if(sendRecovery&&created){
+        if(p.email_verified){
+          await supa('/auth/v1/recover?redirect_to='+encodeURIComponent((APP_URL||'http://localhost:3000')+'/reset-password'),{
+            method:'POST',body:JSON.stringify({email:p.email}),
+          });
+          report.identity.recoveryQueued++;
+        }else{
+          await supa('/auth/v1/resend',{method:'POST',body:JSON.stringify({
+            type:'signup',email:p.email,options:{emailRedirectTo:(APP_URL||'http://localhost:3000')+'/verify-email'},
+          })});
+          report.identity.confirmationQueued=(report.identity.confirmationQueued||0)+1;
+        }
+      }
     }
     const profileId=(legacyId)=>profileMap.get(legacyId)||null;
     const importRows={
@@ -148,7 +182,6 @@ export async function runMigration({apply=false,sendRecovery=false,exportPath=nu
     const order=['salons','services','staff','subscriptions','salon_versions','bookings','loyalty_accounts','loyalty_transactions','loyalty_vouchers','waitlist','stylist_inquiries','platform_settings','audit_logs'];
     for(const table of order){try{report.imported[table]=await upsertTable(table,importRows[table]);}catch(error){report.imported[table]={source:importRows[table].length,error:error.message};report.failedTable=table;break;}}
     report.identity.needsGoogleProviderLink=report.legacyGoogleCount;
-    report.reconciliation.legacyGoogleAccountsNeedProviderRelink=report.legacyGoogleCount;
     const reconciliation={};
     const profileRows=plan.profiles.map(p=>({legacy_user_id:p.legacyId}));
     reconciliation.profiles=await reconcileTable('profiles',profileRows,'legacy_user_id');
