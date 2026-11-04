@@ -16,7 +16,7 @@ begin
   -- remains a salon-owner flow. Client-editable user_metadata is never trusted
   -- for the authorization role.
   v_role := case
-    when new.phone is not null or new.app_metadata ->> 'provider' = 'phone' then 'customer'
+    when new.phone is not null or new.raw_app_meta_data ->> 'provider' = 'phone' then 'customer'
     else 'salon_owner'
   end;
   insert into public.profiles (id,email,name,role,email_verified,updated_at)
