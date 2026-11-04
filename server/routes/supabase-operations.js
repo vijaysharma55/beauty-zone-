@@ -257,7 +257,7 @@ supabaseOperationsRouter.post('/salon/uploads', asyncRoute(async(req,res)=>{
     method:'POST',headers:{'Content-Type':mime,'x-upsert':'true'},body:data,
   });
   await audit(req.sb,'salon.image_uploaded','salon',salon.id,{kind,size:data.length});
-  res.status(201).json({url:process.env.SUPABASE_URL?.replace(/\\/+$/,'')+'/storage/v1/object/public/beautyzone-assets/'+key});
+  res.status(201).json({url:process.env.SUPABASE_URL?.replace(/\/+$/,'')+'/storage/v1/object/public/beautyzone-assets/'+key});
 }));
 supabaseOperationsRouter.get('/salon/services', asyncRoute(async(req,res)=>{
   const salon=await ownSalonOrFail(req.sb); res.json({services:await getServices(req.sb,salon.id)});
@@ -675,6 +675,7 @@ supabaseOperationsRouter.post('/public/bookings/:bookingId/payment-order',asyncR
     +'&phone=eq.'+encodeURIComponent(phone)
     +'&select=id,reference,phone,estimated_total,advance_paid,status,salon_id&limit=1');
   if(!booking)fail(404,'Booking reference and mobile number do not match.');
+  if(!booking.salon_id)fail(409,'Online advance checkout is available only for a published salon booking. The BeautyZone team will confirm payment for general requests.');
   if(!['requested','confirmed'].includes(booking.status))fail(409,'This booking is not eligible for an advance payment.');
   const target=Math.ceil(Number(booking.estimated_total||0)*0.25);
   const due=Math.max(0,target-Number(booking.advance_paid||0));
