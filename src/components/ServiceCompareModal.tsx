@@ -30,9 +30,9 @@ interface ServiceCompareModalProps {
 
 export const ServiceCompareModal: React.FC<ServiceCompareModalProps> = ({
   isOpen,
-  services,
-  comparedServices,
-  serviceRatingsMap,
+  services: servicesProp,
+  comparedServices: comparedServicesProp,
+  serviceRatingsMap: serviceRatingsMapProp,
   onClose,
   onSelectService,
   onRemoveService,
@@ -43,25 +43,44 @@ export const ServiceCompareModal: React.FC<ServiceCompareModalProps> = ({
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [highlightDifferences, setHighlightDifferences] = useState(false);
 
-  if (!isOpen) return null;
+  // Defensive defaults: a missing prop or malformed item must never crash the React tree.
+  const services = useMemo(
+    () => (Array.isArray(servicesProp) ? servicesProp.filter((s) => s?.id) : []),
+    [servicesProp]
+  );
+  const comparedServices = useMemo(
+    () => (Array.isArray(comparedServicesProp) ? comparedServicesProp.filter((s) => s?.id) : []),
+    [comparedServicesProp]
+  );
+  const serviceRatingsMap = serviceRatingsMapProp ?? {};
 
   // Filter available services that aren't already in comparison
   const availableToAdd = useMemo(() => {
     const comparedIds = new Set(comparedServices.map((s) => s.id));
+    const query = searchPickerQuery.trim().toLowerCase();
     return services.filter(
       (s) =>
         !comparedIds.has(s.id) &&
-        (searchPickerQuery.trim() === '' ||
-          s.title.toLowerCase().includes(searchPickerQuery.toLowerCase()) ||
-          s.category.toLowerCase().includes(searchPickerQuery.toLowerCase()))
+        (query === '' ||
+          (s.title ?? '').toLowerCase().includes(query) ||
+          (s.category ?? '').toLowerCase().includes(query))
     );
   }, [services, comparedServices, searchPickerQuery]);
 
   // Find lowest price
   const lowestPrice = useMemo(() => {
-    if (comparedServices.length === 0) return 0;
-    return Math.min(...comparedServices.map((s) => s.price));
+    const prices = comparedServices.map((s) => s.price).filter((p): p is number => Number.isFinite(p));
+    return prices.length === 0 ? 0 : Math.min(...prices);
   }, [comparedServices]);
+
+  // IMPORTANT: this early return must stay AFTER every hook above.
+  // Returning before the hooks changes the hook count between renders when `isOpen`
+  // flips, which makes React throw "Rendered more hooks than during the previous render"
+  // and unmounts the whole app (white screen).
+  if (!isOpen) return null;
+
+  const formatPrice = (price?: number) =>
+    Number.isFinite(price) ? `₹${(price as number).toLocaleString('en-IN')}` : 'On request';
 
   // Quick preset comparison pairs if user has 0 or 1 item
   const samplePairs: { label: string; ids: string[] }[] = [
@@ -229,9 +248,9 @@ export const ServiceCompareModal: React.FC<ServiceCompareModalProps> = ({
                           {service.title}
                         </h4>
                         <div className="flex items-center gap-2 text-[10px] text-[#4A4A4A] mt-0.5">
-                          <span className="font-bold text-[#0F172A]">₹{service.price.toLocaleString('en-IN')}</span>
+                          <span className="font-bold text-[#0F172A]">{formatPrice(service.price)}</span>
                           <span>·</span>
-                          <span>{service.duration}</span>
+                          <span>{service.duration ?? '—'}</span>
                         </div>
                       </div>
                       <button
@@ -310,7 +329,7 @@ export const ServiceCompareModal: React.FC<ServiceCompareModalProps> = ({
                             >
                               <div className="truncate">
                                 <div className="font-bold text-[#0F172A] truncate">{svc.title}</div>
-                                <div className="text-[10px] text-[#4A4A4A]">₹{svc.price.toLocaleString('en-IN')} · {svc.duration}</div>
+                                <div className="text-[10px] text-[#4A4A4A]">{formatPrice(svc.price)} · {svc.duration ?? '—'}</div>
                               </div>
                               <Plus className="w-3.5 h-3.5 text-[#D09A40] shrink-0" />
                             </button>
@@ -373,7 +392,7 @@ export const ServiceCompareModal: React.FC<ServiceCompareModalProps> = ({
                               {svc.title}
                             </h3>
                             <span className="text-[11px] text-[#4A4A4A] mt-0.5 block">
-                              {categoryNames[svc.category] || svc.category}
+                              {categoryNames[svc.category] ?? svc.category ?? ''}
                             </span>
 
                             {/* Top CTA */}
@@ -404,7 +423,7 @@ export const ServiceCompareModal: React.FC<ServiceCompareModalProps> = ({
                           <td key={svc.id} className="p-3 bg-white">
                             <div className="flex items-center gap-2">
                               <span className="text-base sm:text-lg font-bold font-mono text-[#0F172A]">
-                                ₹{svc.price.toLocaleString('en-IN')}
+                                {formatPrice(svc.price)}
                               </span>
                               {isLowest && (
                                 <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
@@ -429,7 +448,7 @@ export const ServiceCompareModal: React.FC<ServiceCompareModalProps> = ({
                         <td key={svc.id} className="p-3 bg-white">
                           <div className="flex items-center gap-1.5 text-xs font-mono font-medium text-[#0F172A]">
                             <Clock className="w-3.5 h-3.5 text-[#D09A40]" />
-                            <span>{svc.duration}</span>
+                            <span>{svc.duration ?? '—'}</span>
                           </div>
                         </td>
                       ))}
@@ -441,15 +460,17 @@ export const ServiceCompareModal: React.FC<ServiceCompareModalProps> = ({
                         Rating & Reviews
                       </td>
                       {comparedServices.map((svc) => {
-                        const rating = serviceRatingsMap[svc.id] || { rating: 4.8, count: 18 };
+                        const rating = serviceRatingsMap[svc.id] ?? { rating: svc.rating ?? 4.8, count: svc.reviewCount ?? 18 };
+                        const ratingValue = Number.isFinite(rating?.rating) ? rating.rating : 4.8;
+                        const ratingCount = Number.isFinite(rating?.count) ? rating.count : 0;
                         return (
                           <td key={svc.id} className="p-3 bg-white">
                             <div className="flex items-center gap-1.5">
                               <div className="flex items-center gap-0.5 text-amber-500">
                                 <Star className="w-3.5 h-3.5 fill-current" />
-                                <span className="text-xs font-bold text-[#0F172A] font-mono">{rating.rating.toFixed(1)}</span>
+                                <span className="text-xs font-bold text-[#0F172A] font-mono">{ratingValue.toFixed(1)}</span>
                               </div>
-                              <span className="text-[11px] text-[#4A4A4A]">({rating.count} reviews)</span>
+                              <span className="text-[11px] text-[#4A4A4A]">({ratingCount} reviews)</span>
                             </div>
                             <span className="text-[10px] text-emerald-700 block mt-0.5">
                               ✓ 100% verified client reviews
@@ -467,7 +488,7 @@ export const ServiceCompareModal: React.FC<ServiceCompareModalProps> = ({
                       {comparedServices.map((svc) => (
                         <td key={svc.id} className="p-3 align-top bg-white">
                           <ul className="space-y-1.5">
-                            {svc.highlights.map((highlight, idx) => (
+                            {(svc.highlights ?? []).map((highlight, idx) => (
                               <li key={idx} className="flex items-start gap-1.5 text-xs text-[#0F172A]">
                                 <CheckCircle2 className="w-3.5 h-3.5 text-[#D09A40] shrink-0 mt-0.5" />
                                 <span className="leading-tight">{highlight}</span>
@@ -486,7 +507,7 @@ export const ServiceCompareModal: React.FC<ServiceCompareModalProps> = ({
                       {comparedServices.map((svc) => (
                         <td key={svc.id} className="p-3 align-top bg-white">
                           <p className="text-xs text-[#4A4A4A] leading-relaxed">
-                            {svc.description}
+                            {svc.description ?? ''}
                           </p>
                         </td>
                       ))}
@@ -533,7 +554,7 @@ export const ServiceCompareModal: React.FC<ServiceCompareModalProps> = ({
                             }}
                             className="w-full py-2 px-3 bg-[#0F172A] hover:bg-[#D09A40] text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm hover:shadow"
                           >
-                            <span>Book {svc.title.split(' ')[0]}</span>
+                            <span>Book {(svc.title ?? 'Service').split(' ')[0]}</span>
                             <ArrowRight className="w-3.5 h-3.5" />
                           </button>
                         </td>
