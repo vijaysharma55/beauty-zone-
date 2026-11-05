@@ -5,6 +5,7 @@ import { ServiceCategory, ServiceItem, ServiceReview } from '../types';
 import { INITIAL_SERVICE_REVIEWS, BASELINE_SERVICE_RATINGS } from '../data/serviceReviewsData';
 import { ServiceReviewModal } from './ServiceReviewModal';
 import { ServiceCompareModal } from './ServiceCompareModal';
+import { ErrorBoundary } from './ErrorBoundary';
 import { RevealOnScroll } from './RevealOnScroll';
 import { useBrand } from '../context/BrandContext';
 import { SmartImage } from './crud/SmartImage';
@@ -1062,20 +1063,22 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
       )}
 
       {/* Service Comparison Modal */}
-      <ServiceCompareModal
-        isOpen={isCompareModalOpen}
-        services={allServices}
-        comparedServices={selectedForCompare}
-        serviceRatingsMap={serviceRatingsMap}
-        onClose={() => setIsCompareModalOpen(false)}
-        onSelectService={(service) => {
-          setIsCompareModalOpen(false);
-          onSelectService(service);
-        }}
-        onRemoveService={handleRemoveFromCompare}
-        onAddService={handleAddToCompare}
-        onClearAll={handleClearCompare}
-      />
+      <ErrorBoundary name="ServiceCompareModal" onReset={() => setIsCompareModalOpen(false)}>
+        <ServiceCompareModal
+          isOpen={isCompareModalOpen}
+          services={allServices}
+          comparedServices={selectedForCompare}
+          serviceRatingsMap={serviceRatingsMap}
+          onClose={() => setIsCompareModalOpen(false)}
+          onSelectService={(service) => {
+            setIsCompareModalOpen(false);
+            onSelectService(service);
+          }}
+          onRemoveService={handleRemoveFromCompare}
+          onAddService={handleAddToCompare}
+          onClearAll={handleClearCompare}
+        />
+      </ErrorBoundary>
 
       {manager.editorState && (
         <CardEditorModal
