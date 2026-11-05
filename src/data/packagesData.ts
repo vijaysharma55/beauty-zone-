@@ -1,5 +1,36 @@
 import { SalonPackage } from '../types';
 
+export const PACKAGE_NAME_SUGGESTIONS = [
+  'Royal Heritage Bridal Makeover',
+  'Moroccan Botox Hair Revival',
+  '24K Gold Hydra Glow Pass',
+  'Velvet Touch Body Spa Ritual',
+  'Glam Night Sangeet Edit',
+  'Regal Bride Signature Edit',
+  'Keratin Silk Renewal',
+  'Bridal Radiance Countdown',
+  'Diamond Glow Skin Ritual',
+  'Pearl Luxe Pamper Day',
+];
+
+export const PACKAGE_BADGE_SUGGESTIONS = [
+  '20% OFF',
+  'Best Seller',
+  'Trending',
+  'Bridal Special',
+  'Limited Slots',
+  'Bridal Favorite',
+  'Festive Pass',
+  'New Launch',
+  'Few Slots Left',
+  'Flat 15% OFF',
+  'Top Rated',
+  'Couple Offer',
+  'Weekend Deal',
+  'Premium Pick',
+  'Wedding Season',
+];
+
 export const PACKAGE_PRESET_IMAGES = [
   {
     label: 'Bridal Makeover & Draping',
@@ -363,10 +394,176 @@ export const INITIAL_PACKAGES: SalonPackage[] = [
     image: '/images/jaipur_luxury_salon_1792644552318.jpg',
     active: true,
     featured: false,
-  }
+  },
+  {
+    id: 'pkg-royal-heritage-bridal-makeover',
+    name: 'Royal Heritage Bridal Makeover',
+    tagline: 'Flawless, camera-ready beauty that lasts from the first ritual to the last dance.',
+    offer_name: 'Bridal Special',
+    description: 'Bridal preparation package covering makeup, hairstyling, draping, facial prep and finishing services.',
+    services: [
+      'HD / Airbrush Bridal Makeup',
+      'Signature Bridal Hairstyling with Accessories Setting',
+      'Draping of Saree / Lehenga with Dupatta Setting',
+      '24K Gold Facial Glow Prep',
+      'Manicure & Pedicure',
+      'Eyelash Application & Touch-Up Kit'
+    ],
+    duration: 'Full Day Care',
+    regular_price: 0,
+    package_price: 0,
+    discount: 0,
+    savings: 0,
+    validity: 'Confirm with salon',
+    usage_rules: ['Please confirm availability, appointment timing and package pricing with the salon before booking.'],
+    outlets: ['Confirm with salon'],
+    image: '/images/jaipur_royal_bride_1792647664582.jpg',
+    active: true,
+    featured: true,
+  },
+  {
+    id: 'pkg-moroccan-botox-hair-revival',
+    name: 'Moroccan Botox Hair Revival',
+    tagline: 'Silky, frizz-free, healthy hair, with zero harsh chemicals.',
+    offer_name: 'Best Seller',
+    description: 'Hair smoothening package with scalp analysis, cleansing, treatment, steam therapy and aftercare.',
+    services: [
+      'Hair & Scalp Analysis',
+      'Deep Cleansing Ritual Wash',
+      'Formaldehyde-Free Smoothening Treatment',
+      'Moroccan Argan Oil Botox Infusion',
+      'Steam Seal Therapy',
+      'Blow-Dry Finish & Aftercare Guide'
+    ],
+    duration: '180 mins',
+    regular_price: 0,
+    package_price: 0,
+    discount: 0,
+    savings: 0,
+    validity: 'Confirm with salon',
+    usage_rules: ['Please confirm availability, appointment timing and package pricing with the salon before booking.'],
+    outlets: ['Confirm with salon'],
+    image: '/images/luxury_hair_nanoplastia_1792647835332.jpg',
+    active: true,
+    featured: true,
+  },
+  {
+    id: 'pkg-24k-gold-hydra-glow-pass',
+    name: '24K Gold Hydra Glow Pass',
+    tagline: 'Radiant, even-toned skin, perfected well before your big day.',
+    offer_name: '20% OFF',
+    description: 'Pre-wedding skin and body-care package with facial, de-tan, polishing and waxing services.',
+    services: [
+      'Skin Consultation & Concern Mapping',
+      '24K Gold Hydra Facial',
+      'De-Tan & Brightening Treatment',
+      'Underarm, Arm & Leg Polishing',
+      'Full-Body Waxing (Rica / Chocolate)',
+      'Threading & Face Bleach / Clean-Up'
+    ],
+    duration: '3 Sessions',
+    regular_price: 0,
+    package_price: 0,
+    discount: 0,
+    savings: 0,
+    validity: 'Confirm with salon',
+    usage_rules: ['Please confirm availability, appointment timing and package pricing with the salon before booking.'],
+    outlets: ['Confirm with salon'],
+    image: '/images/skin_spa_treatment_1790672037475.jpg',
+    active: true,
+    featured: true,
+  },
+  {
+    id: 'pkg-glam-night-sangeet-edit',
+    name: 'Glam Night Sangeet Edit',
+    tagline: 'Turn heads on the dance floor with a flawless, all-night glam look.',
+    offer_name: 'Trending',
+    description: 'Party and sangeet makeover package with makeup, hairstyling, draping and touch-up essentials.',
+    services: [
+      'Party Glam Makeup (Long-Wear, Photo-Ready)',
+      'Curls / Waves / Updo Hairstyling',
+      'Saree or Lehenga Draping',
+      'Lashes & Glitter Accents',
+      'Express Skin Prep & Glow Primer',
+      'Mini Touch-Up Kit'
+    ],
+    duration: '120 mins',
+    regular_price: 0,
+    package_price: 0,
+    discount: 0,
+    savings: 0,
+    validity: 'Confirm with salon',
+    usage_rules: ['Please confirm availability, appointment timing and package pricing with the salon before booking.'],
+    outlets: ['Confirm with salon'],
+    image: '/images/home_salon_service_1790676110547.jpg',
+    active: true,
+    featured: false,
+  },
+  {
+    id: 'pkg-velvet-touch-body-spa-ritual',
+    name: 'Velvet Touch Body Spa Ritual',
+    tagline: 'Unwind deeply and step out with soft, glowing, rejuvenated skin.',
+    offer_name: 'Limited Slots',
+    description: 'Body spa and polish package with massage, exfoliation, steam, hydration and relaxation services.',
+    services: [
+      'Aromatherapy Full-Body Massage',
+      'Exfoliating Body Scrub',
+      'Skin-Brightening Body Polish',
+      'Warm Steam Relaxation',
+      'Hydrating Body Wrap & Moisture Seal',
+      'Foot Reflexology Finish'
+    ],
+    duration: '90 mins',
+    regular_price: 0,
+    package_price: 0,
+    discount: 0,
+    savings: 0,
+    validity: 'Confirm with salon',
+    usage_rules: ['Please confirm availability, appointment timing and package pricing with the salon before booking.'],
+    outlets: ['Confirm with salon'],
+    image: '/images/prebridal_spa_ritual_1790676123541.jpg',
+    active: true,
+    featured: false,
+  },
 ];
 
 const PACKAGES_STORAGE_KEY = 'whitelabel_salon_packages_v3';
+const PACKAGE_SEED_MIGRATION_PREFIX = `${PACKAGES_STORAGE_KEY}_seed_v1_`;
+const NEW_PACKAGE_IDS = [
+  'pkg-royal-heritage-bridal-makeover',
+  'pkg-moroccan-botox-hair-revival',
+  'pkg-24k-gold-hydra-glow-pass',
+  'pkg-glam-night-sangeet-edit',
+  'pkg-velvet-touch-body-spa-ritual',
+];
+
+export function mergeNewPackagesOnce(
+  existing: SalonPackage[],
+  scope: string
+): { packages: SalonPackage[]; added: boolean } {
+  if (typeof window === 'undefined') return { packages: existing, added: false };
+
+  const marker = `${PACKAGE_SEED_MIGRATION_PREFIX}${scope}`;
+  try {
+    if (localStorage.getItem(marker) === 'done') {
+      return { packages: existing, added: false };
+    }
+
+    const existingIds = new Set(existing.map((pkg) => pkg.id));
+    const additions = INITIAL_PACKAGES.filter(
+      (pkg) => NEW_PACKAGE_IDS.includes(pkg.id) && !existingIds.has(pkg.id)
+    );
+    localStorage.setItem(marker, 'done');
+    return { packages: [...existing, ...additions], added: additions.length > 0 };
+  } catch (error) {
+    console.error('[packages] Package catalog migration could not be recorded:', error);
+    const existingIds = new Set(existing.map((pkg) => pkg.id));
+    const additions = INITIAL_PACKAGES.filter(
+      (pkg) => NEW_PACKAGE_IDS.includes(pkg.id) && !existingIds.has(pkg.id)
+    );
+    return { packages: [...existing, ...additions], added: additions.length > 0 };
+  }
+}
 
 export function getStoredPackages(): SalonPackage[] {
   if (typeof window === 'undefined') return INITIAL_PACKAGES;
@@ -379,7 +576,8 @@ export function getStoredPackages(): SalonPackage[] {
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      return parsed.map((pkg: SalonPackage) => {
+      const migration = mergeNewPackagesOnce(parsed as SalonPackage[], 'local-cache');
+      const normalized = migration.packages.map((pkg: SalonPackage) => {
         const { savings, discountPercent } = calculateSavings(pkg.regular_price, pkg.package_price);
         return {
           ...pkg,
@@ -387,6 +585,8 @@ export function getStoredPackages(): SalonPackage[] {
           discount: discountPercent,
         };
       });
+      if (migration.added) saveStoredPackages(normalized);
+      return normalized;
     }
     return INITIAL_PACKAGES;
   } catch (err) {

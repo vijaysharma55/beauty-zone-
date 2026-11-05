@@ -14,6 +14,8 @@ import {
   DEFAULT_USAGE_RULES,
   OUTLET_OPTIONS,
   PACKAGE_PRESET_IMAGES,
+  PACKAGE_NAME_SUGGESTIONS,
+  PACKAGE_BADGE_SUGGESTIONS,
   VALIDITY_OPTIONS,
   calculateSavings,
 } from '../data/packagesData';
@@ -57,9 +59,23 @@ const buildPackageEditorFields = (currentValidity?: string): EditorField[] => {
       aspect: 'aspect-[16/9]',
       help: 'The cover is rendered in a fixed-height card frame (h-48) with object-fit: cover, so portrait and landscape uploads both look clean.',
     },
-    { key: 'name', type: 'text', label: 'Package name', span: 2, required: true },
+    {
+      key: 'name',
+      type: 'text',
+      label: 'Package name',
+      span: 2,
+      required: true,
+      suggestions: PACKAGE_NAME_SUGGESTIONS,
+      help: 'Choose a quick-pick name or enter your own.',
+    },
     { key: 'tagline', type: 'text', label: 'Tagline', span: 2 },
-    { key: 'offer_name', type: 'text', label: 'Badge / offer label' },
+    {
+      key: 'offer_name',
+      type: 'text',
+      label: 'Badge / offer label',
+      suggestions: PACKAGE_BADGE_SUGGESTIONS,
+      help: 'Choose a quick-pick badge or enter your own.',
+    },
     { key: 'duration', type: 'text', label: 'Duration', placeholder: 'e.g. 180 mins' },
     { key: 'description', type: 'textarea', label: 'Description', span: 2, rows: 3, required: true },
     { key: 'regular_price', type: 'number', label: 'Regular price (₹)', min: 0, required: true },
@@ -388,6 +404,7 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
             {displayPackages.map((pkg, index) => {
               const isRulesOpen = expandedRulesId === pkg.id;
+              const hasPricing = Number(pkg.regular_price) > 0 && Number(pkg.package_price) > 0;
               return (
                 <RevealOnScroll key={pkg.id} delay={index * 0.1} duration={0.6} className="h-full min-w-0">
                   <div className="relative w-full h-full bg-white rounded-2xl border border-[#0F172A]/10 overflow-hidden hover:border-[#D09A40] transition-shadow hover:shadow-lg flex flex-col justify-between group shadow-2xs">
@@ -414,7 +431,9 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
                         {/* Top Savings Badge & Duration */}
                         <div className="absolute top-2.5 sm:top-3 left-2.5 sm:left-3 right-12 flex items-center justify-between gap-2">
                           <span className="px-2.5 sm:px-3 py-1 bg-[#D09A40] text-white text-[11px] sm:text-xs font-bold rounded-lg shadow-sm whitespace-nowrap">
-                            Save ₹{pkg.savings.toLocaleString('en-IN')} ({pkg.discount}% OFF)
+                            {hasPricing
+                              ? `Save ₹${pkg.savings.toLocaleString('en-IN')} (${pkg.discount}% OFF)`
+                              : 'Price on request'}
                           </span>
                           <span className="px-2 sm:px-2.5 py-1 bg-black/80 text-[#FAF5E5] text-[11px] sm:text-xs font-mono font-medium rounded-lg flex items-center gap-1.5 whitespace-nowrap shrink-0">
                             <Clock className="w-3.5 h-3.5 text-[#D09A40]" />
@@ -514,29 +533,41 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
                     {/* Pricing & Booking Action Footer - Unified alignment and no clipping */}
                     <div className="p-4 sm:p-5 lg:p-6 bg-[#FAF5E5]/60 border-t border-[#0F172A]/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3.5 sm:gap-4 shrink-0 mt-auto">
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-baseline gap-2 flex-wrap">
-                          <span className="text-2xl sm:text-3xl font-bold text-[#0F172A] tabular-nums tracking-tight">
-                            ₹{pkg.package_price.toLocaleString('en-IN')}
-                          </span>
-                          <span className="text-xs sm:text-sm text-neutral-400 line-through tabular-nums">
-                            ₹{pkg.regular_price.toLocaleString('en-IN')}
-                          </span>
-                        </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                          <span className="text-[11px] sm:text-xs font-semibold text-emerald-800 bg-emerald-100/90 border border-emerald-200/60 px-2 py-0.5 rounded-md inline-flex items-center gap-1">
-                            <span>Save ₹{pkg.savings.toLocaleString('en-IN')}</span>
-                            <span className="opacity-80">({pkg.discount}% OFF)</span>
-                          </span>
-                        </div>
+                        {hasPricing ? (
+                          <>
+                            <div className="flex items-baseline gap-2 flex-wrap">
+                              <span className="text-2xl sm:text-3xl font-bold text-[#0F172A] tabular-nums tracking-tight">
+                                ₹{pkg.package_price.toLocaleString('en-IN')}
+                              </span>
+                              <span className="text-xs sm:text-sm text-neutral-400 line-through tabular-nums">
+                                ₹{pkg.regular_price.toLocaleString('en-IN')}
+                              </span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              <span className="text-[11px] sm:text-xs font-semibold text-emerald-800 bg-emerald-100/90 border border-emerald-200/60 px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                                <span>Save ₹{pkg.savings.toLocaleString('en-IN')}</span>
+                                <span className="opacity-80">({pkg.discount}% OFF)</span>
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xl sm:text-2xl font-bold text-[#0F172A]">Price on request</span>
+                            <span className="text-[10px] sm:text-xs text-[#4A4A4A]">Ask the salon to confirm current pricing.</span>
+                          </div>
+                        )}
                       </div>
 
                       <button
                         type="button"
                         onClick={() => handleBookCurated(pkg)}
-                        className="w-full sm:w-auto shrink-0 px-5 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98] whitespace-nowrap"
+                        disabled={!hasPricing}
+                        aria-disabled={!hasPricing}
+                        title={!hasPricing ? 'Add package pricing before enabling bookings.' : undefined}
+                        className="w-full sm:w-auto shrink-0 px-5 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98] whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#0F172A] disabled:active:scale-100"
                       >
                         <CalendarCheck className="w-4 h-4 text-[#D09A40] shrink-0" />
-                        <span>{t('packagesBookCombo')}</span>
+                        <span>{hasPricing ? t('packagesBookCombo') : 'Pricing pending'}</span>
                         <ArrowRight className="w-4 h-4 shrink-0" />
                       </button>
                     </div>
