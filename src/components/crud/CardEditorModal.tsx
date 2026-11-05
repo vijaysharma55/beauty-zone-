@@ -39,6 +39,7 @@ export interface EditorField {
   /** Tailwind aspect utility used by the image preview, e.g. aspect-[4/3]. */
   aspect?: string;
   separator?: 'comma' | 'newline';
+  suggestions?: string[];
 }
 
 interface CardEditorModalProps {
@@ -344,10 +345,18 @@ export const CardEditorModal: React.FC<CardEditorModalProps> = ({
                       value={value ?? ''}
                       onChange={(event) => updateValue(field.key, event.target.value)}
                       placeholder={field.placeholder}
+                      list={field.suggestions?.length ? `${fieldId(field.key)}-suggestions` : undefined}
                       className={`${inputClass} ${
                         error ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : ''
                       }`}
                     />
+                  {field.suggestions?.length ? (
+                    <datalist id={`${fieldId(field.key)}-suggestions`}>
+                      {field.suggestions.map((suggestion) => (
+                        <option key={suggestion} value={suggestion} />
+                      ))}
+                    </datalist>
+                  ) : null}
                   )}
 
                   {field.help && !error && (

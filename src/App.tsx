@@ -21,7 +21,7 @@ import { Footer } from './components/Footer';
 import { FloatingActions } from './components/FloatingActions';
 import { MobileBottomDock } from './components/MobileBottomDock';
 import { ServiceCategory, SalonPackage, GalleryItem, VideoItem, ServiceItem } from './types';
-import { getStoredPackages, saveStoredPackages } from './data/packagesData';
+import { getStoredPackages, mergeNewPackagesOnce, saveStoredPackages } from './data/packagesData';
 import { getStoredGallery, saveStoredGallery } from './data/galleryData';
 import { getStoredVideos, saveStoredVideos } from './data/videosData';
 import { getStoredServices, saveStoredServices } from './data/servicesStore';
@@ -114,14 +114,26 @@ function MarketingSite() {
         ]);
         if (cancelled) return;
         if (cloudServices) { setServices(cloudServices); saveStoredServices(cloudServices); }
-        if (cloudPackages) { setPackages(cloudPackages); saveStoredPackages(cloudPackages); }
+        const packageSource = cloudPackages || packages;
+        const packageMigration = mergeNewPackagesOnce(
+          packageSource,
+          user?.id ? `owner-${user.id}` : 'public'
+        );
+        const currentPackages = packageMigration.packages;
+        if (cloudPackages || packageMigration.added) {
+          setPackages(currentPackages);
+          saveStoredPackages(currentPackages);
+        }
+        if (cloudPackages && user?.id && packageMigration.added) {
+          await saveSiteSection('packages', currentPackages);
+        }
         if (cloudGallery) { setGalleryItems(cloudGallery); saveStoredGallery(cloudGallery); }
         if (cloudVideos) { setVideos(cloudVideos); saveStoredVideos(cloudVideos); }
         // First signed-in visit: copy the existing local cache into that owner's cloud section.
         if (user?.id) {
           const firstSyncs: Promise<void>[] = [];
           if (!cloudServices) firstSyncs.push(saveSiteSection('services', services));
-          if (!cloudPackages) firstSyncs.push(saveSiteSection('packages', packages));
+          if (!cloudPackages) firstSyncs.push(saveSiteSection('packages', currentPackages));
           if (!cloudGallery) firstSyncs.push(saveSiteSection('gallery', galleryItems));
           if (!cloudVideos) firstSyncs.push(saveSiteSection('videos', videos));
           await Promise.all(firstSyncs);
