@@ -46,6 +46,15 @@ on conflict (id) do update set
   active=excluded.active,
   updated_at=now();
 
+-- Browser sessions may inspect only rows allowed by RLS. All balance, transaction,
+-- voucher and membership writes must go through the SECURITY DEFINER RPCs below.
+revoke insert, update, delete on table public.loyalty_accounts,
+  public.loyalty_transactions, public.loyalty_vouchers
+  from anon, authenticated;
+grant select on table public.loyalty_accounts,
+  public.loyalty_transactions, public.loyalty_vouchers
+  to authenticated;
+
 alter table public.loyalty_transactions
   add column if not exists source_booking_id text,
   add column if not exists redeem_request_id uuid;
@@ -104,23 +113,54 @@ begin
   end if;
 
   v_name := left(coalesce(nullif(trim(p_name),''), nullif(split_part(coalesce(v_email,''),'@',1),''), 'BeautyZone Guest'),120);
+
+  -- Serialize claims by verified mobile number so concurrent OTP callbacks
+  -- cannot create duplicate welcome bonuses or take over an existing account.
+  perform pg_advisory_xact_lock(hashtextextended(v_phone,0));
+
   select * into v_account
   from public.loyalty_accounts
-  where customer_id=v_user_id or phone=v_phone
+  where customer_id=v_user_id
+  for update;
+
+  if found then
+    if v_account.phone <> v_phone then
+      if exists (
+        select 1 from public.loyalty_accounts
+        where phone=v_phone and customer_id is distinct from v_user_id
+      ) then
+        raise exception using errcode='23505', message='This mobile number is already linked to another customer account';
+      end if;
+      update public.loyalty_accounts
+      set phone=v_phone,
+          name=case when trim(coalesce(p_name,''))<>'' then v_name else name end,
+          tier=case when lifetime_points>=1500 then 'platinum' when lifetime_points>=500 then 'gold' else 'silver' end,
+          updated_at=now()
+      where id=v_account.id
+      returning * into v_account;
+    elsif trim(coalesce(p_name,''))<>'' and v_account.name<>v_name then
+      update public.loyalty_accounts set name=v_name,updated_at=now()
+      where id=v_account.id returning * into v_account;
+    end if;
+    return to_jsonb(v_account);
+  end if;
+
+  select * into v_account
+  from public.loyalty_accounts
+  where phone=v_phone
   for update;
 
   if found then
     if v_account.customer_id is not null and v_account.customer_id <> v_user_id then
       raise exception using errcode='23505', message='This mobile number is already linked to another customer account';
     end if;
-    if v_account.customer_id is null then
-      update public.loyalty_accounts
-      set customer_id=v_user_id, name=case when trim(coalesce(p_name,''))<>'' then v_name else name end,
-          tier=case when lifetime_points>=1500 then 'platinum' when lifetime_points>=500 then 'gold' else 'silver' end,
-          updated_at=now()
-      where id=v_account.id
-      returning * into v_account;
-    end if;
+    update public.loyalty_accounts
+    set customer_id=v_user_id,
+        name=case when trim(coalesce(p_name,''))<>'' then v_name else name end,
+        tier=case when lifetime_points>=1500 then 'platinum' when lifetime_points>=500 then 'gold' else 'silver' end,
+        updated_at=now()
+    where id=v_account.id
+    returning * into v_account;
     return to_jsonb(v_account);
   end if;
 
@@ -129,27 +169,12 @@ begin
     (owner_id,customer_id,phone,name,member_id,tier,total_points,lifetime_points,visits_count)
   values
     (null,v_user_id,v_phone,v_name,v_member,'silver',100,100,0)
-  on conflict (phone) do nothing
   returning * into v_account;
 
-  if v_account.id is null then
-    select * into v_account from public.loyalty_accounts where phone=v_phone for update;
-    if not found or (v_account.customer_id is not null and v_account.customer_id<>v_user_id) then
-      raise exception using errcode='23505', message='This mobile number is already linked to another customer account';
-    end if;
-    update public.loyalty_accounts set customer_id=v_user_id, updated_at=now()
-    where id=v_account.id returning * into v_account;
-  else
-    v_created := true;
-  end if;
-
-  if v_created then
-    insert into public.loyalty_transactions
-      (account_id,phone,service_title,bill_amount,points,transaction_type,type,description)
-    values
-      (v_account.id,v_phone,'Welcome Loyalty Bonus',0,100,'bonus','bonus','Welcome gift for joining BeautyZone VIP Rewards');
-  end if;
-
+  insert into public.loyalty_transactions
+    (account_id,phone,service_title,bill_amount,points,transaction_type,type,description)
+  values
+    (v_account.id,v_phone,'Welcome Loyalty Bonus',0,100,'bonus','bonus','Welcome gift for joining BeautyZone VIP Rewards');
   return to_jsonb(v_account);
 end;
 $$;
@@ -401,6 +426,7 @@ revoke all on function public.consume_customer_loyalty_voucher(text,text) from p
 grant execute on function public.consume_customer_loyalty_voucher(text,text) to authenticated;
 
 create or replace function public.award_completed_loyalty_points(
+  p_actor_id uuid,
   p_phone text,
   p_name text,
   p_external_booking_id text,
@@ -413,21 +439,27 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_user_id uuid := (select auth.uid());
   v_role text;
   v_phone text;
   v_account public.loyalty_accounts%rowtype;
   v_existing public.loyalty_transactions%rowtype;
   v_points integer;
   v_member text;
+  v_multiplier numeric := 1;
 begin
-  if v_user_id is null then raise exception using errcode='42501', message='Authenticated salon owner session required'; end if;
-  select role into v_role from public.profiles where id=v_user_id;
-  if coalesce(v_role,'')<>'salon_owner' and not (select private.is_super_admin()) then
+  -- Only the trusted application server may invoke this function. A browser
+  -- salon-owner JWT must never be able to award points to arbitrary phone numbers.
+  if coalesce(auth.role(),'') <> 'service_role' then
+    raise exception using errcode='42501', message='Only the trusted application server may award visit points';
+  end if;
+  if p_actor_id is null then raise exception using errcode='22023', message='Authenticated salon owner identity is required'; end if;
+
+  select role into v_role from public.profiles where id=p_actor_id;
+  if coalesce(v_role,'') not in ('salon_owner','super_admin') then
     raise exception using errcode='42501', message='Only a salon owner or super admin may award visit points';
   end if;
   if v_role='salon_owner' and not exists (
-    select 1 from public.salons s where s.owner_id=v_user_id and not s.suspended
+    select 1 from public.salons s where s.owner_id=p_actor_id and not s.suspended
   ) then
     raise exception using errcode='42501', message='No active salon is linked to this owner';
   end if;
@@ -442,20 +474,17 @@ begin
   if length(v_phone)=12 and left(v_phone,2)='91' then v_phone:=right(v_phone,10); end if;
   if length(v_phone)<>10 then raise exception using errcode='22023', message='Customer mobile number is invalid'; end if;
 
+  perform pg_advisory_xact_lock(hashtextextended(v_phone,0));
   select * into v_account from public.loyalty_accounts where phone=v_phone for update;
   if not found then
     v_member := 'VIP-'||right(v_phone,4)||'-'||upper(substr(encode(gen_random_bytes(4),'hex'),1,8));
     insert into public.loyalty_accounts
       (owner_id,customer_id,phone,name,member_id,tier,total_points,lifetime_points,visits_count)
     values
-      (v_user_id,null,v_phone,left(coalesce(nullif(trim(p_name),''),'BeautyZone Guest'),120),v_member,'silver',0,0,0)
-    on conflict(phone) do nothing
+      (p_actor_id,null,v_phone,left(coalesce(nullif(trim(p_name),''),'BeautyZone Guest'),120),v_member,'silver',0,0,0)
     returning * into v_account;
-    if v_account.id is null then
-      select * into v_account from public.loyalty_accounts where phone=v_phone for update;
-    end if;
   elsif v_account.owner_id is null then
-    update public.loyalty_accounts set owner_id=v_user_id,updated_at=now()
+    update public.loyalty_accounts set owner_id=p_actor_id,updated_at=now()
     where id=v_account.id returning * into v_account;
   end if;
 
@@ -468,10 +497,8 @@ begin
     );
   end if;
 
-  v_points := floor(p_bill_amount::numeric/10)::integer;
-  if v_points<1 then
-    return jsonb_build_object('awarded',false,'reason','Bill amount is below the points threshold','pointsEarned',0);
-  end if;
+  v_multiplier := case v_account.tier when 'platinum' then 1.5 when 'gold' then 1.25 else 1 end;
+  v_points := round(greatest(100::numeric,round(p_bill_amount::numeric/10)) * v_multiplier)::integer;
 
   update public.loyalty_accounts
   set total_points=total_points+v_points,
@@ -497,5 +524,6 @@ begin
   );
 end;
 $$;
-revoke all on function public.award_completed_loyalty_points(text,text,text,text,bigint) from public, anon;
-grant execute on function public.award_completed_loyalty_points(text,text,text,text,bigint) to authenticated;
+drop function if exists public.award_completed_loyalty_points(text,text,text,text,bigint);
+revoke all on function public.award_completed_loyalty_points(uuid,text,text,text,text,bigint) from public, anon, authenticated;
+grant execute on function public.award_completed_loyalty_points(uuid,text,text,text,text,bigint) to service_role;
