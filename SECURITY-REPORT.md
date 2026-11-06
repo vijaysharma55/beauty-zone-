@@ -26,6 +26,7 @@ Original code accepted a local SQLite super_admin role when the verified Supabas
 | High | Server-only SUPABASE_SECRET_KEY absent from production Vercel config. | Configure through Vercel encrypted environment variable; never VITE-prefixed. |
 | High | Razorpay credentials absent; payment endpoint unavailable. | Configure provider secrets and webhook signature secret. |
 | High | Legacy email delivery writes outbox files and logs email contents. | Configure real transactional email provider; redact tokens and addresses from logs. |
+| High | Password-reset email includes the raw reset token and `sendMail()` logs the full text body. | Remove token-in-body and message-body logging; rotate/invalidate any exposed tokens if real accounts were sent through this path. |
 | Medium | CSP permits unsafe-inline, unsafe-eval and broad HTTPS sources. | Move to CSP Report-Only, collect reports, then enforce a source-specific policy. |
 | Medium | CSRF middleware accepts requests with malformed Origin/Referer by calling next(). | Reject malformed origin headers for unsafe methods; validate against exact allowed origins. |
 | Medium | CSRF allowlist includes broad Google-related suffixes. | Reduce to explicitly required app origins. |
