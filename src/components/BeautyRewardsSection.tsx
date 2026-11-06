@@ -15,7 +15,7 @@ import {
   Calendar,
   Phone,
 } from 'lucide-react';
-import { LOYALTY_TIERS, REWARD_OFFERS } from '../data/loyaltyData';
+import { LOYALTY_TIERS } from '../data/loyaltyData';
 import { LoyaltyCustomer, RewardOffer } from '../types';
 import { WhatsAppIcon } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
@@ -32,7 +32,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
 }) => {
   const { brand, formatPrice, t } = useBrand();
   const [customer, setCustomer] = useState<LoyaltyCustomer | null>(null);
-  const [offers, setOffers] = useState<RewardOffer[]>(REWARD_OFFERS);
+  const [offers, setOffers] = useState<RewardOffer[]>([]);
   const [activeTab, setActiveTab] = useState<'rewards' | 'history' | 'redeemed' | 'calculator'>('rewards');
   const [phoneNumberInput, setPhoneNumberInput] = useState('');
   const [memberName, setMemberName] = useState('');
@@ -101,7 +101,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
       badge: offer.badge || undefined,
     }));
     setCustomer(mappedCustomer);
-    if (liveOffers.length) setOffers(liveOffers);
+    setOffers(liveOffers);
   };
 
   useEffect(() => {
@@ -331,7 +331,10 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
   };
 
   const progressStats = getProgressStats();
-  const estimatedPoints = Math.round(Math.max(100, Math.max(0, calcBillAmount) / 10) * currentTierConfig.multiplier);
+  const billForCalculation = Math.max(0, calcBillAmount);
+  const estimatedPoints = billForCalculation > 0
+    ? Math.round(Math.max(100, Math.round(billForCalculation / 10)) * currentTierConfig.multiplier)
+    : 0;
 
 
   return (
@@ -654,6 +657,11 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
 
         {/* Tab 1: Available Rewards */}
         {activeTab === 'rewards' && (
+          offers.length === 0 ? (
+            <div className="rounded-2xl bg-white border border-neutral-200 p-8 text-center text-sm text-neutral-600">
+              No rewards are currently available. Please check again later.
+            </div>
+          ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {offers.map((offer) => {
               const canAfford = customer.totalPoints >= offer.pointsCost;
@@ -716,6 +724,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
               );
             })}
           </div>
+          )
         )}
 
         {/* Tab 2: Visit History */}
@@ -750,7 +759,9 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
                       <div className="flex items-center gap-2">
                         <h4 className="font-bold text-sm text-[#0F172A]">{act.serviceTitle}</h4>
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                          {act.type === 'bonus'
+                          {act.type === 'redeem'
+                            ? 'Reward redeemed'
+                            : act.type === 'bonus'
                             ? 'Bonus'
                             : act.type === 'referral'
                             ? 'Referral'
@@ -769,8 +780,8 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
                   </div>
 
                   <div className="text-right sm:shrink-0 w-full sm:w-auto flex sm:flex-col justify-between sm:justify-end items-center sm:items-end">
-                    <span className="text-base font-bold text-emerald-700 font-mono">
-                      +{act.pointsEarned} pts
+                    <span className={`text-base font-bold font-mono ${act.pointsEarned < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                      {act.pointsEarned > 0 ? '+' : ''}{act.pointsEarned} pts
                     </span>
                     {act.billAmount > 0 && (
                       <span className="text-[11px] text-[#4A4A4A]">
@@ -829,11 +840,13 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
                         <span
                           className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
                             red.status === 'active'
-                              ? 'bg-amber-100 text-amber-900'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : red.status === 'expired'
+                              ? 'bg-rose-100 text-rose-800'
                               : 'bg-neutral-200 text-neutral-600'
                           }`}
                         >
-                          {red.status === 'active' ? 'Active - Ready to Use' : 'Used in Salon'}
+                          {red.status === 'active' ? 'Active - Ready to Use' : red.status === 'expired' ? 'Expired' : 'Used in Salon'}
                         </span>
                       </div>
 
@@ -869,7 +882,8 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
                         </button>
                         <button
                           onClick={() => handleTriggerBooking(red.voucherCode)}
-                          className="px-3 py-1.5 rounded-xl bg-[#D09A40] text-[#0F172A] text-xs font-bold cursor-pointer"
+                          disabled={red.status !== 'active'}
+                          className="px-3 py-1.5 rounded-xl bg-[#D09A40] text-[#0F172A] text-xs font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           Use Now
                         </button>
