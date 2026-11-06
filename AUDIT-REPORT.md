@@ -67,6 +67,8 @@ The application is not a single-database Supabase application. The README and `d
 | A-15 | P2 | No committed npm lockfile; CI uses `npm install --no-audit --no-fund`. | Unresolved dependency reproducibility/supply-chain improvement. |
 | A-16 | P2 | TypeScript config does not enable strict mode; no ESLint, Playwright, axe or Lighthouse workflow was found. | Unresolved QA/tooling gap. |
 
+Additional route probe (2026-11-06): direct HTTP requests to `/login`, `/register`, `/salons`, `/dashboard`, `/my-appointments` and `/salon/lumina-luxe` returned HTTP 404 on both production and the latest Vercel PR preview. The root `/` and the emitted `/spa.html` return HTTP 200. Although `vercel.json` declares a catch-all rewrite to `/spa.html`, the deployed route behavior does not follow that expectation. Client-side in-app navigation was not browser-tested. Treat hard refresh/deep-link routing as a P1 deployment blocker and retest after a route rewrite correction.
+
 ## Production smoke tests
 
 Observed against the live domain on 2026-11-06:
