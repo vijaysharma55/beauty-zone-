@@ -931,7 +931,7 @@ ownerBookingsRouter.post('/:bookingId/loyalty/retry', asyncHandler(async (req, r
  * award fails, the completion remains saved and the owner can retry it.
  */
 async function releaseBookingLoyaltyVoucher(row) {
-  if (!row?.promo_code || row.loyalty_voucher_status !== 'reserved') {
+  if (!row?.promo_code || !['reserved','release_failed'].includes(row.loyalty_voucher_status)) {
     return { released: false, alreadyReleased: true };
   }
   const externalBookingId = `${row.salon_id || 'public'}:${row.id}`;
