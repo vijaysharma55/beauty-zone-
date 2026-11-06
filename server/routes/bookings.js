@@ -1014,6 +1014,14 @@ ownerBookingsRouter.patch('/:bookingId', asyncHandler(async (req, res) => {
   if (!BOOKING_STATUSES.includes(status) || status === 'expired') {
     throw new ValidationError('Invalid booking status');
   }
+  if (status === 'requested' && ['cancelled','declined'].includes(row.status)
+    && row.promo_code && row.loyalty_voucher_status !== 'reserved') {
+    throw new HttpError(
+      409,
+      'This booking voucher was released or consumed. Create a new appointment to apply an eligible voucher again.',
+      'VOUCHER_RESERVATION_CLOSED'
+    );
+  }
 
   let finalBillAmount = row.final_bill_amount === null || row.final_bill_amount === undefined
     ? null
@@ -1023,8 +1031,9 @@ ownerBookingsRouter.patch('/:bookingId', asyncHandler(async (req, res) => {
     if (!Number.isSafeInteger(finalBillAmount) || finalBillAmount <= 0 || finalBillAmount > 10000000) {
       throw new ValidationError('Enter the actual final bill amount (₹1 to ₹1,00,00,000) before completing this booking.');
     }
-    if (row.loyalty_award_status === 'awarded' && finalBillAmount !== Number(row.final_bill_amount)) {
-      throw new HttpError(409, 'The final bill cannot be changed after loyalty points have been awarded.', 'LOYALTY_ALREADY_AWARDED');
+    if (row.final_bill_amount !== null && row.final_bill_amount !== undefined
+      && finalBillAmount !== Number(row.final_bill_amount)) {
+      throw new HttpError(409, 'The final bill is locked after completion. Use an approved adjustment workflow instead of changing the amount during a points retry.', 'FINAL_BILL_LOCKED');
     }
   } else if (req.body?.finalBillAmount !== undefined) {
     throw new ValidationError('Final bill amount can only be submitted when marking a booking completed.');
