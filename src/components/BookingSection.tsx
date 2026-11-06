@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { SALON_SERVICES } from '../data/salonData';
-import { REWARD_OFFERS, getStoredLoyaltyCustomer } from '../data/loyaltyData';
 import { BookingFormState, ServiceItem } from '../types';
 import {
   Calendar,
@@ -41,6 +40,7 @@ import type { SalonStaff } from '../types/auth';
 import { DEMO_SALON_STAFF } from '../data/demoStaffData';
 import { useBrand } from '../context/BrandContext';
 import { api } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { useAvailability, FALLBACK_SLOTS } from '../hooks/useAvailability';
 import { PaymentCheckout } from './payment/PaymentCheckout';
 import {
@@ -80,44 +80,6 @@ interface BookingSectionProps {
 
 /** Legacy static grid — kept as the last-resort render when a date is not chosen yet. */
 const TIME_SLOTS = FALLBACK_SLOTS.map((slot) => slot.label);
-
-/**
- * Cash value of a redeemed loyalty reward.
- *
- * Looks the reward up in the live catalogue (by title, then by fuzzy match) and
- * parses the advertised worth, e.g. "100% Free Service (Worth ₹1,800)" → 1800.
- * Falls back to the smallest catalogue value so a renamed reward still applies
- * a sensible discount instead of silently breaking a check-out.
- */
-const catalogueFloor = () =>
-  REWARD_OFFERS.reduce((min, offer) => {
-    const value = Number.parseInt(offer.discountValue.replace(/[^\d]/g, ''), 10);
-    return Number.isFinite(value) && value > 0 ? Math.min(min, value) : min;
-  }, 500);
-
-function rewardValueFor(rewardTitle: string): number {
-  const title = (rewardTitle || '').toLowerCase();
-  const exact = REWARD_OFFERS.find((offer) => offer.title.toLowerCase() === title);
-  const match =
-    exact ||
-    REWARD_OFFERS.find((offer) => {
-      const words = offer.title
-        .toLowerCase()
-        .replace(/[^a-z\s]/g, ' ')
-        .split(/\s+/)
-        .filter((w) => w.length > 3);
-      return words.some((w) => title.includes(w));
-    });
-
-  if (match) {
-    const parsed = Number.parseInt(match.discountValue.replace(/[^\d]/g, ''), 10);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
-  }
-
-  const fromTitle = Number.parseInt((rewardTitle || '').replace(/[^\d]/g, ''), 10);
-  if (Number.isFinite(fromTitle) && fromTitle > 0) return fromTitle;
-  return catalogueFloor();
-}
 
 /** Visual Service Picker Component */
 const ServicePicker: React.FC<{
@@ -599,74 +561,31 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   const validateAndApplyPromo = async (codeToTest: string) => {
     const clean = codeToTest.trim().toUpperCase();
     setPromoError(null);
+    setAppliedPromo(null);
     if (!clean) return;
 
     try {
-      const res = await api.post<{
-        valid: boolean;
-        voucher: {
-          code: string;
-          title: string;
-          discountAmount: number;
-          phone: string;
-        };
-      }>('/public/loyalty/verify-voucher', { code: clean });
-
-      if (res && res.valid && res.voucher) {
-        setAppliedPromo({
-          code: res.voucher.code,
-          title: res.voucher.title,
-          discountAmount: res.voucher.discountAmount,
-        });
-        return;
+      const result = await supabase.db.rpc<any>('validate_customer_loyalty_voucher', {
+        p_code: clean,
+        p_booking_phone: form.phone.trim(),
+        p_service_title: form.selectedService,
+        p_location_type: form.locationType,
+        p_bill_amount: Math.max(0, Math.round(treatmentPrice + distanceFee)),
+        p_distance_km: form.locationType === 'home' ? form.distanceKm : null,
+      });
+      if (!result?.valid || !result?.voucher) {
+        throw new Error('This voucher is not eligible for this booking or does not belong to your signed-in rewards account.');
       }
-    } catch (err: any) {
-      console.warn('[booking] Live voucher verify failed or code invalid on server, checking local fallback', err);
-      if (err?.message && !err.message.includes('Fetch error') && !err.message.includes('Failed to fetch')) {
-        setPromoError(err.message);
-        return;
-      }
-    }
-
-    // Local fallback check for voucher
-    const storedCustomer = getStoredLoyaltyCustomer();
-    const matchedRedeemed = storedCustomer.redeemedRewards.find(
-      (r) => r.voucherCode.toUpperCase() === clean
-    );
-
-    if (matchedRedeemed) {
       setAppliedPromo({
-        code: clean,
-        title: matchedRedeemed.rewardTitle,
-        discountAmount: rewardValueFor(matchedRedeemed.rewardTitle),
+        code: String(result.voucher.code),
+        title: String(result.voucher.title),
+        discountAmount: Number(result.voucher.discountAmount || 0),
       });
-      return;
-    }
-
-    if (clean.includes('1500') || clean.startsWith('ROYAL')) {
-      setAppliedPromo({
-        code: clean,
-        title: 'Royal Bridal Booking Discount',
-        discountAmount: 1500,
-      });
-    } else if (
-      clean.startsWith(brand.bookingPrefix.toUpperCase()) ||
-      clean.startsWith(brand.giftCardPrefix.toUpperCase()) ||
-      clean.startsWith('BZ-') ||
-      clean.startsWith('VIP-') ||
-      clean.includes('500') ||
-      clean.includes('GLOW') ||
-      clean.includes('GIFT')
-    ) {
-      setAppliedPromo({
-        code: clean,
-        title: `${brand.brandName} Privilege Voucher`,
-        discountAmount: 500,
-      });
-    } else {
-      setPromoError(
-        `Invalid voucher code. Try "${brand.bookingPrefix}-GLOW-500" or redeem a code from the ${brand.loyaltyClubName} section.`
-      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not verify this voucher.';
+      setPromoError(message.includes('JWT') || message.includes('sign in')
+        ? 'Sign in with your verified mobile OTP before applying a rewards voucher.'
+        : message);
     }
   };
 

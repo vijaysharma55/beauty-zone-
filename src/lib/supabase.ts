@@ -9,6 +9,8 @@ export interface SupabaseUser {
   id: string;
   email?: string;
   email_confirmed_at?: string | null;
+  phone?: string;
+  phone_confirmed_at?: string | null;
   user_metadata?: Record<string, unknown>;
   app_metadata?: Record<string, unknown>;
 }
@@ -129,6 +131,29 @@ export const supabase = {
       if (session) persistSession(session, 'SIGNED_IN');
       return { user: result?.user || session?.user || null, session };
     },
+    signInWithOtp: async (phone: string): Promise<void> => {
+      const normalizedPhone = String(phone || '').trim();
+      if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone)) {
+        throw new Error('Enter a valid mobile number in international format.');
+      }
+      await authRequest('/otp', { phone: normalizedPhone });
+    },
+    verifyPhoneOtp: async (phone: string, token: string): Promise<AuthResult> => {
+      const normalizedPhone = String(phone || '').trim();
+      const normalizedToken = String(token || '').trim();
+      if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone) || !/^\d{6}$/.test(normalizedToken)) {
+        throw new Error('Enter a valid mobile number and the 6-digit OTP.');
+      }
+      const result = await authRequest<any>('/verify', {
+        type: 'sms',
+        phone: normalizedPhone,
+        token: normalizedToken,
+      });
+      const session = normalizedSession(result);
+      if (!session) throw new Error('Supabase did not return a verified phone session.');
+      persistSession(session, 'SIGNED_IN');
+      return { user: session.user, session };
+    },
     signInWithPassword: async (email: string, password: string): Promise<AuthResult> => {
       const result = await authRequest<any>('/token?grant_type=password', { email, password });
       const session = normalizedSession(result);
@@ -200,6 +225,23 @@ export const supabase = {
     },
   },
   db: {
+    rpc: async <T>(functionName: string, params: Record<string, unknown> = {}): Promise<T> => {
+      if (!/^[a-z][a-z0-9_]*$/.test(functionName)) {
+        throw new Error('Invalid Supabase function name.');
+      }
+      const session = await currentSession();
+      if (!session) throw new Error('Please sign in with a verified phone OTP first.');
+      const response = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + functionName, {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: 'Bearer ' + session.access_token,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(params),
+      });
+      return parseResponse<T>(response);
+    },
     select: async <T>(table: string, query = ''): Promise<T[]> => {
       const session = await currentSession();
       const response = await fetch(SUPABASE_URL + '/rest/v1/' + table + (query ? '?' + query : ''), {
