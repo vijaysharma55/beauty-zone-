@@ -34,8 +34,19 @@ test('only public, approved salon profiles are included in the generated sitemap
     assert.equal(slugs.length, 105);
     assert.equal(listLiveSalonSlugs(db, { limit: 10, offset: 100 }).length, 5);
     assert.deepEqual(await getSalonSlugs('https://example.com', { DATABASE_PATH: file }), slugs);
-    const xml = createSitemap('https://example.com', { home: '/', salons: '/salons' }, slugs);
+    const xml = createSitemap('https://example.com', {
+      home: '/',
+      login: '/login',
+      register: '/register',
+      forgotPassword: '/forgot-password',
+      resetPassword: '/reset-password',
+      verifyEmail: '/verify-email',
+      salons: '/salons',
+    }, slugs);
     assert.equal((xml.match(/<loc>/g) || []).length, 107);
+    for (const privateRoute of ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email']) {
+      assert.doesNotMatch(xml, new RegExp(privateRoute.replaceAll('/', '\\/')));
+    }
     assert.match(xml, /<loc>https:\/\/example.com\/salon\/studio-104<\/loc>/);
     assert.doesNotMatch(xml, /\/salon\/(draft|suspended|rejected|changes|unapproved)</);
     assert.equal((xml.match(/\/salon\/studio-000</g) || []).length, 1);
