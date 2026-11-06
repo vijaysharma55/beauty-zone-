@@ -42,6 +42,19 @@ Image storage uses the beautyzone-assets bucket. Public image reads are
 enabled; authenticated uploads, updates and deletes must use a first-level
 folder matching the caller's auth.uid().
 
+## Customer appointment history
+
+Migration `20261106_beautyzone_customer_appointment_history.sql` adds
+`bookings.customer_id` (nullable, `ON DELETE SET NULL`), allows the `no_show`
+status, and adds the SELECT policy `bookings_customer_select` so a signed-in
+customer can read only rows where `customer_id = auth.uid()`. Rows are linked to
+a customer by **verified** phone number (one-off backfill plus the
+`private.link_booking_customer` insert trigger); an ambiguous number is left
+unlinked. The customer UI is `/my-appointments` (`src/components/customer/`).
+
+Note: the live booking flow (`POST /public/bookings`) still writes to SQLite, so
+this table only contains bookings that have been mirrored/migrated into Supabase.
+
 ## Auth integration and configuration
 
 Frontend variables:
