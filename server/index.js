@@ -23,7 +23,6 @@ import { publicRouter } from './routes/public.js';
 import { adminRouter } from './routes/admin.js';
 import { aiRouter } from './routes/ai.js';
 import { bookingsRouter } from './routes/bookings.js';
-import { loyaltyRouter } from './routes/loyalty.js';
 import { paymentsRouter } from './routes/payments.js';
 import { receiptsRouter } from './routes/receipts.js';
 import { whatsappWebhookRouter } from './notifications/whatsapp-webhook.js';
@@ -100,7 +99,6 @@ app.use('/api/public', publicRouter);
 app.use('/api/ai', aiRouter);
 // /api/public/bookings — visitor appointment requests
 app.use('/api/public', bookingsRouter);
-app.use('/api/public', loyaltyRouter);
 // /api/public/payments — booking checkout (mock + Razorpay + manual UPI), also at /api/payments
 app.use('/api/public/payments', paymentsRouter);
 app.use('/api/payments', paymentsRouter);

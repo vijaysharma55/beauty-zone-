@@ -194,6 +194,12 @@ db.exec(`
     notes TEXT NOT NULL DEFAULT '',
     promo_code TEXT,
     estimated_total INTEGER NOT NULL DEFAULT 0,
+    final_bill_amount INTEGER CHECK (final_bill_amount IS NULL OR (final_bill_amount > 0 AND final_bill_amount <= 10000000)),
+    loyalty_award_status TEXT NOT NULL DEFAULT 'not_awarded' CHECK (loyalty_award_status IN ('not_awarded','pending','awarded','failed','not_eligible')),
+    loyalty_points_awarded INTEGER NOT NULL DEFAULT 0 CHECK (loyalty_points_awarded >= 0),
+    loyalty_award_error TEXT NOT NULL DEFAULT '',
+    loyalty_voucher_status TEXT NOT NULL DEFAULT 'none' CHECK (loyalty_voucher_status IN ('none','reserved','used','released','release_failed')),
+    loyalty_voucher_error TEXT NOT NULL DEFAULT '',
     advance_paid INTEGER NOT NULL DEFAULT 0,
     advance_ref TEXT,
     amount_paise INTEGER NOT NULL DEFAULT 0,
@@ -399,6 +405,24 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_stylist_inquiries_salon ON stylist_inquiries(salon_id);
 `);
+
+
+// Additive compatibility migration for SQLite files created before loyalty award
+// tracking was introduced. New databases already have these columns above.
+const bookingColumns = new Set(db.prepare('PRAGMA table_info(bookings)').all().map((column) => column.name));
+const bookingColumnMigrations = [
+  ['final_bill_amount', "INTEGER CHECK (final_bill_amount IS NULL OR (final_bill_amount > 0 AND final_bill_amount <= 10000000))"],
+  ['loyalty_award_status', "TEXT NOT NULL DEFAULT 'not_awarded' CHECK (loyalty_award_status IN ('not_awarded','pending','awarded','failed','not_eligible'))"],
+  ['loyalty_points_awarded', 'INTEGER NOT NULL DEFAULT 0 CHECK (loyalty_points_awarded >= 0)'],
+  ['loyalty_award_error', "TEXT NOT NULL DEFAULT ''"],
+  ['loyalty_voucher_status', "TEXT NOT NULL DEFAULT 'none' CHECK (loyalty_voucher_status IN ('none','reserved','used','released','release_failed'))"],
+  ['loyalty_voucher_error', "TEXT NOT NULL DEFAULT ''"],
+];
+for (const [column, definition] of bookingColumnMigrations) {
+  if (!bookingColumns.has(column)) {
+    db.exec('ALTER TABLE bookings ADD COLUMN ' + column + ' ' + definition);
+  }
+}
 
 export const nowIso = () => new Date().toISOString();
 export const newId = () => crypto.randomUUID();
