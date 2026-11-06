@@ -894,7 +894,7 @@ ownerBookingsRouter.patch('/:bookingId', asyncHandler(async (req, res) => {
   if (status === 'completed') {
     const updatedRow = db.prepare('SELECT * FROM bookings WHERE id = ?').get(row.id);
     try {
-      loyaltyReward = await creditLoyaltyPointsForCompletedBooking(updatedRow, req.get('authorization'));
+      loyaltyReward = await creditLoyaltyPointsForCompletedBooking(updatedRow, req.user?.supabase_uid);
     } catch (error) {
       // Completion is an operational salon action. Keep it completed, but make
       // the failed points award visible and retryable; the RPC is idempotent.
