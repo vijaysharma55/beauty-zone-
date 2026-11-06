@@ -14,17 +14,12 @@ import {
   MapPin,
   Calendar,
 } from 'lucide-react';
-import {
-  LOYALTY_TIERS,
-  REWARD_OFFERS,
-  DEMO_CUSTOMERS,
-  getStoredLoyaltyCustomer,
-  saveStoredLoyaltyCustomer,
-} from '../data/loyaltyData';
+import { LOYALTY_TIERS, REWARD_OFFERS } from '../data/loyaltyData';
 import { LoyaltyCustomer, RewardOffer } from '../types';
 import { WhatsAppIcon } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
 import { api } from '../lib/api';
+import { supabase } from '../lib/supabase';
 
 interface BeautyRewardsSectionProps {
   onBookWithReward?: (voucherCode: string) => void;
@@ -36,9 +31,19 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
   onBookAppointment,
 }) => {
   const { brand, formatPrice, t } = useBrand();
-  const [customer, setCustomer] = useState<LoyaltyCustomer>(() => getStoredLoyaltyCustomer());
+  const [customer, setCustomer] = useState<LoyaltyCustomer | null>(null);
+  const [offers, setOffers] = useState<RewardOffer[]>(REWARD_OFFERS);
   const [activeTab, setActiveTab] = useState<'rewards' | 'history' | 'redeemed' | 'calculator'>('rewards');
   const [phoneNumberInput, setPhoneNumberInput] = useState('');
+  const [memberName, setMemberName] = useState('');
+  const [otp, setOtp] = useState('');
+  const [otpRequested, setOtpRequested] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [customerBusy, setCustomerBusy] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authNotice, setAuthNotice] = useState('');
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [redeemingOfferId, setRedeemingOfferId] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [recentlyRedeemed, setRecentlyRedeemed] = useState<{
     title: string;
@@ -47,268 +52,181 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
   } | null>(null);
   const [calcBillAmount, setCalcBillAmount] = useState<number>(4500);
 
+  const loadCustomerDashboard = async (name = '') => {
+    await supabase.db.rpc('ensure_customer_loyalty_account', { p_name: name });
+    const dashboard = await supabase.db.rpc<any>('get_customer_loyalty_dashboard', {});
+    const account = dashboard?.account;
+    if (!account) throw new Error('Your rewards account could not be loaded.');
+
+    const mappedCustomer: LoyaltyCustomer = {
+      phone: String(account.phone || ''),
+      name: String(account.name || 'BeautyZone Guest'),
+      memberId: String(account.memberId || ''),
+      tier: account.tier || 'silver',
+      totalPoints: Number(account.totalPoints || 0),
+      lifetimePoints: Number(account.lifetimePoints || 0),
+      visitsCount: Number(account.visitsCount || 0),
+      joinedDate: account.joinedDate
+        ? new Date(account.joinedDate).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+        : 'Recently',
+      activities: (dashboard.activities || []).map((activity: any) => ({
+        id: String(activity.id),
+        date: activity.date ? new Date(activity.date).toLocaleDateString('en-IN') : 'Recently',
+        branch: brand.cityName + ' Studio',
+        serviceTitle: String(activity.serviceTitle || 'Salon activity'),
+        billAmount: Number(activity.billAmount || 0),
+        pointsEarned: Number(activity.pointsEarned || 0),
+        type: activity.type === 'bonus' ? 'bonus' : activity.type === 'redeem' ? 'redeem' : 'visit',
+      })),
+      redeemedRewards: (dashboard.vouchers || []).map((voucher: any) => ({
+        id: String(voucher.voucherCode),
+        rewardTitle: String(voucher.rewardTitle || 'BeautyZone Reward'),
+        voucherCode: String(voucher.voucherCode),
+        pointsCost: Number(voucher.pointsCost || 0),
+        dateRedeemed: voucher.dateRedeemed ? new Date(voucher.dateRedeemed).toLocaleDateString('en-IN') : 'Recently',
+        validTill: voucher.validTill ? new Date(voucher.validTill).toLocaleDateString('en-IN') : '—',
+        status: voucher.status === 'used' ? 'used' : voucher.status === 'expired' ? 'expired' : 'active',
+        discountValue: String(voucher.discountValue || (Number(voucher.discountAmount || 0) ? '₹' + voucher.discountAmount + ' Off' : 'Reward')),
+      })),
+    };
+
+    const liveOffers: RewardOffer[] = (dashboard.offers || []).map((offer: any) => ({
+      id: String(offer.id),
+      title: String(offer.title),
+      description: String(offer.description || ''),
+      pointsCost: Number(offer.pointsCost),
+      discountValue: String(offer.discountValue || ''),
+      category: offer.category,
+      badge: offer.badge || undefined,
+    }));
+    setCustomer(mappedCustomer);
+    if (liveOffers.length) setOffers(liveOffers);
+  };
+
   useEffect(() => {
-    saveStoredLoyaltyCustomer(customer);
-  }, [customer]);
-
-  const currentTierConfig = LOYALTY_TIERS[customer.tier];
-
-  const getProgressStats = () => {
-    if (customer.tier === 'silver') {
-      const current = customer.totalPoints;
-      const target = 500;
-      const percent = Math.min(100, Math.round((current / target) * 100));
-      const remaining = Math.max(0, target - current);
-      return {
-        percent,
-        nextTierName: 'Gold Radiance VIP',
-        remaining,
-        min: 0,
-        max: 500,
-      };
-    } else if (customer.tier === 'gold') {
-      const current = customer.totalPoints - 500;
-      const target = 1000;
-      const percent = Math.min(100, Math.max(0, Math.round((current / target) * 100)));
-      const remaining = Math.max(0, 1500 - customer.totalPoints);
-      return {
-        percent,
-        nextTierName: 'Platinum Royal Crown',
-        remaining,
-        min: 500,
-        max: 1500,
-      };
-    } else {
-      return {
-        percent: 100,
-        nextTierName: 'Top Platinum Tier Achieved!',
-        remaining: 0,
-        min: 1500,
-        max: 1500,
-      };
-    }
-  };
-
-  const progressStats = getProgressStats();
-
-  const handleSelectCustomer = (demoCust: LoyaltyCustomer) => {
-    setCustomer(demoCust);
-    setPhoneNumberInput('');
-    setRecentlyRedeemed(null);
-  };
-
-  const handlePhoneLookup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanPhone = phoneNumberInput.replace(/\D/g, '');
-    if (!cleanPhone) return;
-
-    try {
-      const res = await api.get<{
-        account: {
-          phone: string;
-          name: string;
-          memberId: string;
-          tier: 'silver' | 'gold' | 'platinum';
-          totalPoints: number;
-          lifetimePoints: number;
-          visitsCount: number;
-          joinedDate: string;
-        } | null;
-        activities: Array<{
-          id: string;
-          date: string;
-          serviceTitle: string;
-          billAmount: number;
-          pointsEarned: number;
-          type: 'earn' | 'bonus' | 'redeem';
-          description: string;
-        }>;
-        vouchers: Array<{
-          voucherCode: string;
-          rewardTitle: string;
-          discountAmount: number;
-          pointsCost: number;
-          dateRedeemed: string;
-          validTill: string;
-          used: boolean;
-          status: 'active' | 'used';
-          discountValue: string;
-        }>;
-      }>(`/public/loyalty?phone=${cleanPhone}`);
-
-      if (res && res.account) {
-        const fetchedCustomer: LoyaltyCustomer = {
-          phone: res.account.phone,
-          name: res.account.name || 'Valued Guest',
-          memberId: res.account.memberId,
-          tier: res.account.tier || 'silver',
-          totalPoints: res.account.totalPoints,
-          lifetimePoints: res.account.lifetimePoints,
-          visitsCount: res.account.visitsCount,
-          joinedDate: res.account.joinedDate
-            ? new Date(res.account.joinedDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-            : 'October 2026',
-          activities: (res.activities || []).map((a) => ({
-            id: a.id,
-            date: a.date ? new Date(a.date).toLocaleDateString() : 'Recently',
-            branch: `${brand.cityName} Studio`,
-            serviceTitle: a.serviceTitle,
-            billAmount: a.billAmount,
-            pointsEarned: a.pointsEarned,
-            type: a.type === 'bonus' ? 'bonus' : 'visit',
-          })),
-          redeemedRewards: (res.vouchers || []).map((v) => ({
-            id: v.voucherCode,
-            rewardTitle: v.rewardTitle,
-            voucherCode: v.voucherCode,
-            pointsCost: v.pointsCost,
-            dateRedeemed: v.dateRedeemed ? new Date(v.dateRedeemed).toLocaleDateString() : 'Recently',
-            validTill: v.validTill ? new Date(v.validTill).toLocaleDateString() : 'Active',
-            status: v.used ? 'used' : 'active',
-            discountValue: v.discountValue || `₹${v.discountAmount} Off`,
-          })),
-        };
-        setCustomer(fetchedCustomer);
-        setRecentlyRedeemed(null);
-        return;
+    let active = true;
+    (async () => {
+      try {
+        const session = await supabase.auth.recoverSessionFromUrl();
+        if (active && session?.user?.phone) {
+          await loadCustomerDashboard();
+        }
+      } catch (error) {
+        if (active) {
+          console.warn('[loyalty] Customer session restore failed', error);
+          setAuthError(error instanceof Error ? error.message : 'Could not restore your rewards session.');
+        }
+      } finally {
+        if (active) setCustomerBusy(false);
       }
-    } catch (err) {
-      console.warn('[loyalty] Live lookup failed, falling back to local dataset', err);
-    }
+    })();
+    return () => { active = false; };
+  }, []);
 
-    // Fallback logic
-    const found = DEMO_CUSTOMERS.find((c) => c.phone.includes(cleanPhone));
-    if (found) {
-      setCustomer(found);
-    } else if (cleanPhone.length >= 8) {
-      const newCust: LoyaltyCustomer = {
-        phone: cleanPhone,
-        name: 'New Beauty Guest',
-        memberId: `${brand.loyaltyPrefix || 'VIP'}-${cleanPhone.slice(-4)}`,
-        tier: 'silver',
-        totalPoints: 100,
-        lifetimePoints: 100,
-        visitsCount: 0,
-        joinedDate: 'October 2026',
-        activities: [
-          {
-            id: `act-new-${Date.now()}`,
-            date: 'Today',
-            branch: `${brand.cityName} Online Registration`,
-            serviceTitle: 'Welcome Joining Bonus Points',
-            billAmount: 0,
-            pointsEarned: 100,
-            type: 'bonus',
-          },
-        ],
-        redeemedRewards: [],
-      };
-      setCustomer(newCust);
+  const handleSendOtp = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setAuthError(null);
+    setAuthNotice('');
+    const digits = phoneNumberInput.replace(/\\D/g, '');
+    if (digits.length !== 10) {
+      setAuthError('Enter a valid 10-digit Indian mobile number.');
+      return;
+    }
+    setAuthBusy(true);
+    try {
+      await supabase.auth.signInWithOtp('+91' + digits);
+      setPhoneNumberInput(digits);
+      setOtpRequested(true);
+      setAuthNotice('OTP sent. Check your SMS and enter the 6-digit code.');
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Could not send OTP. Please try again.');
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleVerifyOtp = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setAuthError(null);
+    const digits = phoneNumberInput.replace(/\\D/g, '');
+    const code = otp.replace(/\\D/g, '');
+    if (digits.length !== 10 || code.length !== 6) {
+      setAuthError('Enter your 10-digit mobile number and 6-digit OTP.');
+      return;
+    }
+    setAuthBusy(true);
+    try {
+      await supabase.auth.verifyPhoneOtp('+91' + digits, code);
+      await loadCustomerDashboard(memberName.trim());
+      setAuthNotice('');
+      setOtpRequested(false);
+      setOtp('');
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'OTP verification failed. Please check the code.');
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleCustomerSignOut = async () => {
+    setAuthBusy(true);
+    try {
+      await supabase.auth.signOut('local');
+      setCustomer(null);
+      setRecentlyRedeemed(null);
+      setActionError(null);
+      setOtpRequested(false);
+      setOtp('');
+    } finally {
+      setAuthBusy(false);
     }
   };
 
   const handleRedeemReward = async (offer: RewardOffer) => {
+    if (!customer || redeemingOfferId) return;
     if (customer.totalPoints < offer.pointsCost) {
-      alert(`You need ${offer.pointsCost - customer.totalPoints} more points to redeem this reward.`);
+      setActionError('You need ' + (offer.pointsCost - customer.totalPoints) + ' more points to redeem this reward.');
       return;
     }
 
+    setActionError(null);
+    setRedeemingOfferId(offer.id);
     try {
-      const res = await api.post<{
-        success: boolean;
-        voucherCode: string;
-        discountAmount: number;
-        totalPoints: number;
-        tier: 'silver' | 'gold' | 'platinum';
-        message: string;
-      }>('/public/loyalty/redeem', {
-        phone: customer.phone,
-        offerId: offer.id,
+      const requestId = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+            const random = Math.random() * 16 | 0;
+            return (char === 'x' ? random : (random & 0x3 | 0x8)).toString(16);
+          });
+      const result = await supabase.db.rpc<any>('redeem_customer_loyalty_reward', {
+        p_offer_id: offer.id,
+        p_request_id: requestId,
       });
-
-      if (res && res.success && res.voucherCode) {
-        const now = new Date();
-        const validUntil = new Date(now.setDate(now.getDate() + 60)).toLocaleDateString('en-GB', {
-          day: '2-digit',
-          month: 'short',
-          year: 'numeric',
-        });
-
-        const newRedeemedItem = {
-          id: res.voucherCode,
-          rewardTitle: offer.title,
-          voucherCode: res.voucherCode,
-          pointsCost: offer.pointsCost,
-          dateRedeemed: 'Today',
-          validTill: validUntil,
-          status: 'active' as const,
-          discountValue: offer.discountValue,
-        };
-
-        const updatedCustomer: LoyaltyCustomer = {
-          ...customer,
-          totalPoints: res.totalPoints,
-          tier: res.tier || customer.tier,
-          redeemedRewards: [newRedeemedItem, ...customer.redeemedRewards],
-        };
-
-        setCustomer(updatedCustomer);
-        setRecentlyRedeemed({
-          title: offer.title,
-          code: res.voucherCode,
-          points: offer.pointsCost,
-        });
-        return;
+      if (!result?.success || !result?.voucherCode) {
+        throw new Error('The reward could not be redeemed. No points have been deducted.');
       }
-    } catch (err: any) {
-      console.warn('[loyalty] Live redeem failed, falling back to local redemption', err);
-      if (err?.message) {
-        alert(err.message);
-        return;
-      }
+      await loadCustomerDashboard();
+      setRecentlyRedeemed({
+        title: offer.title,
+        code: String(result.voucherCode),
+        points: offer.pointsCost,
+      });
+      setActiveTab('redeemed');
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Reward redemption failed. Please retry.');
+    } finally {
+      setRedeemingOfferId(null);
     }
-
-    // Fallback local redemption logic
-    const prefix = brand.bookingPrefix || 'VIP';
-    const uniqueVoucherCode = `${prefix}-${offer.category.slice(0, 4).toUpperCase()}-${Math.floor(
-      1000 + Math.random() * 9000
-    )}`;
-    const now = new Date();
-    const validUntil = new Date(now.setDate(now.getDate() + 60)).toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
-
-    const newRedeemedItem = {
-      id: `red-${Date.now()}`,
-      rewardTitle: offer.title,
-      voucherCode: uniqueVoucherCode,
-      pointsCost: offer.pointsCost,
-      dateRedeemed: 'Today',
-      validTill: validUntil,
-      status: 'active' as const,
-      discountValue: offer.discountValue,
-    };
-
-    const updatedCustomer: LoyaltyCustomer = {
-      ...customer,
-      totalPoints: customer.totalPoints - offer.pointsCost,
-      redeemedRewards: [newRedeemedItem, ...customer.redeemedRewards],
-    };
-
-    setCustomer(updatedCustomer);
-    setRecentlyRedeemed({
-      title: offer.title,
-      code: uniqueVoucherCode,
-      points: offer.pointsCost,
-    });
   };
 
-  const handleCopyCode = (code: string) => {
-    navigator.clipboard.writeText(code);
-    setCopiedCode(code);
-    setTimeout(() => setCopiedCode(null), 3000);
+  const handleCopyCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCode(code);
+      window.setTimeout(() => setCopiedCode(null), 3000);
+    } catch {
+      setActionError('Could not copy the voucher. Please select and copy it manually.');
+    }
   };
 
   const handleTriggerBooking = (voucherCode?: string) => {
@@ -321,7 +239,84 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
     }
   };
 
-  const estimatedPoints = Math.round((calcBillAmount / 10) * currentTierConfig.multiplier);
+  if (!customer) {
+    return (
+      <section id="rewards" className="py-16 md:py-24 bg-[#FAF5E5] relative overflow-hidden border-t border-[#0F172A]/10 w-full max-w-full">
+        <div className="absolute top-0 right-1/4 w-96 h-96 bg-[#D09A40]/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="max-w-xl mx-auto px-4 sm:px-6 relative z-10">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#0F172A] text-[#FAF5E5] text-xs font-semibold uppercase tracking-wider mb-3">
+              <Crown className="w-4 h-4 text-[#D09A40]" />
+              <span>{brand.loyaltyClubName}</span>
+            </div>
+            <h2 className="font-serif text-3xl sm:text-4xl font-bold tracking-tight text-[#0F172A]">{t('rewardsTitle')}</h2>
+            <p className="mt-3 text-sm sm:text-base text-[#4A4A4A]">Sign in with your mobile number to securely view your points and vouchers.</p>
+          </div>
+          <div className="rounded-3xl bg-white border border-[#D09A40]/30 shadow-xl p-6 sm:p-8">
+            {customerBusy ? (
+              <div className="py-8 text-center text-sm text-neutral-600">Checking your rewards session…</div>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-11 h-11 rounded-2xl bg-[#FAF5E5] text-[#D09A40] flex items-center justify-center"><Phone className="w-5 h-5" /></div>
+                  <div><h3 className="font-serif text-xl font-bold text-[#0F172A]">Customer OTP Login</h3><p className="text-xs text-neutral-500">Your points are linked to your verified mobile number.</p></div>
+                </div>
+                {!otpRequested ? (
+                  <form onSubmit={handleSendOtp} className="space-y-4">
+                    <label className="block text-xs font-semibold text-[#0F172A]">Your name <span className="font-normal text-neutral-400">(optional for existing members)</span>
+                      <input value={memberName} onChange={(event) => setMemberName(event.target.value)} maxLength={120} autoComplete="name" placeholder="Enter your name" className="mt-1.5 w-full px-4 py-3 rounded-xl border border-neutral-200 bg-neutral-50 text-sm text-[#0F172A] focus:outline-none focus:border-[#D09A40]" />
+                    </label>
+                    <label className="block text-xs font-semibold text-[#0F172A]">Mobile number
+                      <div className="mt-1.5 flex rounded-xl border border-neutral-200 bg-neutral-50 overflow-hidden focus-within:border-[#D09A40]">
+                        <span className="px-3 py-3 text-sm font-semibold text-neutral-600 border-r border-neutral-200">+91</span>
+                        <input type="tel" inputMode="numeric" autoComplete="tel-national" maxLength={10} value={phoneNumberInput} onChange={(event) => setPhoneNumberInput(event.target.value.replace(/\\D/g, '').slice(0,10))} placeholder="10-digit mobile number" className="min-w-0 flex-1 px-3 py-3 bg-transparent text-sm text-[#0F172A] outline-none" required />
+                      </div>
+                    </label>
+                    <button type="submit" disabled={authBusy} className="w-full rounded-xl bg-[#D09A40] hover:bg-[#DCA54A] disabled:opacity-60 text-[#0F172A] font-bold text-sm py-3 transition-colors">{authBusy ? 'Sending OTP…' : 'Send OTP'}</button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleVerifyOtp} className="space-y-4">
+                    <p className="text-sm text-neutral-600">Enter the code sent to <strong>+91 {phoneNumberInput}</strong>.</p>
+                    <label className="block text-xs font-semibold text-[#0F172A]">6-digit OTP
+                      <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp} onChange={(event) => setOtp(event.target.value.replace(/\\D/g, '').slice(0,6))} placeholder="Enter OTP" className="mt-1.5 w-full px-4 py-3 rounded-xl border border-neutral-200 bg-neutral-50 text-center text-lg tracking-[0.35em] text-[#0F172A] focus:outline-none focus:border-[#D09A40]" required />
+                    </label>
+                    <button type="submit" disabled={authBusy} className="w-full rounded-xl bg-[#D09A40] hover:bg-[#DCA54A] disabled:opacity-60 text-[#0F172A] font-bold text-sm py-3 transition-colors">{authBusy ? 'Verifying…' : 'Verify & Open Rewards'}</button>
+                    <button type="button" disabled={authBusy} onClick={() => { setOtpRequested(false); setOtp(''); setAuthError(null); }} className="w-full text-xs font-semibold text-neutral-600 hover:text-[#0F172A]">Change mobile number</button>
+                  </form>
+                )}
+                {authNotice && <p role="status" className="mt-4 text-sm text-emerald-700">{authNotice}</p>}
+                {authError && <p role="alert" className="mt-4 rounded-xl bg-red-50 border border-red-200 p-3 text-sm text-red-700">{authError}</p>}
+                <p className="mt-5 text-[11px] leading-relaxed text-neutral-500">We never look up points by an unverified number. OTP verification protects your membership and reward balance.</p>
+              </>
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const currentTierConfig = LOYALTY_TIERS[customer.tier];
+
+  const getProgressStats = () => {
+    if (customer.tier === 'silver') {
+      const current = customer.lifetimePoints;
+      const target = 500;
+      const percent = Math.min(100, Math.round((current / target) * 100));
+      const remaining = Math.max(0, target - current);
+      return { percent, nextTierName: 'Gold Radiance VIP', remaining, min: 0, max: 500 };
+    }
+    if (customer.tier === 'gold') {
+      const current = customer.lifetimePoints - 500;
+      const percent = Math.min(100, Math.max(0, Math.round((current / 1000) * 100)));
+      const remaining = Math.max(0, 1500 - customer.lifetimePoints);
+      return { percent, nextTierName: 'Platinum Royal Crown', remaining, min: 500, max: 1500 };
+    }
+    return { percent: 100, nextTierName: 'Top Platinum Tier Achieved!', remaining: 0, min: 1500, max: 1500 };
+  };
+
+  const progressStats = getProgressStats();
+  const estimatedPoints = Math.floor((Math.max(0, calcBillAmount) / 10) * currentTierConfig.multiplier);
+
 
   return (
     <section
@@ -348,46 +343,15 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
           </p>
         </div>
 
-        {/* Profile Switcher & Lookup Bar */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#0F172A]/10 shadow-sm mb-8 flex flex-col lg:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2 overflow-x-auto w-full lg:w-auto pb-2 lg:pb-0">
-            <span className="text-xs font-semibold text-[#4A4A4A] whitespace-nowrap uppercase tracking-wider">
-              Select Demo Member:
-            </span>
-            {DEMO_CUSTOMERS.map((demo) => (
-              <button
-                key={demo.phone}
-                onClick={() => handleSelectCustomer(demo)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-                  customer.phone === demo.phone
-                    ? 'bg-[#0F172A] text-white shadow-xs'
-                    : 'bg-neutral-100 hover:bg-neutral-200 text-[#0F172A]'
-                }`}
-              >
-                <span>{demo.name}</span>
-                <span className="text-[11px] text-[#D09A40] font-mono">
-                  ({demo.totalPoints} pts)
-                </span>
-              </button>
-            ))}
+        <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#0F172A]/10 shadow-sm mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">Verified Rewards Member</p>
+            <p className="text-sm font-bold text-[#0F172A] mt-1">{customer.name} <span className="font-mono font-normal text-neutral-500">· {customer.phone}</span></p>
+            <p className="text-[11px] text-[#D09A40] font-semibold mt-1">Member ID: {customer.memberId}</p>
           </div>
-
-          <form onSubmit={handlePhoneLookup} className="flex items-center gap-2 w-full lg:w-auto">
-            <input
-              type="tel"
-              placeholder="Enter 10-digit mobile number..."
-              value={phoneNumberInput}
-              onChange={(e) => setPhoneNumberInput(e.target.value)}
-              className="px-3.5 py-2 rounded-xl text-xs bg-neutral-50 border border-neutral-200 focus:outline-none focus:border-[#D09A40] text-[#0F172A] w-full sm:w-56"
-            />
-            <button
-              type="submit"
-              className="px-3.5 py-2 rounded-xl bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A] text-xs font-bold whitespace-nowrap cursor-pointer transition-colors shadow-2xs"
-            >
-              {t('rewardsCheckPoints')}
-            </button>
-          </form>
+          <button type="button" onClick={handleCustomerSignOut} disabled={authBusy} className="px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-600 hover:border-[#D09A40] hover:text-[#0F172A] disabled:opacity-60">Sign out</button>
         </div>
+        {actionError && <div role="alert" className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{actionError}</div>}
 
         {/* Main Loyalty Grid: Digital Pass & Tier Progress Tracker */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-12">
@@ -632,7 +596,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
             }`}
           >
             <Gift className="w-4 h-4 text-[#D09A40]" />
-            <span>Redeem Rewards ({REWARD_OFFERS.length})</span>
+            <span>Redeem Rewards ({offers.length})</span>
           </button>
 
           <button
@@ -675,7 +639,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
         {/* Tab 1: Available Rewards */}
         {activeTab === 'rewards' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {REWARD_OFFERS.map((offer) => {
+            {offers.map((offer) => {
               const canAfford = customer.totalPoints >= offer.pointsCost;
               return (
                 <div
@@ -716,7 +680,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
 
                     <button
                       onClick={() => handleRedeemReward(offer)}
-                      disabled={!canAfford}
+                      disabled={!canAfford || redeemingOfferId !== null}
                       className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                         canAfford
                           ? 'bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A] shadow-xs'
@@ -724,7 +688,9 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
                       }`}
                     >
                       <span>
-                        {canAfford
+                        {redeemingOfferId === offer.id
+                          ? 'Processing…'
+                          : canAfford
                           ? 'Redeem Voucher'
                           : `Need ${offer.pointsCost - customer.totalPoints} pts`}
                       </span>
