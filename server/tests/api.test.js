@@ -828,6 +828,27 @@ test('visitor can book a live salon and the owner sees it', async () => {
   assert.equal(confirm.status, 200);
   assert.equal(confirm.data.booking.status, 'confirmed');
 
+  const missingFinalBill = await owner.patch(`/api/salon/bookings/${created.data.booking.id}`, { status: 'completed' });
+  assert.equal(missingFinalBill.status, 400, 'owner cannot complete without an actual final bill');
+
+  const completed = await owner.patch(`/api/salon/bookings/${created.data.booking.id}`, {
+    status: 'completed',
+    finalBillAmount: 17650,
+  });
+  assert.equal(completed.status, 200);
+  assert.equal(completed.data.booking.status, 'completed');
+  assert.equal(completed.data.booking.finalBillAmount, 17650);
+  assert.equal(completed.data.booking.loyaltyAwardStatus, 'failed');
+  assert.equal(completed.data.loyaltyReward.awarded, false);
+  assert.equal(completed.data.loyaltyReward.retryable, true);
+  assert.match(completed.data.loyaltyReward.message, /Supabase profile|owner identity/i);
+
+  const retryAward = await owner.post(`/api/salon/bookings/${created.data.booking.id}/loyalty/retry`);
+  assert.equal(retryAward.status, 200);
+  assert.equal(retryAward.data.booking.finalBillAmount, 17650);
+  assert.equal(retryAward.data.booking.loyaltyAwardStatus, 'failed');
+  assert.equal(retryAward.data.loyaltyReward.awarded, false);
+
   const badStatus = await owner.patch(`/api/salon/bookings/${created.data.booking.id}`, { status: 'explode' });
   assert.equal(badStatus.status, 400);
 });
