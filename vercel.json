@@ -2,6 +2,7 @@
   "version": 2,
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "cleanUrls": false,
   "rewrites": [
     {
       "source": "/api/(.*)",
@@ -9,11 +10,11 @@
     },
     {
       "source": "/",
-      "destination": "/index"
+      "destination": "/index.html"
     },
     {
-      "source": "/(.*)",
-      "destination": "/spa"
+      "source": "/((?!api/).*)",
+      "destination": "/spa.html"
     }
   ],
   "headers": [
@@ -39,6 +40,5 @@
         }
       ]
     }
-  ],
-  "cleanUrls": true
+  ]
 }

@@ -18,7 +18,7 @@ PR: https://github.com/vijaysharma55/beauty-zone-/pull/27
 | B-08 | Production auth protections lacked regression coverage for seeded identities and Supabase/local role mismatch. | Added isolated production-mode auth integration suite using temporary SQLite and mock Supabase endpoints. | server/tests/security-production.test.js, package.json |
 | B-09 | Sitemap had no test that auth routes stayed excluded. | Added explicit assertions for auth route exclusion. | server/tests/sitemap.test.js |
 
-7. **Vercel deep-link fallback**: despite a `/(.*) -> /spa.html` rewrite in `vercel.json`, direct requests for known React routes return HTTP 404 in production and preview. Fix and verify the deployment routing before relying on refresh/bookmarks.
+7. **Vercel deep-link fallback** — fixed in PR 1. The rewrite destination was `/spa`, not `/spa.html`; Vercel resolves rewrite destinations against emitted files, and `dist/spa` does not exist, so every direct request for a React route fell through to a 404. `vercel.json` now rewrites `/` to `/index.html` and every non-`/api/` path to `/spa.html`, `cleanUrls` is disabled, `server/tests/vercel-routing.test.js` guards the rewrite table and `scripts/verify-routes.sh` verifies the deployment.
 
 ## Root-cause defects identified but not safely repaired
 

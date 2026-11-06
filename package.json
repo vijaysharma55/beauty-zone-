@@ -15,9 +15,11 @@
     "lint": "tsc --noEmit",
     "test:api": "node --test server/tests/api.test.js",
     "test:payments": "node --test server/tests/payments.test.js",
-    "test": "node --test server/tests/unit.test.js server/tests/payment-unit.test.js server/tests/advance-unit.test.js server/tests/api.test.js server/tests/payments.test.js server/tests/owner-payments.test.js server/tests/sitemap.test.js server/tests/loyalty.test.js server/tests/security-production.test.js",
+    "test": "node --test server/tests/unit.test.js server/tests/payment-unit.test.js server/tests/advance-unit.test.js server/tests/api.test.js server/tests/payments.test.js server/tests/owner-payments.test.js server/tests/sitemap.test.js server/tests/loyalty.test.js server/tests/security-production.test.js server/tests/vercel-routing.test.js",
     "test:unit": "node --test server/tests/unit.test.js server/tests/payment-unit.test.js server/tests/advance-unit.test.js",
     "verify": "npm run lint && npm test && npm run build",
+    "verify:routes": "bash scripts/verify-routes.sh",
+    "test:routing": "node --test server/tests/vercel-routing.test.js",
     "test:owner": "node --test server/tests/owner-payments.test.js",
     "test:loyalty": "node --test server/tests/loyalty.test.js"
   },

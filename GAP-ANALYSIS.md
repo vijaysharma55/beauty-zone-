@@ -6,7 +6,7 @@ Working branch: audit/beautyzone-production-hardening
 
 The repository implements a substantial salon website and owner/admin dashboard. The main production gap is not a missing UI screen: it is the split persistence architecture. Core Express routes use SQLite while customer history, selected content and rewards use Supabase PostgreSQL.
 
-| Deep links / route fallback | Vercel declares rewrite to `spa.html` | Direct requests to `/login`, `/register`, `/salons`, `/dashboard`, `/my-appointments` and `/salon/lumina-luxe` return HTTP 404 in production and PR preview. | P1 |
+| Deep links / route fallback | Vercel rewrites `/` to `/index.html` and every non-API path to `/spa.html` | Resolved in PR 1: the previous rewrite targeted the extensionless `/spa`, which matches no emitted file, so deep links returned HTTP 404. Re-run `npm run verify:routes <deployment-url>` after each deploy. | Resolved |
 ## 1. Essential to existing functionality
 
 | Module | Present implementation | Missing / incomplete | Priority |
