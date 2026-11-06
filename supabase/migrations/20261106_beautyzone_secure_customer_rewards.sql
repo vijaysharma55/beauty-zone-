@@ -2,6 +2,10 @@
 -- Customer identity is established only by a verified Supabase phone OTP.
 -- All balance, tier, voucher, and booking-award writes are atomic Postgres RPCs.
 
+create schema if not exists private;
+revoke all on schema private from public, anon;
+grant usage on schema private to authenticated, service_role;
+
 create table if not exists public.loyalty_reward_offers (
   id text primary key,
   title text not null,
@@ -12,6 +16,7 @@ create table if not exists public.loyalty_reward_offers (
   minimum_bill_amount bigint not null default 0 check (minimum_bill_amount >= 0),
   eligible_service_keyword text,
   eligible_location_type text check (eligible_location_type in ('salon','home')),
+  eligible_max_distance_km numeric check (eligible_max_distance_km is null or eligible_max_distance_km >= 0),
   category text not null check (category in ('discount','free_service','upgrade','bridal')),
   badge text,
   active boolean not null default true,
@@ -29,14 +34,14 @@ revoke all on table public.loyalty_reward_offers from public, anon, authenticate
 grant select on table public.loyalty_reward_offers to anon, authenticated;
 
 insert into public.loyalty_reward_offers
-  (id,title,description,points_cost,discount_amount,discount_value,minimum_bill_amount,eligible_service_keyword,eligible_location_type,category,badge,sort_order,active)
+  (id,title,description,points_cost,discount_amount,discount_value,minimum_bill_amount,eligible_service_keyword,eligible_location_type,eligible_max_distance_km,category,badge,sort_order,active)
 values
-  ('rew-1','₹500 Instant Salon Voucher','Use on eligible salon services with a minimum bill of ₹1,500.',500,500,'₹500 Flat Off',1500,null,null,'discount','Popular',1,true),
-  ('rew-2','Free Moroccan Scalp & Hair Spa','Deep nourishing argan oil hair spa with hot towel steam and relaxing head massage.',750,1800,'100% Free Service (Worth ₹1,800)',1800,'hair spa',null,'free_service','Best Value',2,true),
-  ('rew-3','24K Gold Foil Facial Upgrade','Upgrade an eligible regular facial to the signature 24K Gold Leaf facial.',1000,2500,'Free Luxury Upgrade (Worth ₹2,500)',2500,'facial',null,'upgrade','Royal Favorite',3,true),
-  ('rew-4','Complimentary Gel Nail Art Set','Complimentary gel nail art set with crystal accents and chrome finish.',650,1499,'100% Free Service (Worth ₹1,499)',1499,'nail',null,'free_service',null,4,true),
-  ('rew-5','₹1,500 Royal Bridal Booking Discount','Use on eligible Signature HD or Airbrush bridal makeup packages.',1500,1500,'₹1,500 Off Bridal',0,'bridal',null,'bridal','Bridal Special',5,true),
-  ('rew-6','Free Home Salon Travel Pass','Waives eligible doorstep travel fees up to 15 km.',400,600,'Free Home Travel (Worth ₹600)',0,null,'home','discount',null,6,true)
+  ('rew-1','₹500 Instant Salon Voucher','Use on eligible salon services with a minimum bill of ₹1,500.',500,500,'₹500 Flat Off',1500,null,null,null,'discount','Popular',1,true),
+  ('rew-2','Free Moroccan Scalp & Hair Spa','Deep nourishing argan oil hair spa with hot towel steam and relaxing head massage.',750,1800,'100% Free Service (Worth ₹1,800)',1800,'hair spa',null,null,'free_service','Best Value',2,true),
+  ('rew-3','24K Gold Foil Facial Upgrade','Upgrade an eligible regular facial to the signature 24K Gold Leaf facial.',1000,2500,'Free Luxury Upgrade (Worth ₹2,500)',2500,'facial',null,null,'upgrade','Royal Favorite',3,true),
+  ('rew-4','Complimentary Gel Nail Art Set','Complimentary gel nail art set with crystal accents and chrome finish.',650,1499,'100% Free Service (Worth ₹1,499)',1499,'nail',null,null,'free_service',null,4,true),
+  ('rew-5','₹1,500 Royal Bridal Booking Discount','Use on eligible Signature HD or Airbrush bridal makeup packages.',1500,1500,'₹1,500 Off Bridal',0,'bridal',null,null,'bridal','Bridal Special',5,true),
+  ('rew-6','Free Home Salon Travel Pass','Waives eligible doorstep travel fees up to 15 km.',400,600,'Free Home Travel (Worth ₹600)',0,null,'home',15,'discount',null,6,true)
 on conflict (id) do update set
   title=excluded.title,
   description=excluded.description,
@@ -46,6 +51,7 @@ on conflict (id) do update set
   minimum_bill_amount=excluded.minimum_bill_amount,
   eligible_service_keyword=excluded.eligible_service_keyword,
   eligible_location_type=excluded.eligible_location_type,
+  eligible_max_distance_km=excluded.eligible_max_distance_km,
   category=excluded.category,
   badge=excluded.badge,
   sort_order=excluded.sort_order,
@@ -86,7 +92,7 @@ create index if not exists loyalty_vouchers_external_booking_idx
   where external_booking_id is not null;
 
 -- Membership tier is based on lifetime earned points, never the current spendable balance.
-create or replace function public.ensure_customer_loyalty_account(p_name text default '')
+create or replace function private.ensure_customer_loyalty_account(p_name text default '')
 returns jsonb
 language plpgsql
 security definer
@@ -186,10 +192,10 @@ begin
   return to_jsonb(v_account);
 end;
 $$;
-revoke all on function public.ensure_customer_loyalty_account(text) from public, anon;
-grant execute on function public.ensure_customer_loyalty_account(text) to authenticated;
+revoke all on function private.ensure_customer_loyalty_account(text) from public, anon, authenticated;
+grant execute on function private.ensure_customer_loyalty_account(text) to authenticated;
 
-create or replace function public.get_customer_loyalty_dashboard()
+create or replace function private.get_customer_loyalty_dashboard()
 returns jsonb
 language plpgsql
 security definer
@@ -266,10 +272,10 @@ begin
   );
 end;
 $$;
-revoke all on function public.get_customer_loyalty_dashboard() from public, anon;
-grant execute on function public.get_customer_loyalty_dashboard() to authenticated;
+revoke all on function private.get_customer_loyalty_dashboard() from public, anon, authenticated;
+grant execute on function private.get_customer_loyalty_dashboard() to authenticated;
 
-create or replace function public.redeem_customer_loyalty_reward(
+create or replace function private.redeem_customer_loyalty_reward(
   p_offer_id text,
   p_request_id uuid
 )
@@ -347,17 +353,16 @@ begin
   );
 end;
 $$;
-revoke all on function public.redeem_customer_loyalty_reward(text,uuid) from public, anon;
-grant execute on function public.redeem_customer_loyalty_reward(text,uuid) to authenticated;
+revoke all on function private.redeem_customer_loyalty_reward(text,uuid) from public, anon, authenticated;
+grant execute on function private.redeem_customer_loyalty_reward(text,uuid) to authenticated;
 
-revoke all on function private.ensure_customer_loyalty_account(text) from public, anon, authenticated;
 revoke all on function private.redeem_customer_loyalty_reward(text) from public, anon, authenticated;
-revoke all on function private.verify_customer_loyalty_voucher(text) from public, anon, authenticated;
+drop function if exists private.redeem_customer_loyalty_reward(text);
 
--- Remove the older single-argument RPC: it used a divergent hard-coded catalogue and had no retry key.
+-- Remove the older single-argument public RPC; the old private RPC is also dropped above.
 drop function if exists public.redeem_customer_loyalty_reward(text);
 
-create or replace function public.verify_customer_loyalty_voucher(p_code text)
+create or replace function private.verify_customer_loyalty_voucher(p_code text)
 returns jsonb
 language plpgsql
 security definer
@@ -394,15 +399,16 @@ begin
   );
 end;
 $$;
-revoke all on function public.verify_customer_loyalty_voucher(text) from public, anon;
-grant execute on function public.verify_customer_loyalty_voucher(text) to authenticated;
+revoke all on function private.verify_customer_loyalty_voucher(text) from public, anon, authenticated;
+grant execute on function private.verify_customer_loyalty_voucher(text) to authenticated;
 
-create or replace function public.validate_customer_loyalty_voucher(
+create or replace function private.validate_customer_loyalty_voucher(
   p_code text,
   p_booking_phone text,
   p_service_title text,
   p_location_type text,
-  p_bill_amount bigint
+  p_bill_amount bigint,
+  p_distance_km numeric
 )
 returns jsonb
 language plpgsql
@@ -431,8 +437,8 @@ begin
   if coalesce(p_location_type,'') not in ('salon','home') then
     raise exception using errcode='22023', message='A valid booking location is required';
   end if;
-  if coalesce(p_bill_amount,0)<0 then
-    raise exception using errcode='22023', message='A valid booking amount is required';
+  if coalesce(p_bill_amount,0)<=0 then
+    raise exception using errcode='22023', message='A positive booking amount is required to use a voucher';
   end if;
 
   select * into v_account from public.loyalty_accounts
@@ -459,6 +465,10 @@ begin
   if v_offer.eligible_location_type is not null and v_offer.eligible_location_type<>p_location_type then
     raise exception using errcode='23514', message='This voucher is valid only for an eligible doorstep home booking';
   end if;
+  if v_offer.eligible_max_distance_km is not null
+    and (p_distance_km is null or p_distance_km < 0 or p_distance_km > v_offer.eligible_max_distance_km) then
+    raise exception using errcode='23514', message='This home travel reward is valid only within '||v_offer.eligible_max_distance_km::text||' km';
+  end if;
 
   return jsonb_build_object(
     'valid',true,
@@ -470,15 +480,16 @@ begin
   );
 end;
 $$;
-revoke all on function public.validate_customer_loyalty_voucher(text,text,text,text,bigint) from public, anon;
-grant execute on function public.validate_customer_loyalty_voucher(text,text,text,text,bigint) to authenticated;
-create or replace function public.consume_customer_loyalty_voucher(
+revoke all on function private.validate_customer_loyalty_voucher(text,text,text,text,bigint,numeric) from public, anon, authenticated;
+grant execute on function private.validate_customer_loyalty_voucher(text,text,text,text,bigint,numeric) to authenticated;
+create or replace function private.consume_customer_loyalty_voucher(
   p_code text,
   p_external_booking_id text,
   p_booking_phone text,
   p_service_title text,
   p_location_type text,
-  p_bill_amount bigint
+  p_bill_amount bigint,
+  p_distance_km numeric
 )
 returns jsonb
 language plpgsql
@@ -513,8 +524,8 @@ begin
   if coalesce(p_location_type,'') not in ('salon','home') then
     raise exception using errcode='22023', message='A valid booking location is required';
   end if;
-  if coalesce(p_bill_amount,0)<0 then
-    raise exception using errcode='22023', message='A valid booking amount is required';
+  if coalesce(p_bill_amount,0)<=0 then
+    raise exception using errcode='22023', message='A positive booking amount is required to use a voucher';
   end if;
 
   select * into v_account from public.loyalty_accounts
@@ -525,6 +536,10 @@ begin
   where upper(code)=upper(trim(p_code)) and account_id=v_account.id
   for update;
   if not found then raise exception using errcode='P0002', message='Voucher not found for this verified customer'; end if;
+  select * into v_offer from public.loyalty_reward_offers
+  where id=v_voucher.offer_id and active=true;
+  if not found then raise exception using errcode='22023', message='This reward is no longer available'; end if;
+  if v_voucher.expires_at<=now() then raise exception using errcode='23514', message='This voucher has expired'; end if;
   if v_voucher.used then
     if v_voucher.external_booking_id=p_external_booking_id then
       return jsonb_build_object('success',true,'alreadyConsumed',true,
@@ -532,11 +547,6 @@ begin
     end if;
     raise exception using errcode='23514', message='This voucher has already been used';
   end if;
-  if v_voucher.expires_at<=now() then raise exception using errcode='23514', message='This voucher has expired'; end if;
-
-  select * into v_offer from public.loyalty_reward_offers
-  where id=v_voucher.offer_id and active=true;
-  if not found then raise exception using errcode='22023', message='This reward is no longer available'; end if;
   if coalesce(p_bill_amount,0)<v_offer.minimum_bill_amount then
     raise exception using errcode='23514', message='This reward requires a minimum eligible bill of ₹'||v_offer.minimum_bill_amount::text;
   end if;
@@ -546,6 +556,10 @@ begin
   end if;
   if v_offer.eligible_location_type is not null and v_offer.eligible_location_type<>p_location_type then
     raise exception using errcode='23514', message='This voucher is valid only for an eligible doorstep home booking';
+  end if;
+  if v_offer.eligible_max_distance_km is not null
+    and (p_distance_km is null or p_distance_km < 0 or p_distance_km > v_offer.eligible_max_distance_km) then
+    raise exception using errcode='23514', message='This home travel reward is valid only within '||v_offer.eligible_max_distance_km::text||' km';
   end if;
 
   v_discount:=least(v_voucher.discount_amount,coalesce(p_bill_amount,0));
@@ -557,9 +571,44 @@ begin
     'discountAmount',v_discount,'title',v_voucher.title);
 end;
 $$;
-revoke all on function public.consume_customer_loyalty_voucher(text,text,text,text,text,bigint) from public, anon;
-grant execute on function public.consume_customer_loyalty_voucher(text,text,text,text,text,bigint) to authenticated;
-create or replace function public.award_completed_loyalty_points(
+revoke all on function private.consume_customer_loyalty_voucher(text,text,text,text,text,bigint,numeric) from public, anon, authenticated;
+grant execute on function private.consume_customer_loyalty_voucher(text,text,text,text,text,bigint,numeric) to authenticated;
+create or replace function private.release_customer_loyalty_voucher(
+  p_code text,
+  p_external_booking_id text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_voucher public.loyalty_vouchers%rowtype;
+begin
+  if nullif(trim(p_code),'') is null or nullif(trim(p_external_booking_id),'') is null
+    or length(p_external_booking_id)>180 then
+    raise exception using errcode='22023', message='Voucher code and booking reference are required';
+  end if;
+  select * into v_voucher
+  from public.loyalty_vouchers
+  where upper(code)=upper(trim(p_code))
+    and external_booking_id=p_external_booking_id
+    and used=true
+  for update;
+  if not found then
+    return jsonb_build_object('success',true,'released',false,'alreadyReleased',true);
+  end if;
+  if v_voucher.expires_at<=now() then
+    return jsonb_build_object('success',true,'released',false,'expired',true);
+  end if;
+  update public.loyalty_vouchers set used=false,external_booking_id=null where id=v_voucher.id;
+  return jsonb_build_object('success',true,'released',true,'voucherCode',v_voucher.code);
+end;
+$$;
+revoke all on function private.release_customer_loyalty_voucher(text,text) from public, anon, authenticated;
+grant execute on function private.release_customer_loyalty_voucher(text,text) to service_role;
+
+create or replace function private.award_completed_loyalty_points(
   p_actor_id uuid,
   p_phone text,
   p_name text,
@@ -582,11 +631,7 @@ declare
   v_member text;
   v_multiplier numeric := 1;
 begin
-  -- Only the trusted application server may invoke this function. A browser
-  -- salon-owner JWT must never be able to award points to arbitrary phone numbers.
-  if coalesce(auth.role(),'') <> 'service_role' then
-    raise exception using errcode='42501', message='Only the trusted application server may award visit points';
-  end if;
+  -- Only service_role is granted EXECUTE on this private routine.
   if p_actor_id is null then raise exception using errcode='22023', message='Authenticated salon owner identity is required'; end if;
 
   select role,status into v_role,v_profile_status from public.profiles where id=p_actor_id;
@@ -663,5 +708,72 @@ begin
 end;
 $$;
 drop function if exists public.award_completed_loyalty_points(text,text,text,text,bigint);
+revoke all on function private.award_completed_loyalty_points(uuid,text,text,text,text,bigint) from public, anon, authenticated;
+grant execute on function private.award_completed_loyalty_points(uuid,text,text,text,text,bigint) to service_role;
+
+
+-- PostgREST entry points are SECURITY INVOKER wrappers. Privileged functions
+-- themselves live in the non-exposed private schema.
+create or replace function public.ensure_customer_loyalty_account(p_name text default '')
+returns jsonb language sql security invoker set search_path = ''
+as $$ select private.ensure_customer_loyalty_account(p_name); $$;
+revoke all on function public.ensure_customer_loyalty_account(text) from public, anon;
+grant execute on function public.ensure_customer_loyalty_account(text) to authenticated;
+
+create or replace function public.get_customer_loyalty_dashboard()
+returns jsonb language sql security invoker set search_path = ''
+as $$ select private.get_customer_loyalty_dashboard(); $$;
+revoke all on function public.get_customer_loyalty_dashboard() from public, anon;
+grant execute on function public.get_customer_loyalty_dashboard() to authenticated;
+
+create or replace function public.redeem_customer_loyalty_reward(p_offer_id text, p_request_id uuid)
+returns jsonb language sql security invoker set search_path = ''
+as $$ select private.redeem_customer_loyalty_reward(p_offer_id,p_request_id); $$;
+revoke all on function public.redeem_customer_loyalty_reward(text,uuid) from public, anon;
+grant execute on function public.redeem_customer_loyalty_reward(text,uuid) to authenticated;
+
+create or replace function public.verify_customer_loyalty_voucher(p_code text)
+returns jsonb language sql security invoker set search_path = ''
+as $$ select private.verify_customer_loyalty_voucher(p_code); $$;
+revoke all on function public.verify_customer_loyalty_voucher(text) from public, anon;
+grant execute on function public.verify_customer_loyalty_voucher(text) to authenticated;
+
+create or replace function public.validate_customer_loyalty_voucher(
+  p_code text,p_booking_phone text,p_service_title text,p_location_type text,
+  p_bill_amount bigint,p_distance_km numeric
+)
+returns jsonb language sql security invoker set search_path = ''
+as $$ select private.validate_customer_loyalty_voucher(
+  p_code,p_booking_phone,p_service_title,p_location_type,p_bill_amount,p_distance_km
+); $$;
+revoke all on function public.validate_customer_loyalty_voucher(text,text,text,text,bigint,numeric) from public, anon;
+grant execute on function public.validate_customer_loyalty_voucher(text,text,text,text,bigint,numeric) to authenticated;
+
+create or replace function public.consume_customer_loyalty_voucher(
+  p_code text,p_external_booking_id text,p_booking_phone text,p_service_title text,
+  p_location_type text,p_bill_amount bigint,p_distance_km numeric
+)
+returns jsonb language sql security invoker set search_path = ''
+as $$ select private.consume_customer_loyalty_voucher(
+  p_code,p_external_booking_id,p_booking_phone,p_service_title,p_location_type,p_bill_amount,p_distance_km
+); $$;
+revoke all on function public.consume_customer_loyalty_voucher(text,text,text,text,text,bigint,numeric) from public, anon;
+grant execute on function public.consume_customer_loyalty_voucher(text,text,text,text,text,bigint,numeric) to authenticated;
+
+create or replace function public.release_customer_loyalty_voucher(p_code text,p_external_booking_id text)
+returns jsonb language sql security invoker set search_path = ''
+as $$ select private.release_customer_loyalty_voucher(p_code,p_external_booking_id); $$;
+revoke all on function public.release_customer_loyalty_voucher(text,text) from public, anon, authenticated;
+grant execute on function public.release_customer_loyalty_voucher(text,text) to service_role;
+
+create or replace function public.award_completed_loyalty_points(
+  p_actor_id uuid,p_phone text,p_name text,p_external_booking_id text,
+  p_service_title text,p_bill_amount bigint
+)
+returns jsonb language sql security invoker set search_path = ''
+as $$ select private.award_completed_loyalty_points(
+  p_actor_id,p_phone,p_name,p_external_booking_id,p_service_title,p_bill_amount
+); $$;
 revoke all on function public.award_completed_loyalty_points(uuid,text,text,text,text,bigint) from public, anon, authenticated;
 grant execute on function public.award_completed_loyalty_points(uuid,text,text,text,text,bigint) to service_role;
+
