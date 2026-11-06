@@ -73,7 +73,7 @@ test('completed-booking awards use the server secret and pass final bill and act
   const originalFetch = globalThis.fetch;
   const originalSecret = process.env.SUPABASE_SECRET_KEY;
   const originalLegacy = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  process.env.SUPABASE_SECRET_KEY = 'server-only-test-secret';
+  process.env.SUPABASE_SECRET_KEY = 'sb_secret_testopaque';
   delete process.env.SUPABASE_SERVICE_ROLE_KEY;
   let captured = null;
   globalThis.fetch = async (_url, options) => {
@@ -92,8 +92,8 @@ test('completed-booking awards use the server secret and pass final bill and act
       final_bill_amount: 5800,
     }, '00000000-0000-4000-8000-000000000001');
     assert.equal(result.pointsEarned, 580);
-    assert.equal(captured.headers.apikey, 'server-only-test-secret');
-    assert.equal(captured.headers.Authorization, 'Bearer server-only-test-secret');
+    assert.equal(captured.headers.apikey, 'sb_secret_testopaque');
+    assert.equal(captured.headers.Authorization, undefined);
     const body = JSON.parse(captured.body);
     assert.equal(body.p_actor_id, '00000000-0000-4000-8000-000000000001');
     assert.equal(body.p_phone, '9829011223');
@@ -187,7 +187,7 @@ test('cancelled-booking voucher release uses server-only credentials and exact b
   const originalFetch = globalThis.fetch;
   const originalSecret = process.env.SUPABASE_SECRET_KEY;
   const originalLegacy = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  process.env.SUPABASE_SECRET_KEY = 'server-only-test-secret';
+  process.env.SUPABASE_SECRET_KEY = 'sb_secret_testopaque';
   delete process.env.SUPABASE_SERVICE_ROLE_KEY;
   let captured = null;
   globalThis.fetch = async (url, options) => {
@@ -201,8 +201,8 @@ test('cancelled-booking voucher release uses server-only credentials and exact b
     const result = await releaseCustomerLoyaltyVoucher('vip-500-1223-abcd', 'salon-1:booking-9');
     assert.equal(result.released, true);
     assert.match(captured.url, /rpc\/release_customer_loyalty_voucher$/);
-    assert.equal(captured.options.headers.apikey, 'server-only-test-secret');
-    assert.equal(captured.options.headers.Authorization, 'Bearer server-only-test-secret');
+    assert.equal(captured.options.headers.apikey, 'sb_secret_testopaque');
+    assert.equal(captured.options.headers.Authorization, undefined);
     assert.deepEqual(JSON.parse(captured.options.body), {
       p_code: 'VIP-500-1223-ABCD',
       p_external_booking_id: 'salon-1:booking-9',
