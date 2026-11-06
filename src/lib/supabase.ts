@@ -133,7 +133,7 @@ export const supabase = {
     },
     signInWithOtp: async (phone: string): Promise<void> => {
       const normalizedPhone = String(phone || '').trim();
-      if (!/^\\+[1-9]\\d{7,14}$/.test(normalizedPhone)) {
+      if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone)) {
         throw new Error('Enter a valid mobile number in international format.');
       }
       await authRequest('/otp', { phone: normalizedPhone });
@@ -141,7 +141,7 @@ export const supabase = {
     verifyPhoneOtp: async (phone: string, token: string): Promise<AuthResult> => {
       const normalizedPhone = String(phone || '').trim();
       const normalizedToken = String(token || '').trim();
-      if (!/^\\+[1-9]\\d{7,14}$/.test(normalizedPhone) || !/^\\d{6}$/.test(normalizedToken)) {
+      if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone)) {
         throw new Error('Enter the 6-digit code sent to your verified mobile number.');
       }
       const result = await authRequest<any>('/verify', {
