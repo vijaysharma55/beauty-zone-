@@ -60,7 +60,7 @@ gateway (Razorpay/mock)  OR  manual UPI QR
         │                          ▼  customer submits UTR ("I have paid")
         │                  booking = payment_verification_pending
         │                  (payment_status = verification_pending)
-        │                          │  owner/admin verifies the bank credit
+        │                          │  salon owner verifies the bank credit
         ▼                          ▼
 server verifies amount + currency + booking + transaction
         ▼
@@ -94,7 +94,7 @@ booking before a verified payment.
 
 > A scanned QR or an "I have paid" click **never** confirms a booking. The
 > customer submits the UPI transaction reference (UTR); the booking stays
-> `payment_verification_pending` until the owner/admin verifies the credit
+> `payment_verification_pending` until the salon owner verifies the credit
 > (`POST /api/salon/payments/:id/verify`) or a supported gateway callback
 > confirms it. The same UTR cannot back two payments.
 

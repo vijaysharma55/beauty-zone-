@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   Users,
   X,
+  WalletCards,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Button, cn } from '../ui';
@@ -22,6 +23,7 @@ const navItems = [
   { to: '/admin/users', label: 'Salon owners', icon: Users },
   { to: '/admin/salons', label: 'Salons & websites', icon: Building2 },
   { to: '/admin/subscriptions', label: 'Subscriptions', icon: CreditCard },
+  { to: '/admin/payments', label: 'Payment monitoring', icon: WalletCards },
   { to: '/admin/settings', label: 'Platform settings', icon: Settings },
 ];
 

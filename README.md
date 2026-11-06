@@ -131,6 +131,11 @@ Set `PAYMENT_MODE=razorpay` with `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` and `R
 to switch to Razorpay. Mock mode is blocked when `NODE_ENV=production`. Full setup, API reference,
 security guarantees and test-mode instructions: **[docs/PAYMENTS.md](docs/PAYMENTS.md)**.
 
+For each salon's own UPI QR, direct bank collection, pending owner verification, private payment proofs,
+My Payments dashboard, CSV/receipts/refunds and optional Razorpay Route linked accounts, see
+**[docs/SALON_OWNER_PAYMENTS.md](docs/SALON_OWNER_PAYMENTS.md)**. Static QR claims are never automatically
+marked paid, and production gateway settlement requires the salon's verified linked account.
+
 ### Email delivery
 
 Verification and review-notification emails are written to `data/outbox/*.json` and logged instead

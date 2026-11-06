@@ -37,6 +37,7 @@ import { workflowInfo, submitForApproval, listVersions, serializeVersion } from 
 import { ownerBookingsRouter } from './bookings.js';
 import { salonPaymentsRouter } from './salon-payments.js';
 import { serviceAdvanceFields } from '../payments/salon-settings.js';
+import { detectImage } from '../payments/proofs.js';
 
 export const salonRouter = Router();
 
@@ -397,12 +398,19 @@ salonRouter.post(
     const mime = String(req.get('content-type') || '').split(';')[0].trim().toLowerCase();
     const ext = MIME_EXT[mime];
     if (!ext) return res.status(415).json({ error: 'Only PNG, JPEG, WEBP or GIF images are allowed.' });
+    if (kind === 'payment_qr' && !['image/png', 'image/jpeg', 'image/jpg', 'image/webp'].includes(mime)) {
+      return res.status(415).json({ error: 'Payment QR codes must be PNG, JPEG or WEBP.' });
+    }
 
     const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
     if (buffer.length === 0) return res.status(400).json({ error: 'Empty upload' });
-    if (!looksLikeImage(buffer)) return res.status(415).json({ error: 'File content is not a valid image.' });
+    if (kind === 'payment_qr' && buffer.length > 2 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Payment QR codes must be 2 MB or smaller.' });
+    }
+    const validContent = kind === 'payment_qr' ? detectImage(buffer, mime) : looksLikeImage(buffer);
+    if (!validContent) return res.status(415).json({ error: 'File content does not match a valid supported image.' });
 
-    const fileName = `${req.user.id.slice(0, 8)}-${crypto.randomBytes(12).toString('hex')}${ext}`;
+    const fileName = `${kind === 'payment_qr' ? 'qr-' : ''}${req.user.id.slice(0, 8)}-${crypto.randomBytes(12).toString('hex')}${ext}`;
     fs.writeFileSync(path.join(UPLOAD_DIR, fileName), buffer);
     audit(req, 'salon.image_uploaded', 'salon', req.salon?.id || null, { kind, size: buffer.length });
     return res.status(201).json({ url: `/api/uploads/${fileName}` });

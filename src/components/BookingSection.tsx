@@ -754,7 +754,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   // Load the server payment configuration (mode, advance percentage, hold time).
   useEffect(() => {
     let active = true;
-    getPaymentConfig()
+    getPaymentConfig('lumina-luxe')
       .then((config) => {
         if (active) setPayConfig(config);
       })
@@ -769,9 +769,9 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   const promoDiscount = appliedPromo ? appliedPromo.discountAmount : 0;
   const totalEstimatedAmount = Math.max(0, treatmentPrice + distanceFee - promoDiscount);
 
-  const advancePercent = payConfig?.advancePercent ?? brand.advancePercentage ?? 25;
-  const paymentAvailable = Boolean(payConfig?.available);
-  const paymentRequired = Boolean(payConfig?.available && payConfig?.advanceRequired && totalEstimatedAmount > 0);
+  const advancePercent = payConfig?.salonPayment?.advancePercent ?? payConfig?.advancePercent ?? brand.advancePercentage ?? 25;
+  const paymentAvailable = Boolean(payConfig?.available || payConfig?.salonPayment?.manualUpi?.enabled || payConfig?.salonPayment?.gateway?.available);
+  const paymentRequired = Boolean(paymentAvailable && (payConfig?.salonPayment?.advanceEnabled ?? payConfig?.advanceRequired) && totalEstimatedAmount > 0);
 
   /**
    * Preview of the advance due now. The server recomputes this from the
@@ -894,7 +894,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
       if (created.payment?.required) {
         if (!payConfig) {
           try {
-            setPayConfig(await getPaymentConfig());
+            setPayConfig(await getPaymentConfig('lumina-luxe'));
           } catch {
             // The checkout still works from the order's own provider details.
           }

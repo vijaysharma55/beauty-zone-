@@ -615,6 +615,44 @@ adminRouter.get('/audit-logs', (req, res) => {
 /* Platform payment oversight                                          */
 /* ------------------------------------------------------------------ */
 
+adminRouter.get('/payment-configurations', asyncHandler(async (_req, res) => {
+  const rows = db.prepare(
+    `SELECT s.id AS salon_id, s.name AS salon_name, s.slug, u.email AS owner_email,
+            p.* FROM salons s JOIN users u ON u.id = s.owner_id
+     LEFT JOIN salon_payment_settings p ON p.salon_id = s.id ORDER BY s.name`
+  ).all();
+  res.json({ configurations: rows.map((row) => ({
+    salonId: row.salon_id,
+    salonName: row.salon_name,
+    slug: row.slug,
+    ownerEmail: row.owner_email,
+    configured: Boolean(row.upi_id || row.provider_account_id),
+    active: Boolean(row.manual_upi_enabled || (row.gateway_enabled && row.provider_onboarding_status === 'verified')),
+    verificationMode: row.verification_mode || 'static_qr',
+    upiId: row.upi_id || '',
+    accountHolderName: row.payment_display_name || '',
+    bankName: row.bank_name || '',
+    hasQr: Boolean(row.upi_qr_url),
+    providerAccountId: row.provider_account_id || '',
+    providerOnboardingStatus: row.provider_onboarding_status || 'not_started',
+    updatedAt: row.updated_at || null,
+  })) });
+}));
+
+adminRouter.patch('/payment-configurations/:salonId', asyncHandler(async (req, res) => {
+  const salon = db.prepare('SELECT id FROM salons WHERE id = ?').get(req.params.salonId);
+  if (!salon) throw new HttpError(404, 'Salon not found.', 'SALON_NOT_FOUND');
+  const status = str(req.body?.providerOnboardingStatus, { max: 20, field: 'Onboarding status', required: true });
+  if (!['pending', 'verified', 'rejected'].includes(status)) throw new ValidationError('Invalid onboarding status');
+  const note = str(req.body?.note, { min: 3, max: 500, field: 'Review note', required: true });
+  const { getSalonPaymentSettings, saveSalonPaymentSettings, serializeOwnerSettings } = await import('../payments/salon-settings.js');
+  const current = getSalonPaymentSettings(salon.id);
+  if (status === 'verified' && !current.providerAccountId) throw new ValidationError('A provider linked-account ID is required before KYC verification.');
+  saveSalonPaymentSettings(salon.id, { ...current, providerOnboardingStatus: status });
+  audit(req, 'admin.payment_provider_kyc_reviewed', 'salon', salon.id, { status, note });
+  res.json({ settings: serializeOwnerSettings(salon.id), message: 'Provider onboarding status updated from the administrator’s provider-dashboard review.' });
+}));
+
 adminRouter.get('/payments', asyncHandler(async (req, res) => {
   const { serializePayment } = await import('../payments/service.js');
   const status = str(req.query.status, { max: 30, field: 'Status' }) || '';
@@ -623,11 +661,21 @@ adminRouter.get('/payments', asyncHandler(async (req, res) => {
     : db.prepare('SELECT * FROM payments ORDER BY created_at DESC LIMIT 300').all();
   const salonName = (id) => (id ? db.prepare('SELECT name FROM salons WHERE id = ?').get(id)?.name || '' : '');
   res.json({
-    payments: rows.map((row) => ({
-      ...serializePayment(row),
-      salonId: row.salon_id,
-      salonName: salonName(row.salon_id),
-    })),
+    payments: rows.map((row) => {
+      const booking = db.prepare('SELECT reference, full_name, service, status FROM bookings WHERE id = ?').get(row.booking_id);
+      const flags = [];
+      if (row.status === 'verification_pending' && !row.payment_proof_url) flags.push('proof_missing');
+      if (row.status === 'paid' && ['cancelled', 'expired', 'declined'].includes(booking?.status)) flags.push('paid_cancelled_booking');
+      if (row.status === 'verification_pending' && Date.now() - new Date(row.claimed_at || row.created_at).getTime() > 86_400_000) flags.push('verification_over_24h');
+      if (row.refunded_at) flags.push('refunded');
+      return {
+        ...serializePayment(row),
+        salonId: row.salon_id,
+        salonName: salonName(row.salon_id),
+        booking: booking ? { reference: booking.reference, customerName: booking.full_name, service: booking.service, status: booking.status } : null,
+        flags,
+      };
+    }),
   });
 }));
 
@@ -645,18 +693,31 @@ adminRouter.get('/payments/verification-queue', asyncHandler(async (req, res) =>
   });
 }));
 
-adminRouter.post('/payments/:paymentId/verify', asyncHandler(async (req, res) => {
-  const { verifyManualUpiPayment, serializePayment } = await import('../payments/service.js');
+adminRouter.get('/payments/details/:paymentId', asyncHandler(async (req, res) => {
   const payment = db.prepare('SELECT * FROM payments WHERE id = ?').get(req.params.paymentId);
   if (!payment) throw new HttpError(404, 'Payment not found.', 'PAYMENT_NOT_FOUND');
-  const result = verifyManualUpiPayment({
-    paymentId: payment.id,
-    actor: req.user,
-    transactionRef: str(req.body?.transactionRef, { max: 60, field: 'Transaction reference' }) || '',
-    note: str(req.body?.note, { max: 300, field: 'Note' }) || '',
-  });
-  audit(req, 'admin.payment_manual_verified', 'payment', payment.id, { confirmed: result.confirmed });
-  res.json({ confirmed: result.confirmed, message: result.message, payment: serializePayment(result.payment) });
+  const { serializePayment } = await import('../payments/service.js');
+  const { paymentAuditHistory } = await import('../payments/audit.js');
+  const { serializeRefund } = await import('../payments/refunds.js');
+  const refunds = db.prepare('SELECT * FROM payment_refunds WHERE payment_id = ? ORDER BY created_at DESC').all(payment.id);
+  res.json({ payment: serializePayment(payment), audit: paymentAuditHistory(payment.id), refunds: refunds.map(serializeRefund) });
+}));
+
+adminRouter.get('/payments/:paymentId/proof', asyncHandler(async (req, res) => {
+  const payment = db.prepare('SELECT * FROM payments WHERE id = ?').get(req.params.paymentId);
+  if (!payment) throw new HttpError(404, 'Payment not found.', 'PAYMENT_NOT_FOUND');
+  const { readPaymentProof } = await import('../payments/proofs.js');
+  const proof = readPaymentProof(payment);
+  res.set('Content-Type', proof.mime);
+  res.set('Cache-Control', 'private, no-store');
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.send(proof.buffer);
+}));
+
+adminRouter.post('/payments/:paymentId/verify', asyncHandler(async (_req, _res) => {
+  // Platform staff cannot inspect the salon owner's personal bank/UPI account.
+  // Monitoring privileges must never become a way to invent a bank confirmation.
+  throw new HttpError(403, 'Only the salon owner can verify a personal UPI credit against their bank history.', 'OWNER_VERIFICATION_REQUIRED');
 }));
 
 adminRouter.post('/payments/:paymentId/reject', asyncHandler(async (req, res) => {

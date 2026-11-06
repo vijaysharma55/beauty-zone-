@@ -6,8 +6,8 @@
  * The QR is rendered server-side as an SVG from the same link.
  *
  * IMPORTANT: scanning a QR (uploaded or generated) never proves payment. The
- * booking stays in `payment_verification_pending` until the salon owner (or an
- * admin) verifies the bank/UPI transaction reference, or a supported gateway
+ * booking stays in `payment_verification_pending` until the salon owner
+ * verifies the bank/UPI transaction reference, or a supported gateway
  * callback confirms the payment.
  */
 

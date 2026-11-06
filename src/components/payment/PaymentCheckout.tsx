@@ -7,6 +7,8 @@ import {
   Clock,
   Copy,
   CreditCard,
+  Download,
+  FileImage,
   Loader2,
   Lock,
   QrCode,
@@ -22,6 +24,7 @@ import {
   MOCK_UPI_HINTS,
   TEST_MODE_NOTICE,
   cancelMockPayment,
+  claimManualUpiPayment,
   completeMockPayment,
   computeAdvancePreviewPaise,
   createPaymentOrder,
@@ -29,8 +32,10 @@ import {
   getBookingStatus,
   loadRazorpayScript,
   startMockCheckout,
+  uploadPaymentProof,
   verifyRazorpayPayment,
   type CheckoutBooking,
+  type ManualUpiOrder,
   type MockOutcome,
   type PaymentConfig,
   type PaymentMethodKind,
@@ -178,6 +183,9 @@ export const PaymentCheckout: React.FC<PaymentCheckoutProps> = ({
   const [wallet, setWallet] = useState('test_success');
   const [selectedOutcome, setSelectedOutcome] = useState<MockOutcome | 'custom'>('success');
   const [order, setOrder] = useState<PaymentResponse['payment']>(null);
+  const [manualUpi, setManualUpi] = useState<ManualUpiOrder | null>(null);
+  const [transactionReference, setTransactionReference] = useState('');
+  const [proofFile, setProofFile] = useState<File | null>(null);
   const [message, setMessage] = useState('');
   const [lastResult, setLastResult] = useState<PaymentResponse | null>(null);
   const [copied, setCopied] = useState(false);
@@ -187,6 +195,7 @@ export const PaymentCheckout: React.FC<PaymentCheckoutProps> = ({
   const bookingId = booking?.id || '';
   const providerMode = config?.mode ?? (order?.provider === 'razorpay' ? 'razorpay' : order?.provider === 'mock' ? 'mock' : null);
   const isMock = providerMode === 'mock';
+  const isManual = order?.provider === 'manual_upi' && Boolean(manualUpi);
   const testCards = config?.testCards?.length ? config.testCards : DEFAULT_TEST_CARDS;
   const testBanks = config?.testBanks?.length ? config.testBanks : DEFAULT_TEST_BANKS;
   const testWallets = config?.testWallets?.length ? config.testWallets : DEFAULT_TEST_WALLETS;
@@ -206,6 +215,9 @@ export const PaymentCheckout: React.FC<PaymentCheckoutProps> = ({
   const reset = useCallback(() => {
     setStage('idle');
     setOrder(null);
+    setManualUpi(null);
+    setTransactionReference('');
+    setProofFile(null);
     setMessage('');
     setLastResult(null);
     setMethod('upi');
@@ -229,10 +241,13 @@ export const PaymentCheckout: React.FC<PaymentCheckoutProps> = ({
     setMessage('');
     setLastResult(null);
     setOrder(null);
-    createPaymentOrder(bookingId)
+    setManualUpi(null);
+    const preferredMethod = config?.salonPayment?.manualUpi?.enabled ? 'upi_qr' : undefined;
+    createPaymentOrder(bookingId, preferredMethod)
       .then((res) => {
         if (cancelled || orderRequestRef.current !== requestId) return;
         setOrder(res.payment);
+        setManualUpi(res.manualUpi || null);
         if (res.config?.mode === 'razorpay') setMessage('');
         emit('ready', res);
       })
@@ -352,6 +367,23 @@ export const PaymentCheckout: React.FC<PaymentCheckoutProps> = ({
     }
   };
 
+  const handleManualClaim = async () => {
+    if (!order || !isManual) return;
+    setStage('processing');
+    setMessage('');
+    try {
+      if (proofFile) await uploadPaymentProof(order.id, proofFile);
+      const result = await claimManualUpiPayment({ orderId: order.id, reference: transactionReference });
+      setLastResult(result);
+      if (result.payment) setOrder(result.payment);
+      setMessage(result.message || 'Reference submitted. The salon must verify your payment.');
+      emit('pending', result);
+    } catch (err) {
+      setMessage(errorMessage(err));
+      setStage('ready');
+    }
+  };
+
   const handleRazorpayPay = async () => {
     if (!order || !config) return;
     setStage('processing');
@@ -436,14 +468,14 @@ export const PaymentCheckout: React.FC<PaymentCheckoutProps> = ({
   };
 
   const copyUpi = () => {
-    navigator.clipboard?.writeText(upiId).catch(() => undefined);
+    navigator.clipboard?.writeText(manualUpi?.upiId || upiId).catch(() => undefined);
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   };
 
   if (!open) return null;
 
-  const paymentUnavailable = config && !config.available;
+  const paymentUnavailable = config && !config.available && !isManual;
   const title =
     stage === 'success'
       ? 'Payment successful'
@@ -493,7 +525,7 @@ export const PaymentCheckout: React.FC<PaymentCheckoutProps> = ({
             </span>
             <div>
               <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: accent }}>
-                {isMock ? 'Mock payment provider' : 'Razorpay secure checkout'}
+                {isMock ? 'Mock payment provider' : isManual ? 'Pay the salon directly by UPI' : 'Razorpay secure checkout'}
               </p>
               <h2 className="font-serif text-xl font-bold sm:text-2xl">{title}</h2>
               <p className="mt-0.5 text-xs" style={{ color: `${primary}99` }}>
@@ -896,6 +928,83 @@ export const PaymentCheckout: React.FC<PaymentCheckoutProps> = ({
             </>
           )}
 
+          {/* Salon owner's personal static UPI QR. A claim is never a success. */}
+          {isManual && manualUpi && order && stage !== 'success' && stage !== 'failed' && stage !== 'pending' && stage !== 'cancelled' && (
+            <div className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-[220px_1fr] sm:items-center">
+                <div className="mx-auto w-full max-w-[220px] rounded-2xl border bg-white p-3 shadow-sm" style={{ borderColor: `${accent}55` }}>
+                  <img
+                    src={manualUpi.qrUrl || manualUpi.dynamicQrUrl}
+                    alt={`UPI QR for ${booking?.salonName || manualUpi.displayName || 'salon'}`}
+                    className="aspect-square w-full object-contain"
+                  />
+                </div>
+                <div className="space-y-3 text-xs" style={{ color: `${primary}AA` }}>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: accent }}>Paying</p>
+                    <p className="mt-0.5 text-base font-bold" style={{ color: primary }}>{booking?.salonName || manualUpi.displayName}</p>
+                    <p className="mt-1 text-2xl font-black" style={{ color: primary }}>{formatPaise(amountPaise)}</p>
+                  </div>
+                  <div className="flex items-center gap-2 rounded-lg border px-3 py-2" style={{ borderColor: `${primary}22` }}>
+                    <code className="min-w-0 flex-1 truncate font-mono">{manualUpi.upiId}</code>
+                    <button type="button" onClick={copyUpi} className="font-bold" style={{ color: accent }}>{copied ? 'Copied' : 'Copy'}</button>
+                  </div>
+                  <p className="font-mono text-[11px]">Reference: {manualUpi.bookingReference}</p>
+                  <div className="flex flex-wrap gap-2">
+                    <a href={manualUpi.paymentLink} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ backgroundColor: primary }}>
+                      <Smartphone className="h-3.5 w-3.5" /> Pay using UPI
+                    </a>
+                    <a href={manualUpi.qrUrl || manualUpi.dynamicQrUrl} download={`UPI-${manualUpi.bookingReference}`} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold" style={{ borderColor: `${primary}33`, color: primary }}>
+                      <Download className="h-3.5 w-3.5" /> Download QR
+                    </a>
+                    {manualUpi.qrUrl && <a href={manualUpi.dynamicQrUrl} download={`UPI-${manualUpi.bookingReference}.svg`} className="inline-flex items-center rounded-lg px-2 py-2 text-[11px] font-bold" style={{ color: accent }}>Exact-amount QR</a>}
+                  </div>
+                </div>
+              </div>
+              <p className="rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">{manualUpi.instructions}</p>
+              <div className="rounded-2xl border p-4" style={{ borderColor: `${primary}22` }}>
+                <label htmlFor="upi-transaction-reference" className="block text-xs font-bold" style={{ color: primary }}>UPI transaction ID / UTR <span className="text-rose-600">*</span></label>
+                <input
+                  id="upi-transaction-reference"
+                  value={transactionReference}
+                  onChange={(event) => setTransactionReference(event.target.value.replace(/\s/g, '').slice(0, 60))}
+                  placeholder="e.g. 123456789012"
+                  autoComplete="off"
+                  className="mt-2 w-full rounded-xl border px-3 py-2.5 font-mono text-sm uppercase"
+                  style={{ borderColor: `${primary}26`, backgroundColor: surface }}
+                />
+                <label htmlFor="payment-proof" className="mt-4 flex cursor-pointer items-center gap-2 rounded-xl border border-dashed px-3 py-3 text-xs font-semibold" style={{ borderColor: `${primary}33`, color: primary }}>
+                  <FileImage className="h-4 w-4" />
+                  <span className="flex-1">{proofFile ? proofFile.name : 'Add payment screenshot (optional)'}</span>
+                  <span style={{ color: accent }}>Choose</span>
+                </label>
+                <input id="payment-proof" type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => {
+                  const file = event.target.files?.[0] || null;
+                  if (file && file.size > 2 * 1024 * 1024) {
+                    setMessage('Payment proof must be 2 MB or smaller.');
+                    event.target.value = '';
+                    return;
+                  }
+                  setProofFile(file);
+                  setMessage('');
+                }} />
+                <p className="mt-2 text-[11px] leading-relaxed" style={{ color: `${primary}88` }}>PNG, JPG or WEBP, maximum 2 MB. Screenshots are private supporting evidence only and never automatically verify payment.</p>
+              </div>
+              {message && stage === 'ready' && <p className="text-xs text-rose-700">{message}</p>}
+              <button
+                type="button"
+                disabled={busy || !/^[A-Za-z0-9-]{6,60}$/.test(transactionReference)}
+                onClick={handleManualClaim}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-sm font-bold text-white disabled:opacity-50"
+                style={{ backgroundColor: primary }}
+              >
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                {busy ? 'Submitting for review…' : 'Submit payment for verification'}
+              </button>
+              <p className="text-center text-[11px] font-semibold text-amber-700">This does not mark your payment as successful. The salon will check its bank/UPI history.</p>
+            </div>
+          )}
+
           {/* Razorpay body */}
           {!isMock && providerMode === 'razorpay' && order && stage !== 'success' && stage !== 'failed' && stage !== 'pending' && stage !== 'cancelled' && (
             <div className="space-y-3">
@@ -975,7 +1084,7 @@ export const PaymentCheckout: React.FC<PaymentCheckoutProps> = ({
           {stage === 'pending' && (
             <div className="space-y-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900">
               <p className="flex items-start gap-2 text-sm font-bold">
-                <Clock className="mt-0.5 h-5 w-5 shrink-0" /> Payment pending
+                <Clock className="mt-0.5 h-5 w-5 shrink-0" /> {isManual ? 'Pending salon verification' : 'Payment pending'}
               </p>
               <p className="leading-relaxed">
                 {message || 'The payment is awaiting confirmation. The booking is not confirmed yet.'}
@@ -988,13 +1097,15 @@ export const PaymentCheckout: React.FC<PaymentCheckoutProps> = ({
                 >
                   <RefreshCw className="h-3.5 w-3.5" /> Check status
                 </button>
-                <button
-                  type="button"
-                  onClick={startNewOrder}
-                  className="rounded-lg bg-amber-600 px-3.5 py-2 text-xs font-bold text-white"
-                >
-                  Retry payment
-                </button>
+                {!isManual && (
+                  <button
+                    type="button"
+                    onClick={startNewOrder}
+                    className="rounded-lg bg-amber-600 px-3.5 py-2 text-xs font-bold text-white"
+                  >
+                    Retry payment
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => onClose('dismissed')}

@@ -68,6 +68,11 @@ export function defaultSalonPaymentSettings(config = resolvePaymentConfig()) {
     upiId: '',
     paymentDisplayName: '',
     upiQrUrl: '',
+    bankName: '',
+    paymentInstructions: '',
+    verificationMode: 'static_qr',
+    providerAccountId: '',
+    providerOnboardingStatus: 'not_started',
     methods: defaultMethods(),
     customized: false,
     updatedAt: null,
@@ -101,6 +106,11 @@ export function getSalonPaymentSettings(salonId, config = resolvePaymentConfig()
     upiId: row.upi_id || '',
     paymentDisplayName: row.payment_display_name || '',
     upiQrUrl: row.upi_qr_url || '',
+    bankName: row.bank_name || '',
+    paymentInstructions: row.payment_instructions || '',
+    verificationMode: row.verification_mode || 'static_qr',
+    providerAccountId: row.provider_account_id || '',
+    providerOnboardingStatus: row.provider_onboarding_status || 'not_started',
     methods,
     customized: true,
     updatedAt: row.updated_at,
@@ -181,6 +191,32 @@ export function validateSettingsPatch(body, current) {
     if (url && !isSafeImageUrl(url)) throw new ValidationError('Payment QR code must be an uploaded image or https URL');
     out.upiQrUrl = url;
   }
+  if (b.bankName !== undefined) out.bankName = str(b.bankName, { max: 120, field: 'Bank name' });
+  if (b.paymentInstructions !== undefined) {
+    out.paymentInstructions = str(b.paymentInstructions, { max: 1000, field: 'Payment instructions' });
+  }
+  if (b.verificationMode !== undefined) {
+    const mode = str(b.verificationMode, { max: 20, field: 'Verification mode' });
+    if (!['static_qr', 'provider'].includes(mode)) throw new ValidationError('Verification mode must be static_qr or provider');
+    out.verificationMode = mode;
+  }
+  if (b.providerAccountId !== undefined) {
+    const account = str(b.providerAccountId, { max: 80, field: 'Provider linked-account ID' });
+    if (account && !/^acc_[A-Za-z0-9]{6,60}$/.test(account)) {
+      throw new ValidationError('Enter a valid Razorpay linked-account ID (acc_…).');
+    }
+    out.providerAccountId = account;
+    // Saving/changing the account restarts KYC review. Only the admin/provider
+    // reconciliation endpoint may mark the linked account verified.
+    if (account !== current.providerAccountId) out.providerOnboardingStatus = account ? 'pending' : 'not_started';
+  }
+  if (b.providerOnboardingStatus !== undefined) {
+    const status = str(b.providerOnboardingStatus, { max: 20, field: 'Provider onboarding status' });
+    if (!['not_started', 'pending', 'verified', 'rejected'].includes(status)) {
+      throw new ValidationError('Invalid provider onboarding status');
+    }
+    out.providerOnboardingStatus = status;
+  }
   if (b.methods !== undefined) {
     if (!b.methods || typeof b.methods !== 'object' || Array.isArray(b.methods)) {
       throw new ValidationError('Payment methods must be an object of toggles');
@@ -201,8 +237,13 @@ export function validateSettingsPatch(body, current) {
       out.advanceFixedPaise = validateFixedPaise(out.advanceFixedPaise);
     }
   }
-  if (out.manualUpiEnabled && !out.upiId) {
-    throw new ValidationError('Add your UPI ID before enabling direct UPI QR payments');
+  if (out.manualUpiEnabled && out.verificationMode === 'static_qr' && !out.upiId) {
+    throw new ValidationError('Add your UPI ID before activating direct UPI QR payments');
+  }
+  if (out.manualUpiEnabled && out.verificationMode === 'provider') {
+    if (!out.providerAccountId || out.providerOnboardingStatus !== 'verified') {
+      throw new ValidationError('Complete provider linked-account onboarding and KYC before activating automatic payments');
+    }
   }
   const anyMethod = PAYMENT_METHOD_KEYS.some((key) => out.methods[key]);
   if (!anyMethod) throw new ValidationError('Enable at least one payment method');
@@ -216,8 +257,10 @@ export function saveSalonPaymentSettings(salonId, settings) {
     `INSERT INTO salon_payment_settings
        (salon_id, advance_enabled, advance_type, advance_percent, advance_fixed_paise,
         balance_policy, disabled_policy, gateway_enabled, manual_upi_enabled,
-        upi_id, payment_display_name, upi_qr_url, methods_json, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        upi_id, payment_display_name, upi_qr_url, bank_name, payment_instructions,
+        verification_mode, provider_account_id, provider_onboarding_status,
+        methods_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(salon_id) DO UPDATE SET
        advance_enabled = excluded.advance_enabled,
        advance_type = excluded.advance_type,
@@ -230,6 +273,11 @@ export function saveSalonPaymentSettings(salonId, settings) {
        upi_id = excluded.upi_id,
        payment_display_name = excluded.payment_display_name,
        upi_qr_url = excluded.upi_qr_url,
+       bank_name = excluded.bank_name,
+       payment_instructions = excluded.payment_instructions,
+       verification_mode = excluded.verification_mode,
+       provider_account_id = excluded.provider_account_id,
+       provider_onboarding_status = excluded.provider_onboarding_status,
        methods_json = excluded.methods_json,
        updated_at = excluded.updated_at`
   ).run(
@@ -245,6 +293,11 @@ export function saveSalonPaymentSettings(salonId, settings) {
     settings.upiId,
     settings.paymentDisplayName,
     settings.upiQrUrl,
+    settings.bankName,
+    settings.paymentInstructions,
+    settings.verificationMode,
+    settings.providerAccountId,
+    settings.providerOnboardingStatus,
     JSON.stringify(settings.methods),
     ts,
     ts
@@ -350,9 +403,23 @@ export function resolveAdvanceForBooking({ salonId, service = null, totalPaise, 
  */
 export function resolveSalonChannels(salonId, config = resolvePaymentConfig()) {
   const settings = getSalonPaymentSettings(salonId, config);
-  const gateway = Boolean(config.available && settings.gatewayEnabled);
-  const manual = Boolean(settings.manualUpiEnabled && settings.upiId && isValidUpiVpa(settings.upiId));
-  return { settings, gateway, manual, any: gateway || manual };
+  const providerMode = settings.verificationMode === 'provider';
+  const linkedProviderReady = Boolean(
+    settings.providerAccountId && settings.providerOnboardingStatus === 'verified'
+  );
+  // In production an ordinary platform Razorpay account is never used for a
+  // salon's customer funds. Razorpay Route with a verified linked account is
+  // mandatory; static UPI remains independently available. Development keeps
+  // the existing gateway test flow without pretending it is marketplace settlement.
+  const legacyDevelopmentGateway = process.env.NODE_ENV !== 'production';
+  const gateway = Boolean(
+    config.available && settings.gatewayEnabled && (!providerMode || linkedProviderReady) &&
+      (linkedProviderReady || legacyDevelopmentGateway)
+  );
+  const manual = Boolean(
+    settings.manualUpiEnabled && !providerMode && settings.upiId && isValidUpiVpa(settings.upiId)
+  );
+  return { settings, gateway, manual, linkedProviderReady, any: gateway || manual };
 }
 
 /** Enabled method list with the channel that will fulfil each method. */
@@ -388,6 +455,7 @@ export function publicSalonPaymentSummary(salonId, config = resolvePaymentConfig
           upiId: settings.upiId,
           displayName: settings.paymentDisplayName,
           qrUrl: settings.upiQrUrl || '',
+          instructions: settings.paymentInstructions || '',
         }
       : { enabled: false, upiId: '', displayName: '', qrUrl: '' },
     methods: effectivePaymentMethods(salonId, config),

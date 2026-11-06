@@ -18,6 +18,8 @@ import {
   X,
   FileCheck2,
   Rocket,
+  WalletCards,
+  QrCode,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Badge, Button, cn } from '../ui';
@@ -30,6 +32,8 @@ const navItems = [
   { to: '/dashboard/services', label: 'Services & Prices', icon: Scissors },
   { to: '/dashboard/staff', label: 'Staff Management', icon: Users },
   { to: '/dashboard/bookings', label: 'Bookings', icon: Calendar },
+  { to: '/dashboard/payments', label: 'My Payments', icon: WalletCards },
+  { to: '/dashboard/settings/payments', label: 'Payment Settings', icon: QrCode },
   { to: '/dashboard/analytics', label: 'Analytics', icon: TrendingUp },
   { to: '/dashboard/approval', label: 'Approvals', icon: FileCheck2 },
   { to: '/dashboard/preview', label: 'Preview', icon: Eye },
