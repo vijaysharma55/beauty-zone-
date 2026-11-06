@@ -94,28 +94,40 @@ async function callServerAwardRpc(params) {
   return data;
 }
 
-export async function verifyCustomerLoyaltyVoucher(code, authorization) {
+export async function verifyCustomerLoyaltyVoucher(code, authorization, bookingContext) {
   const normalizedCode = String(code || '').trim().toUpperCase();
   if (!normalizedCode || normalizedCode.length > 60) {
     throw new HttpError(400, 'Enter a valid rewards voucher code.', 'INVALID_VOUCHER');
   }
-  const result = await callLoyaltyRpc('verify_customer_loyalty_voucher', {
+  if (!bookingContext || !bookingContext.phone || !bookingContext.serviceTitle) {
+    throw new HttpError(400, 'Enter your booking mobile number and service before applying this voucher.', 'INVALID_VOUCHER_CONTEXT');
+  }
+
+  const result = await callLoyaltyRpc('validate_customer_loyalty_voucher', {
     p_code: normalizedCode,
+    p_booking_phone: normalizeLoyaltyPhone(bookingContext.phone),
+    p_service_title: String(bookingContext.serviceTitle).slice(0, 160),
+    p_location_type: bookingContext.locationType,
+    p_bill_amount: Math.max(0, Math.round(Number(bookingContext.billAmount) || 0)),
   }, authorization);
   if (!result?.valid || !result?.voucher) {
-    throw new HttpError(400, 'This voucher could not be verified for your signed-in account.', 'INVALID_VOUCHER');
+    throw new HttpError(400, 'This voucher is not eligible for the selected booking.', 'INVALID_VOUCHER');
   }
   return result.voucher;
 }
 
-export async function consumeCustomerLoyaltyVoucher(code, externalBookingId, authorization) {
+export async function consumeCustomerLoyaltyVoucher(code, externalBookingId, authorization, bookingContext) {
   const normalizedCode = String(code || '').trim().toUpperCase();
-  if (!normalizedCode || !externalBookingId) {
-    throw new HttpError(400, 'Voucher code and booking reference are required.', 'INVALID_VOUCHER');
+  if (!normalizedCode || !externalBookingId || !bookingContext?.phone || !bookingContext?.serviceTitle) {
+    throw new HttpError(400, 'Voucher code, booking reference and booking details are required.', 'INVALID_VOUCHER');
   }
   const params = {
     p_code: normalizedCode,
     p_external_booking_id: String(externalBookingId).slice(0, 180),
+    p_booking_phone: normalizeLoyaltyPhone(bookingContext.phone),
+    p_service_title: String(bookingContext.serviceTitle).slice(0, 160),
+    p_location_type: bookingContext.locationType,
+    p_bill_amount: Math.max(0, Math.round(Number(bookingContext.billAmount) || 0)),
   };
   // The SQL RPC is idempotent for the same booking reference. Retry once on
   // transient failure/timeout to resolve the "committed but response lost" case.
