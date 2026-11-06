@@ -50,14 +50,15 @@ on conflict (id) do update set
 -- voucher and membership writes must go through the SECURITY DEFINER RPCs below.
 revoke insert, update, delete on table public.loyalty_accounts,
   public.loyalty_transactions, public.loyalty_vouchers
-  from anon, authenticated;
+  from public, anon, authenticated;
 grant select on table public.loyalty_accounts,
   public.loyalty_transactions, public.loyalty_vouchers
   to authenticated;
 
 alter table public.loyalty_transactions
   add column if not exists source_booking_id text,
-  add column if not exists redeem_request_id uuid;
+  add column if not exists redeem_request_id uuid,
+  add column if not exists legacy_transaction_id text;
 
 alter table public.loyalty_vouchers
   add column if not exists redeem_request_id uuid,
@@ -66,6 +67,8 @@ alter table public.loyalty_vouchers
 create unique index if not exists loyalty_transactions_source_booking_uidx
   on public.loyalty_transactions(source_booking_id)
   where source_booking_id is not null and transaction_type = 'earn';
+create unique index if not exists loyalty_transactions_legacy_id_uidx
+  on public.loyalty_transactions(legacy_transaction_id);
 create unique index if not exists loyalty_transactions_redeem_request_uidx
   on public.loyalty_transactions(redeem_request_id)
   where redeem_request_id is not null;
@@ -91,7 +94,6 @@ declare
   v_account public.loyalty_accounts%rowtype;
   v_member text;
   v_name text;
-  v_created boolean := false;
 begin
   if v_user_id is null then
     raise exception using errcode='42501', message='Sign in with your mobile OTP before opening rewards';
@@ -293,6 +295,9 @@ begin
   select * into v_existing from public.loyalty_vouchers
   where account_id=v_account.id and redeem_request_id=p_request_id;
   if found then
+    if v_existing.offer_id <> p_offer_id then
+      raise exception using errcode='22023', message='This redemption request id was already used for a different reward';
+    end if;
     return jsonb_build_object(
       'success',true,'voucherCode',v_existing.code,'discountAmount',v_existing.discount_amount,
       'totalPoints',v_account.total_points,'tier',v_account.tier,'expiresAt',v_existing.expires_at,
