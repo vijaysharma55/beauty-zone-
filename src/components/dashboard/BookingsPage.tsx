@@ -60,6 +60,12 @@ export interface Booking {
   notes: string;
   promoCode: string | null;
   estimatedTotal: number;
+  finalBillAmount?: number | null;
+  loyaltyAwardStatus?: 'not_awarded' | 'pending' | 'awarded' | 'failed' | 'not_eligible';
+  loyaltyPointsAwarded?: number;
+  loyaltyAwardError?: string;
+  loyaltyVoucherStatus?: 'none' | 'reserved' | 'used' | 'released' | 'release_failed';
+  loyaltyVoucherError?: string;
   advancePaid: number;
   advanceRef: string | null;
   paymentStatus?: string;
@@ -241,6 +247,25 @@ export const BookingsPage: React.FC = () => {
       } else {
         setNotice(`${booking.reference}: loyalty points are still pending. ${res.loyaltyReward?.message || ''}`);
       }
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const retryVoucherRelease = async (booking: Booking) => {
+    setUpdating(booking.id);
+    setError('');
+    setNotice('');
+    try {
+      const res = await api.post<{ booking: Booking; voucherRelease?: { released?: boolean; retryable?: boolean; message?: string } }>(
+        `/salon/bookings/${booking.id}/loyalty/voucher/release`
+      );
+      setBookings((prev) => prev.map((b) => (b.id === booking.id ? res.booking : b)));
+      setNotice(res.voucherRelease?.released
+        ? `${booking.reference}: rewards voucher released back to the customer.`
+        : `${booking.reference}: voucher release is still pending. ${res.voucherRelease?.message || ''}`);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -453,6 +478,15 @@ export const BookingsPage: React.FC = () => {
                             : 'Points award pending'}
                         </span>
                       )}
+                      {booking.promoCode && (
+                        <span className={booking.loyaltyVoucherStatus === 'released' || booking.loyaltyVoucherStatus === 'used'
+                          ? 'font-semibold text-slate-600'
+                          : booking.loyaltyVoucherStatus === 'release_failed'
+                            ? 'font-semibold text-rose-700'
+                            : 'font-semibold text-amber-700'}>
+                          · Voucher {booking.loyaltyVoucherStatus || 'reserved'}
+                        </span>
+                      )}
                       {booking.paymentStatus ? (
                         <span
                           className={`rounded-full px-1.5 py-0.5 font-semibold ${
@@ -494,6 +528,18 @@ export const BookingsPage: React.FC = () => {
                         {action.label}
                       </Button>
                     ))}
+                    {(booking.status === 'cancelled' || booking.status === 'declined')
+                      && booking.loyaltyVoucherStatus === 'release_failed' && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        loading={updating === booking.id}
+                        disabled={updating === booking.id}
+                        onClick={() => retryVoucherRelease(booking)}
+                      >
+                        Retry voucher release
+                      </Button>
+                    )}
                     {booking.status === 'completed' && booking.loyaltyAwardStatus !== 'awarded' && (
                       <Button
                         size="sm"
