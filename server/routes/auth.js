@@ -57,8 +57,8 @@ function isSeededDemoEmail(email) {
     || /^owner(?:-[a-z0-9-]+|[0-9]+)?@jaipur\.salon$/.test(normalized);
 }
 
-const DUMMY_PASSWORD_HASH =
-  'scrypt' + '$16384' + '$8' + '$1' + '
+const DUMMY_PASSWORD_HASH = ['scrypt', '16384', '8', '1', '0'.repeat(32), '0'.repeat(128)]
+  .join(String.fromCharCode(36));
 
 function verificationUrl(req, token) {
   const configured = (process.env.APP_URL || '').replace(/\/+$/, '');
