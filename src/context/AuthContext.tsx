@@ -56,6 +56,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const refresh = useCallback(async () => {
     try {
       const session = await supabase.auth.getSession();
+      if (session?.user?.phone && !session.user.email) {
+        apply(null);
+        return null;
+      }
       if (session?.access_token) return await syncAccessToken(session.access_token);
       const data = await api.get<AuthResponse>('/auth/me');
       apply(data);
@@ -73,6 +77,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         apply(null);
         return;
       }
+      if (session?.user?.phone && !session.user.email) {
+        // Customer phone-OTP sessions belong to the rewards area, not the
+        // salon-owner/admin session bridge.
+        apply(null);
+        return;
+      }
       if (session?.access_token && ['SIGNED_IN', 'TOKEN_REFRESHED', 'PASSWORD_RECOVERY', 'USER_UPDATED'].includes(event)) {
         void syncAccessToken(session.access_token).catch((err) => {
           console.error('[auth] Supabase session sync failed:', err);
@@ -85,7 +95,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const session = await supabase.auth.getSession();
         if (cancelled) return;
-        if (session?.access_token) await syncAccessToken(session.access_token);
+        if (session?.user?.phone && !session.user.email) {
+          apply(null);
+        } else if (session?.access_token) await syncAccessToken(session.access_token);
         else {
           try {
             const legacySession = await api.get<AuthResponse>('/auth/me');
