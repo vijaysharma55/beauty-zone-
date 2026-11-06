@@ -61,6 +61,39 @@ async function callLoyaltyRpc(functionName, params, authorization) {
   return data;
 }
 
+async function callServerAwardRpc(params) {
+  const serverKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serverKey) {
+    throw new HttpError(
+      503,
+      'Server loyalty awards are not configured. Set SUPABASE_SECRET_KEY (or SUPABASE_SERVICE_ROLE_KEY) in the server environment.',
+      'LOYALTY_SERVER_KEY_MISSING'
+    );
+  }
+  const response = await fetch(SUPABASE_URL + '/rest/v1/rpc/award_completed_loyalty_points', {
+    method: 'POST',
+    headers: {
+      apikey: serverKey,
+      Authorization: 'Bearer ' + serverKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(params),
+    signal: AbortSignal.timeout(10000),
+  });
+
+  const raw = await response.text();
+  let data = null;
+  if (raw) {
+    try { data = JSON.parse(raw); } catch { data = { message: raw.slice(0, 200) }; }
+  }
+  if (!response.ok) {
+    const status = response.status === 401 || response.status === 403 ? response.status : response.status >= 500 ? 503 : 400;
+    const message = data?.message || data?.hint || data?.error_description || data?.error || 'Loyalty award was rejected.';
+    throw new HttpError(status, message, data?.code || 'LOYALTY_AWARD_FAILED');
+  }
+  return data;
+}
+
 export async function verifyCustomerLoyaltyVoucher(code, authorization) {
   const normalizedCode = String(code || '').trim().toUpperCase();
   if (!normalizedCode || normalizedCode.length > 60) {
@@ -91,7 +124,7 @@ export async function consumeCustomerLoyaltyVoucher(code, externalBookingId, aut
  * completed. The booking's final rupee amount is used; estimated/default values
  * are never fabricated. The database enforces role, tenant, and idempotency.
  */
-export async function creditLoyaltyPointsForCompletedBooking(booking, authorization) {
+export async function creditLoyaltyPointsForCompletedBooking(booking, actorId) {
   if (!booking || !booking.id || !booking.phone) {
     return { awarded: false, reason: 'Booking is missing its id or customer mobile number.' };
   }
@@ -103,7 +136,12 @@ export async function creditLoyaltyPointsForCompletedBooking(booking, authorizat
     return { awarded: false, reason: 'No eligible final bill amount was recorded.' };
   }
 
-  return callLoyaltyRpc('award_completed_loyalty_points', {
+  if (!actorId) {
+    throw new HttpError(409, 'This salon owner is not linked to a verified Supabase profile.', 'LOYALTY_OWNER_NOT_LINKED');
+  }
+
+  return callServerAwardRpc({
+    p_actor_id: actorId,
     p_phone: phone,
     p_name: booking.full_name || '',
     p_external_booking_id: String(booking.id),
