@@ -592,14 +592,21 @@ begin
   select * into v_voucher
   from public.loyalty_vouchers
   where upper(code)=upper(trim(p_code))
-    and external_booking_id=p_external_booking_id
-    and used=true
   for update;
   if not found then
+    raise exception using errcode='P0002', message='Voucher was not found';
+  end if;
+  if not v_voucher.used and v_voucher.external_booking_id is null then
     return jsonb_build_object('success',true,'released',false,'alreadyReleased',true);
+  end if;
+  if v_voucher.external_booking_id is distinct from p_external_booking_id then
+    raise exception using errcode='23514', message='Voucher is held by a different booking reference';
   end if;
   if v_voucher.expires_at<=now() then
     return jsonb_build_object('success',true,'released',false,'expired',true);
+  end if;
+  if not v_voucher.used then
+    return jsonb_build_object('success',true,'released',false,'alreadyReleased',true);
   end if;
   update public.loyalty_vouchers set used=false,external_booking_id=null where id=v_voucher.id;
   return jsonb_build_object('success',true,'released',true,'voucherCode',v_voucher.code);
