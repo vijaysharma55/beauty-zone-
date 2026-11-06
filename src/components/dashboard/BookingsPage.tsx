@@ -561,7 +561,8 @@ export const BookingsPage: React.FC = () => {
                         Reopen
                       </Button>
                     )}
-                    {(booking.status === 'declined' || booking.status === 'cancelled') && (
+                    {(booking.status === 'declined' || booking.status === 'cancelled')
+                      && (!booking.promoCode || booking.loyaltyVoucherStatus === 'reserved') && (
                       <Button
                         size="sm"
                         variant="ghost"
