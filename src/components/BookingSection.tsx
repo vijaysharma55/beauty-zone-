@@ -565,11 +565,16 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     if (!clean) return;
 
     try {
-      const result = await supabase.db.rpc<any>('verify_customer_loyalty_voucher', {
+      const result = await supabase.db.rpc<any>('validate_customer_loyalty_voucher', {
         p_code: clean,
+        p_booking_phone: form.phone.trim(),
+        p_service_title: form.selectedService,
+        p_location_type: form.locationType,
+        p_bill_amount: Math.max(0, Math.round(treatmentPrice + distanceFee)),
+        p_distance_km: form.locationType === 'home' ? form.distanceKm : null,
       });
       if (!result?.valid || !result?.voucher) {
-        throw new Error('This voucher is not valid for your signed-in rewards account.');
+        throw new Error('This voucher is not eligible for this booking or does not belong to your signed-in rewards account.');
       }
       setAppliedPromo({
         code: String(result.voucher.code),
