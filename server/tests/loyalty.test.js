@@ -6,6 +6,7 @@ import {
   calculateLoyaltyPoints,
   calculateLoyaltyTierFromLifetime,
   verifyCustomerLoyaltyVoucher,
+  consumeCustomerLoyaltyVoucher,
   creditLoyaltyPointsForCompletedBooking,
 } from '../routes/loyalty.js';
 
@@ -115,6 +116,41 @@ test('missing server secret fails closed for completed-booking awards', async ()
   }
 });
 
+test('voucher consumption sends booking ownership and eligibility context to Postgres', async () => {
+  const originalFetch = globalThis.fetch;
+  let captured = null;
+  globalThis.fetch = async (_url, options) => {
+    captured = options;
+    return new Response(JSON.stringify({ success: true, discountAmount: 500 }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+  try {
+    const result = await consumeCustomerLoyaltyVoucher(
+      'vip-500-1223-abcd',
+      'salon-1:booking-1',
+      'Bearer customer-jwt',
+      {
+        phone: '+91 98290 11223',
+        serviceTitle: 'Hair Spa',
+        locationType: 'salon',
+        billAmount: 2500,
+      }
+    );
+    assert.equal(result.discountAmount, 500);
+    const body = JSON.parse(captured.body);
+    assert.equal(body.p_code, 'VIP-500-1223-ABCD');
+    assert.equal(body.p_external_booking_id, 'salon-1:booking-1');
+    assert.equal(body.p_booking_phone, '9829011223');
+    assert.equal(body.p_service_title, 'Hair Spa');
+    assert.equal(body.p_location_type, 'salon');
+    assert.equal(body.p_bill_amount, 2500);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('migration protects balance writes, award RPC and all six catalogue costs', async () => {
   const migration = await readFile(
     new URL('../../supabase/migrations/20261106_beautyzone_secure_customer_rewards.sql', import.meta.url),
@@ -128,6 +164,15 @@ test('migration protects balance writes, award RPC and all six catalogue costs',
     assert.match(migration, new RegExp("'" + id + "'[^\\n]*," + points + ","));
   }
   assert.match(migration, /redeem_request_id uuid/i);
+  assert.match(migration, /minimum_bill_amount bigint/i);
+  assert.match(migration, /eligible_service_keyword text/i);
+  assert.match(migration, /eligible_location_type text/i);
+  assert.match(migration, /validate_customer_loyalty_voucher/i);
+  assert.match(migration, /p_booking_phone text/i);
+  assert.match(migration, /This reward requires a minimum eligible bill/i);
+  assert.match(migration, /This voucher can only be used for an eligible/i);
+  assert.match(migration, /This voucher is valid only for an eligible doorstep home booking/i);
+  assert.match(migration, /revoke all on function private\.redeem_customer_loyalty_reward/i);
   assert.match(migration, /loyalty_vouchers_redeem_request_uidx/i);
   assert.match(migration, /source_booking_id\) where source_booking_id is not null and transaction_type = 'earn'/i);
 });
