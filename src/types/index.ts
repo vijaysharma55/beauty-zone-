@@ -203,6 +203,10 @@ export interface RewardOffer {
   description: string;
   pointsCost: number;
   discountValue: string;
+  minimumBillAmount?: number;
+  eligibleServiceKeyword?: string | null;
+  eligibleLocationType?: 'salon' | 'home' | null;
+  eligibleMaxDistanceKm?: number | null;
   category: 'discount' | 'free_service' | 'upgrade' | 'bridal';
   badge?: string;
   iconName?: string;
