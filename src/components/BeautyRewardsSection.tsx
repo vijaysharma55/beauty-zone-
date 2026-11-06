@@ -98,6 +98,14 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
       description: String(offer.description || ''),
       pointsCost: Number(offer.pointsCost),
       discountValue: String(offer.discountValue || ''),
+      minimumBillAmount: Number(offer.minimumBillAmount || 0),
+      eligibleServiceKeyword: offer.eligibleServiceKeyword ? String(offer.eligibleServiceKeyword) : null,
+      eligibleLocationType: offer.eligibleLocationType === 'home' || offer.eligibleLocationType === 'salon'
+        ? offer.eligibleLocationType
+        : null,
+      eligibleMaxDistanceKm: offer.eligibleMaxDistanceKm === null || offer.eligibleMaxDistanceKm === undefined
+        ? null
+        : Number(offer.eligibleMaxDistanceKm),
       category: offer.category,
       badge: offer.badge || undefined,
     }));
@@ -695,6 +703,29 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
                     <p className="text-xs text-[#4A4A4A] mt-2 leading-relaxed">
                       {offer.description}
                     </p>
+                    {(offer.minimumBillAmount || offer.eligibleServiceKeyword || offer.eligibleLocationType || offer.eligibleMaxDistanceKm) && (
+                      <div className="mt-3 rounded-xl bg-neutral-50 border border-neutral-200 px-3 py-2 space-y-1">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">Redemption terms</p>
+                        {Boolean(offer.minimumBillAmount) && (
+                          <p className="text-[11px] text-neutral-700">
+                            Minimum eligible bill: {formatPrice(offer.minimumBillAmount || 0)}
+                          </p>
+                        )}
+                        {offer.eligibleServiceKeyword && (
+                          <p className="text-[11px] text-neutral-700">
+                            Eligible service must include: {offer.eligibleServiceKeyword}
+                          </p>
+                        )}
+                        {offer.eligibleLocationType === 'home' && (
+                          <p className="text-[11px] text-neutral-700">
+                            Valid for doorstep home bookings only{offer.eligibleMaxDistanceKm ? ` · within ${offer.eligibleMaxDistanceKm} km` : ''}
+                          </p>
+                        )}
+                        {offer.eligibleLocationType === 'salon' && (
+                          <p className="text-[11px] text-neutral-700">Valid at the salon only</p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-5 pt-4 border-t border-neutral-100 flex items-center justify-between gap-3">
