@@ -626,5 +626,6 @@ export const BookingsPage: React.FC = () => {
 
     </div>
   );
+};
 
 export default BookingsPage;
