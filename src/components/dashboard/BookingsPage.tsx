@@ -152,6 +152,8 @@ export const BookingsPage: React.FC = () => {
   const [filter, setFilter] = useState<'all' | BookingStatus>('all');
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [updating, setUpdating] = useState<string | null>(null);
+  const [completionBooking, setCompletionBooking] = useState<Booking | null>(null);
+  const [finalBillAmount, setFinalBillAmount] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -171,6 +173,13 @@ export const BookingsPage: React.FC = () => {
   }, []);
 
   const changeStatus = async (booking: Booking, status: BookingStatus) => {
+    if (status === 'completed') {
+      setCompletionBooking(booking);
+      setFinalBillAmount(String(booking.finalBillAmount ?? booking.estimatedTotal ?? ''));
+      setError('');
+      setNotice('');
+      return;
+    }
     setUpdating(booking.id);
     setError('');
     setNotice('');
@@ -179,6 +188,59 @@ export const BookingsPage: React.FC = () => {
       setBookings((prev) => prev.map((b) => (b.id === booking.id ? res.booking : b)));
       setNotice(`${booking.reference} marked ${STATUS_LABEL[status].toLowerCase()}.`);
       setTimeout(() => setNotice(''), 3500);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+
+  const submitCompletion = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!completionBooking) return;
+    const amount = Number(finalBillAmount);
+    if (!Number.isSafeInteger(amount) || amount < 1 || amount > 10000000) {
+      setError('Enter the actual final bill amount between ₹1 and ₹1,00,00,000.');
+      return;
+    }
+
+    setUpdating(completionBooking.id);
+    setError('');
+    setNotice('');
+    try {
+      const res = await api.patch<{ booking: Booking; loyaltyReward?: { awarded?: boolean; alreadyAwarded?: boolean; pointsEarned?: number; retryable?: boolean; message?: string } }>(
+        `/salon/bookings/${completionBooking.id}`,
+        { status: 'completed', finalBillAmount: amount }
+      );
+      setBookings((prev) => prev.map((b) => (b.id === completionBooking.id ? res.booking : b)));
+      if (res.loyaltyReward?.awarded || res.loyaltyReward?.alreadyAwarded) {
+        setNotice(`${completionBooking.reference} completed. ${Number(res.loyaltyReward.pointsEarned || 0).toLocaleString('en-IN')} loyalty points confirmed.`);
+      } else {
+        setNotice(`${completionBooking.reference} completed, but points are not confirmed yet. ${res.loyaltyReward?.message || 'Use Retry points award on this booking.'}`);
+      }
+      setCompletionBooking(null);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const retryLoyaltyAward = async (booking: Booking) => {
+    setUpdating(booking.id);
+    setError('');
+    setNotice('');
+    try {
+      const res = await api.post<{ booking: Booking; loyaltyReward?: { awarded?: boolean; alreadyAwarded?: boolean; pointsEarned?: number; message?: string } }>(
+        `/salon/bookings/${booking.id}/loyalty/retry`
+      );
+      setBookings((prev) => prev.map((b) => (b.id === booking.id ? res.booking : b)));
+      if (res.loyaltyReward?.awarded || res.loyaltyReward?.alreadyAwarded) {
+        setNotice(`${booking.reference}: ${Number(res.loyaltyReward.pointsEarned || 0).toLocaleString('en-IN')} loyalty points confirmed.`);
+      } else {
+        setNotice(`${booking.reference}: loyalty points are still pending. ${res.loyaltyReward?.message || ''}`);
+      }
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -381,6 +443,16 @@ export const BookingsPage: React.FC = () => {
                       <span>Submitted {formatDate(booking.createdAt)}</span>
                       {booking.estimatedTotal ? <span>· Estimated {formatMoney(booking.estimatedTotal)}</span> : null}
                       {booking.advancePaid ? <span>· Advance {formatMoney(booking.advancePaid)} paid</span> : null}
+                      {booking.finalBillAmount ? (
+                        <span>· Final bill {formatMoney(booking.finalBillAmount)}</span>
+                      ) : null}
+                      {booking.status === 'completed' && (
+                        <span className={booking.loyaltyAwardStatus === 'awarded' ? 'font-semibold text-emerald-700' : 'font-semibold text-amber-700'}>
+                          · {booking.loyaltyAwardStatus === 'awarded'
+                            ? `${booking.loyaltyPointsAwarded || 0} points awarded`
+                            : 'Points award pending'}
+                        </span>
+                      )}
                       {booking.paymentStatus ? (
                         <span
                           className={`rounded-full px-1.5 py-0.5 font-semibold ${
@@ -422,6 +494,17 @@ export const BookingsPage: React.FC = () => {
                         {action.label}
                       </Button>
                     ))}
+                    {booking.status === 'completed' && booking.loyaltyAwardStatus !== 'awarded' && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        loading={updating === booking.id}
+                        disabled={updating === booking.id}
+                        onClick={() => retryLoyaltyAward(booking)}
+                      >
+                        Retry points award
+                      </Button>
+                    )}
                     {booking.status === 'completed' && (
                       <Button
                         size="sm"
@@ -450,8 +533,52 @@ export const BookingsPage: React.FC = () => {
         </Card>
       )}
 
+      {completionBooking && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4" role="presentation">
+          <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="complete-booking-title"
+            onSubmit={submitCompletion}
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+          >
+            <h2 id="complete-booking-title" className="font-serif text-xl font-bold text-slate-900">
+              Complete appointment
+            </h2>
+            <p className="mt-1 text-sm text-slate-600">
+              {completionBooking.reference} · {completionBooking.service}
+            </p>
+            <label className="mt-5 block text-sm font-semibold text-slate-800" htmlFor="final-booking-bill">
+              Actual final bill (₹)
+              <input
+                id="final-booking-bill"
+                type="number"
+                inputMode="numeric"
+                min="1"
+                max="10000000"
+                step="1"
+                required
+                value={finalBillAmount}
+                onChange={(event) => setFinalBillAmount(event.target.value)}
+                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-base text-slate-900 outline-none focus:border-[#D09A40] focus:ring-2 focus:ring-[#D09A40]/20"
+              />
+            </label>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">
+              Points will be calculated from this final amount, not the visitor’s booking estimate. This value cannot be changed after points are awarded.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button type="button" variant="secondary" disabled={updating === completionBooking.id} onClick={() => setCompletionBooking(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="gold" loading={updating === completionBooking.id} disabled={updating === completionBooking.id}>
+                Save & complete
+              </Button>
+            </div>
+          </form>
+        </div>
+      )}
+
     </div>
   );
-};
 
 export default BookingsPage;
