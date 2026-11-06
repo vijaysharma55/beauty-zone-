@@ -618,9 +618,34 @@ bookingsRouter.post(
           "UPDATE bookings SET loyalty_voucher_status = 'reserved', loyalty_voucher_error = '' WHERE id = ?"
         ).run(id);
       } catch (error) {
-        // Do not leave an active appointment carrying a voucher discount that
-        // was not atomically consumed by the authoritative Supabase ledger.
-        db.prepare('DELETE FROM bookings WHERE id = ?').run(id);
+        // If the consume response was lost after Postgres committed, release
+        // the voucher by its exact booking reference before removing the local
+        // booking. If that release is also unconfirmed, retain a cancelled
+        // retry record rather than orphaning a potentially-held voucher.
+        let released = false;
+        let releaseError = '';
+        try {
+          const release = await releaseCustomerLoyaltyVoucher(
+            voucherApplied.code,
+            `${salon?.id || 'public'}:${id}`
+          );
+          released = Boolean(release?.released || release?.alreadyReleased || release?.expired);
+        } catch (releaseFailure) {
+          releaseError = String(releaseFailure?.message || 'Voucher release could not be confirmed.').slice(0, 500);
+        }
+
+        if (released) {
+          db.prepare('DELETE FROM bookings WHERE id = ?').run(id);
+        } else {
+          db.prepare(
+            `UPDATE bookings
+             SET status = 'cancelled',
+                 loyalty_voucher_status = 'release_failed',
+                 loyalty_voucher_error = ?,
+                 updated_at = ?
+             WHERE id = ?`
+          ).run(releaseError || String(error?.message || 'Voucher reservation is unresolved.').slice(0, 500), nowIso(), id);
+        }
         throw error;
       }
     }
