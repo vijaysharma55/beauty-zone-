@@ -47,13 +47,19 @@ test('voucher verification requires a Supabase bearer session before making a re
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   };
   try {
+    const bookingContext = {
+      phone: '+91 98290 11223',
+      serviceTitle: 'Hair Spa',
+      locationType: 'salon',
+      billAmount: 2500,
+    };
     await assert.rejects(
-      verifyCustomerLoyaltyVoucher('VIP-500-1223-ABCD', ''),
+      verifyCustomerLoyaltyVoucher('VIP-500-1223-ABCD', '', bookingContext),
       /Supabase sign-in session/
     );
     assert.equal(requested, false);
 
-    const voucher = await verifyCustomerLoyaltyVoucher('vip-500-1223-abcd', 'Bearer customer-jwt');
+    const voucher = await verifyCustomerLoyaltyVoucher('vip-500-1223-abcd', 'Bearer customer-jwt', bookingContext);
     assert.equal(voucher.code, 'VIP-500-1223-ABCD');
     assert.equal(requested, true);
   } finally {
