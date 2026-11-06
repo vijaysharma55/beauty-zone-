@@ -60,7 +60,7 @@ export const REWARD_OFFERS: RewardOffer[] = [
   {
     id: 'rew-1',
     title: '₹500 Instant Salon Voucher',
-    description: 'Use on any salon service or hair spa bill of ₹1,500 or more across all studio branches.',
+    description: 'Use on eligible salon services with a minimum bill of ₹1,500.',
     pointsCost: 500,
     discountValue: '₹500 Flat Off',
     category: 'discount',
@@ -78,7 +78,7 @@ export const REWARD_OFFERS: RewardOffer[] = [
   {
     id: 'rew-3',
     title: '24K Gold Foil Facial Upgrade',
-    description: 'Upgrade any regular facial to our signature real 24K Gold Leaf facial with ultrasound glow treatment.',
+    description: 'Upgrade an eligible regular facial to the signature 24K Gold Leaf facial.',
     pointsCost: 1000,
     discountValue: 'Free Luxury Upgrade (Worth ₹2,500)',
     category: 'upgrade',
@@ -87,7 +87,7 @@ export const REWARD_OFFERS: RewardOffer[] = [
   {
     id: 'rew-4',
     title: 'Complimentary Gel Nail Art Set',
-    description: 'Free gel extension nail art with crystal stone accents and chrome finish.',
+    description: 'Complimentary gel nail art set with crystal accents and chrome finish.',
     pointsCost: 650,
     discountValue: '100% Free Service (Worth ₹1,499)',
     category: 'free_service',
@@ -95,7 +95,7 @@ export const REWARD_OFFERS: RewardOffer[] = [
   {
     id: 'rew-5',
     title: '₹1,500 Royal Bridal Booking Discount',
-    description: 'Instant reduction on any Signature HD or Airbrush bridal makeup package.',
+    description: 'Use on eligible Signature HD or Airbrush bridal makeup packages.',
     pointsCost: 1500,
     discountValue: '₹1,500 Off Bridal',
     category: 'bridal',
@@ -104,12 +104,12 @@ export const REWARD_OFFERS: RewardOffer[] = [
   {
     id: 'rew-6',
     title: 'Free Home Salon Travel Pass',
-    description: 'Zero distance travel fee on doorstep home salon visits up to 15 km.',
+    description: 'Waives eligible doorstep travel fees up to 15 km.',
     pointsCost: 400,
     discountValue: 'Free Home Travel (Worth ₹600)',
     category: 'discount',
   },
-];
+]
 
 export const DEMO_CUSTOMERS: LoyaltyCustomer[] = [
   {
