@@ -802,7 +802,7 @@ test('visitor can book a live salon and the owner sees it', async () => {
   assert.equal(created.data.booking.status, 'pending_payment');
   assert.equal(created.data.payment.required, true);
 
-  const owner = await loginAs('owner@test.local', 'Owner@12345');
+  const owner = ownerClient;
   const list = await owner.get('/api/salon/bookings');
   assert.equal(list.status, 200);
   assert.ok(list.data.bookings.some((b) => b.reference === created.data.booking.reference));
@@ -890,7 +890,7 @@ test('cancelled bookings mark voucher release failure and expose an owner retry 
     testDb.close();
   }
 
-  const owner = await loginAs('owner@test.local', 'Owner@12345');
+  const owner = ownerClient;
   const cancelled = await owner.patch(`/api/salon/bookings/${created.data.booking.id}`, { status: 'cancelled' });
   assert.equal(cancelled.status, 200);
   assert.equal(cancelled.data.booking.status, 'cancelled');
