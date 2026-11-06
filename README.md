@@ -457,7 +457,11 @@ matching Google OAuth client/audience used by GOOGLE_CLIENT_ID.
 4. Configure `GOOGLE_CLIENT_ID` with your production origin if Google sign-in is required.
 5. Keep `ALLOWED_ORIGINS` empty unless a separate trusted frontend domain must send writes.
 6. On Vercel: add the wildcard domain `*.beautyzone.app` so tenant subdomains resolve, and set
-   `APP_URL`. `vercel.json` already handles the `/api` passthrough and SPA fallback.
+   `APP_URL`. `vercel.json` already handles the `/api` passthrough and SPA fallback — `/` serves the
+   prerendered `dist/index.html`, every other non-API path serves `dist/spa.html`. Rewrite
+   destinations must name emitted files (`/spa.html`, not `/spa`), or deep links return HTTP 404.
+   After deploying, run `npm run verify:routes https://<deployment-url>` to confirm every route
+   answers 200.
 7. Optional: set `GEMINI_API_KEY` (and `GEMINI_MODEL`) to enable live AI suggestions. Without it the
    AI endpoints still work, using deterministic local templates.
 

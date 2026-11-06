@@ -1,5 +1,27 @@
 # BeautyZone — Audit Changelog
 
+## PR 1 — Vercel deep-link routing fix (2026-11-06)
+
+Fixes the P1 deployment blocker recorded in AUDIT-REPORT.md, GAP-ANALYSIS.md, BUG-FIX-REPORT.md and
+TEST-REPORT.md: direct requests to `/login`, `/register`, `/salons`, `/salon/lumina-luxe`,
+`/dashboard` and `/my-appointments` returned HTTP 404 in production and preview.
+
+- **Root cause**: the catch-all rewrite pointed at the extensionless destinations `/spa` and
+  `/index`. No such files exist in the build output (`dist/spa.html` and `dist/index.html` do), so
+  the rewrite resolved to nothing and the request fell through to Vercel's 404. `/` and `/spa.html`
+  kept returning 200 because they are served by the filesystem phase before rewrites run.
+- `vercel.json` rewrite destinations now name real emitted files (`/index.html`, `/spa.html`).
+- `cleanUrls` is disabled; it exposed the shells only at extensionless aliases and was the reason the
+  previous destinations looked valid.
+- The SPA catch-all excludes `/api/`, so unknown API paths keep returning the Express JSON 404
+  instead of being rewritten into an HTML shell.
+- Added `server/tests/vercel-routing.test.js` (wired into `npm test`): asserts every React Router
+  route resolves to an HTML shell, that no rewrite destination is extensionless and that the build
+  emits both shells.
+- Added `scripts/verify-routes.sh` (`npm run verify:routes <url>`) for post-deployment checks.
+
+---
+
 Date: 2026-11-06  
 Working branch: audit/beautyzone-production-hardening  
 Base: main at 1e7348f858edab617fcd5954d34a40b5fb50c63d  
