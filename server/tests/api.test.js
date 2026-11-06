@@ -981,15 +981,8 @@ test('specialist online-booking switch round-trips and stays tenant-scoped', asy
   const on = await owner.patch(`/api/salon/staff/${member.id}`, { bookingEnabled: true });
   assert.equal(on.status, 200);
   assert.equal(on.data.staff.bookingEnabled, true);
-});
 
-test('staff availability status round-trips, validates and stays tenant-scoped', async () => {
-  const owner = await loginAs('owner@test.local', 'Owner@12345');
-  const list = await owner.get('/api/salon/staff');
-  assert.equal(list.status, 200);
-  const member = list.data.staff[0];
-
-  // Existing / new staff default to 'available'.
+  // --- Availability status (reuses this test's logins to stay under the login rate limit) ---
   assert.equal(member.availabilityStatus, 'available');
 
   const busy = await owner.patch(`/api/salon/staff/${member.id}`, { availabilityStatus: 'busy' });
@@ -1001,31 +994,30 @@ test('staff availability status round-trips, validates and stays tenant-scoped',
   assert.equal(leave.data.staff.availabilityStatus, 'on_leave');
 
   // Unknown statuses are rejected and do not change the stored value.
-  const invalid = await owner.patch(`/api/salon/staff/${member.id}`, { availabilityStatus: 'vacation' });
-  assert.equal(invalid.status, 400);
+  const invalidStatus = await owner.patch(`/api/salon/staff/${member.id}`, { availabilityStatus: 'vacation' });
+  assert.equal(invalidStatus.status, 400);
   const afterInvalid = await owner.get('/api/salon/staff');
   assert.equal(afterInvalid.data.staff.find((s) => s.id === member.id).availabilityStatus, 'on_leave');
 
   // The other owner must not be able to change it.
-  const other = await loginAs('second@test.local', 'Second@54321');
-  const forged = await other.patch(`/api/salon/staff/${member.id}`, { availabilityStatus: 'available' });
-  assert.equal(forged.status, 404);
+  const forgedStatus = await other.patch(`/api/salon/staff/${member.id}`, { availabilityStatus: 'available' });
+  assert.equal(forgedStatus.status, 404);
 
-  // New staff can be created with a status and default to 'available' otherwise.
-  const created = await owner.post('/api/salon/staff', {
+  // New staff accept a status and default to 'available' otherwise.
+  const createdBusy = await owner.post('/api/salon/staff', {
     name: 'Availability Tester',
     roleTitle: 'Stylist',
     specialties: ['Haircut'],
     availabilityStatus: 'busy',
   });
-  assert.equal(created.status, 201);
-  assert.equal(created.data.staff.availabilityStatus, 'busy');
+  assert.equal(createdBusy.status, 201);
+  assert.equal(createdBusy.data.staff.availabilityStatus, 'busy');
   const createdDefault = await owner.post('/api/salon/staff', { name: 'Default Status Tester', specialties: [] });
   assert.equal(createdDefault.status, 201);
   assert.equal(createdDefault.data.staff.availabilityStatus, 'available');
 
   // Cleanup so other tests keep a stable roster.
-  await owner.del(`/api/salon/staff/${created.data.staff.id}`);
+  await owner.del(`/api/salon/staff/${createdBusy.data.staff.id}`);
   await owner.del(`/api/salon/staff/${createdDefault.data.staff.id}`);
   await owner.patch(`/api/salon/staff/${member.id}`, { availabilityStatus: 'available' });
 });
