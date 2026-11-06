@@ -265,6 +265,7 @@ begin
         'pointsCost',o.points_cost,'discountAmount',o.discount_amount,
         'discountValue',o.discount_value,'minimumBillAmount',o.minimum_bill_amount,
         'eligibleServiceKeyword',o.eligible_service_keyword,'eligibleLocationType',o.eligible_location_type,
+        'eligibleMaxDistanceKm',o.eligible_max_distance_km,
         'category',o.category,'badge',o.badge
       ) order by o.sort_order asc)
       from public.loyalty_reward_offers o where o.active=true
