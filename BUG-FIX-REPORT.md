@@ -18,6 +18,8 @@ PR: https://github.com/vijaysharma55/beauty-zone-/pull/27
 | B-08 | Production auth protections lacked regression coverage for seeded identities and Supabase/local role mismatch. | Added isolated production-mode auth integration suite using temporary SQLite and mock Supabase endpoints. | server/tests/security-production.test.js, package.json |
 | B-09 | Sitemap had no test that auth routes stayed excluded. | Added explicit assertions for auth route exclusion. | server/tests/sitemap.test.js |
 
+7. **Vercel deep-link fallback**: despite a `/(.*) -> /spa.html` rewrite in `vercel.json`, direct requests for known React routes return HTTP 404 in production and preview. Fix and verify the deployment routing before relying on refresh/bookmarks.
+
 ## Root-cause defects identified but not safely repaired
 
 1. **Ephemeral SQLite**: Vercel sets DATA_DIR to /tmp/beautyzone-data. SQLite holds users, sessions, salons, services, staff, bookings, payments and related rows. A serverless filesystem is not a shared durable transactional database. A safe fix requires a migration/cutover plan and data reconciliation, not a code-only switch.
