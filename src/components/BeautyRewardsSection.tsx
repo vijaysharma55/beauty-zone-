@@ -315,7 +315,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
   };
 
   const progressStats = getProgressStats();
-  const estimatedPoints = Math.floor((Math.max(0, calcBillAmount) / 10) * currentTierConfig.multiplier);
+  const estimatedPoints = Math.round(Math.max(100, Math.max(0, calcBillAmount) / 10) * currentTierConfig.multiplier);
 
 
   return (
