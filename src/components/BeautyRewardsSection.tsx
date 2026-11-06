@@ -44,6 +44,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
   const [authNotice, setAuthNotice] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
   const [redeemingOfferId, setRedeemingOfferId] = useState<string | null>(null);
+  const [pendingRedemptionIds, setPendingRedemptionIds] = useState<Record<string, string>>({});
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [recentlyRedeemed, setRecentlyRedeemed] = useState<{
     title: string;
@@ -192,12 +193,21 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
     setActionError(null);
     setRedeemingOfferId(offer.id);
     try {
-      const requestId = typeof crypto !== 'undefined' && crypto.randomUUID
-        ? crypto.randomUUID()
-        : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
-            const random = Math.random() * 16 | 0;
-            return (char === 'x' ? random : (random & 0x3 | 0x8)).toString(16);
-          });
+      const storageKey = `beautyzone.loyalty.pending-redemption:${customer.memberId}:${offer.id}`;
+      let requestId = pendingRedemptionIds[offer.id] || '';
+      if (!requestId) {
+        try { requestId = window.localStorage.getItem(storageKey) || ''; } catch { /* storage can be disabled */ }
+      }
+      if (!requestId) {
+        requestId = typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+              const random = Math.random() * 16 | 0;
+              return (char === 'x' ? random : (random & 0x3 | 0x8)).toString(16);
+            });
+      }
+      setPendingRedemptionIds((current) => ({ ...current, [offer.id]: requestId }));
+      try { window.localStorage.setItem(storageKey, requestId); } catch { /* state still protects in-page retries */ }
       const result = await supabase.db.rpc<any>('redeem_customer_loyalty_reward', {
         p_offer_id: offer.id,
         p_request_id: requestId,
@@ -206,6 +216,12 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
         throw new Error('The reward could not be redeemed. No points have been deducted.');
       }
       await loadCustomerDashboard();
+      try { window.localStorage.removeItem(storageKey); } catch { /* no-op */ }
+      setPendingRedemptionIds((current) => {
+        const updated = { ...current };
+        delete updated[offer.id];
+        return updated;
+      });
       setRecentlyRedeemed({
         title: offer.title,
         code: String(result.voucherCode),
@@ -399,7 +415,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
                     {customer.totalPoints.toLocaleString()}
                   </p>
                   <span className="text-[11px] text-emerald-400 font-medium">
-                    = {formatPrice(customer.totalPoints)} Salon Credit
+                    = Reward points to use on eligible salon benefits
                   </span>
                 </div>
 
