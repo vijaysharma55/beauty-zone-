@@ -221,6 +221,14 @@ test('migration protects balance writes, award RPC and all six catalogue costs',
     new URL('../../supabase/migrations/20261106_beautyzone_secure_customer_rewards.sql', import.meta.url),
     'utf8'
   );
+  const rewardsUi = await readFile(
+    new URL('../../src/components/BeautyRewardsSection.tsx', import.meta.url),
+    'utf8'
+  );
+  const rewardData = await readFile(
+    new URL('../../src/data/loyaltyData.ts', import.meta.url),
+    'utf8'
+  );
   assert.match(migration, /phone_confirmed_at is not null/i);
   assert.match(migration, /revoke insert, update, delete on table public\.loyalty_accounts/i);
   assert.match(migration, /grant execute on function public\.award_completed_loyalty_points\(uuid,text,text,text,text,bigint\) to service_role/i);
@@ -237,6 +245,12 @@ test('migration protects balance writes, award RPC and all six catalogue costs',
   assert.match(migration, /eligible_service_keyword text/i);
   assert.match(migration, /eligible_location_type text/i);
   assert.match(migration, /eligible_max_distance_km numeric/i);
+  assert.match(migration, /eligibleMaxDistanceKm/);
+  assert.match(rewardsUi, /minimumBillAmount/);
+  assert.match(rewardsUi, /eligibleMaxDistanceKm/);
+  assert.match(rewardsUi, /Redemption terms/);
+  assert.doesNotMatch(rewardData, /DEMO_CUSTOMERS/);
+  assert.doesNotMatch(rewardData, /REWARD_OFFERS/);
   assert.match(migration, /p_distance_km numeric/i);
   assert.match(migration, /eligible_max_distance_km\s*,?\s*category/i);
   assert.match(migration, /release_customer_loyalty_voucher/i);
