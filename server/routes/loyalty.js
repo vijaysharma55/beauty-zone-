@@ -113,12 +113,23 @@ export async function consumeCustomerLoyaltyVoucher(code, externalBookingId, aut
   if (!normalizedCode || !externalBookingId) {
     throw new HttpError(400, 'Voucher code and booking reference are required.', 'INVALID_VOUCHER');
   }
-  return callLoyaltyRpc('consume_customer_loyalty_voucher', {
+  const params = {
     p_code: normalizedCode,
     p_external_booking_id: String(externalBookingId).slice(0, 180),
-  }, authorization);
+  };
+  // The SQL RPC is idempotent for the same booking reference. Retry once on
+  // transient failure/timeout to resolve the "committed but response lost" case.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await callLoyaltyRpc('consume_customer_loyalty_voucher', params, authorization);
+    } catch (error) {
+      const transient = error?.status === 503 || error?.name === 'TimeoutError'
+        || error?.name === 'AbortError' || error instanceof TypeError;
+      if (!transient || attempt === 1) throw error;
+    }
+  }
+  throw new HttpError(503, 'Voucher consumption could not be confirmed.', 'VOUCHER_CONSUMPTION_UNCONFIRMED');
 }
-
 /**
  * Awards visit points only through the Supabase RPC after an owner marks a booking
  * completed. The booking's final rupee amount is used; estimated/default values
@@ -140,12 +151,24 @@ export async function creditLoyaltyPointsForCompletedBooking(booking, actorId) {
     throw new HttpError(409, 'This salon owner is not linked to a verified Supabase profile.', 'LOYALTY_OWNER_NOT_LINKED');
   }
 
-  return callServerAwardRpc({
+  const params = {
     p_actor_id: actorId,
     p_phone: phone,
     p_name: booking.full_name || '',
     p_external_booking_id: String(booking.id),
     p_service_title: booking.service || 'Salon Service',
     p_bill_amount: Math.round(billAmount),
-  }, authorization);
+  };
+  // The RPC is idempotent by booking ID. Retrying handles a successful commit
+  // whose network response was lost.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await callServerAwardRpc(params);
+    } catch (error) {
+      const transient = error?.status === 503 || error?.name === 'TimeoutError'
+        || error?.name === 'AbortError' || error instanceof TypeError;
+      if (!transient || attempt === 1) throw error;
+    }
+  }
+  throw new HttpError(503, 'Points award could not be confirmed.', 'LOYALTY_AWARD_UNCONFIRMED');
 }
