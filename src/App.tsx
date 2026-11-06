@@ -495,7 +495,7 @@ function RouteIndexingPolicy() {
       || pathname.startsWith('/admin/');
     const isPublicIndexable = pathname === PUBLIC_PATHS.home
       || pathname === PUBLIC_PATHS.salons
-      || /^\\/salon\\/[a-z0-9-]+$/i.test(pathname);
+      || /^\/salon\/[a-z0-9-]+$/i.test(pathname);
 
     let robots = document.getElementById('route-robots-policy');
     if (isPrivate || !isPublicIndexable) {
