@@ -26,7 +26,7 @@ import { asyncHandler } from '../middleware.js';
 import { findLiveSalon } from './public.js';
 import { sendMail } from '../mailer.js';
 import { generateSlots } from '../availability.js';
-import { creditLoyaltyPointsForCompletedBooking } from './loyalty.js';
+import { creditLoyaltyPointsForCompletedBooking, verifyCustomerLoyaltyVoucher, consumeCustomerLoyaltyVoucher } from './loyalty.js';
 import { getLiveContent, hasLiveApproval } from '../workflow.js';
 import { resolvePaymentConfig } from '../payments/config.js';
 import { toPaise } from '../payments/amounts.js';
@@ -501,14 +501,14 @@ bookingsRouter.post(
 
     let voucherApplied = null;
     if (data.promoCode) {
-      const voucher = db
-        .prepare('SELECT * FROM loyalty_vouchers WHERE code = ? AND used = 0')
-        .get(data.promoCode.trim().toUpperCase());
-      if (voucher) {
-        const discountPaise = Math.max(0, Math.round(Number(voucher.discount_amount || 0) * 100));
-        amountPaise = Math.max(0, amountPaise - discountPaise);
-        voucherApplied = voucher;
+      const voucher = await verifyCustomerLoyaltyVoucher(data.promoCode, req.get('authorization'));
+      const discountAmount = Number(voucher.discountAmount);
+      if (!Number.isSafeInteger(discountAmount) || discountAmount < 0) {
+        throw new HttpError(400, 'Verified voucher has an invalid discount value.', 'INVALID_VOUCHER');
       }
+      const discountPaise = Math.max(0, Math.round(discountAmount * 100));
+      amountPaise = Math.max(0, amountPaise - discountPaise);
+      voucherApplied = voucher;
     }
 
     // The advance is resolved from the salon owner's settings (percentage or
@@ -583,10 +583,18 @@ bookingsRouter.post(
     );
 
     if (voucherApplied) {
-      db.prepare('UPDATE loyalty_vouchers SET used = 1, used_booking_id = ? WHERE code = ?').run(
-        id,
-        voucherApplied.code
-      );
+      try {
+        await consumeCustomerLoyaltyVoucher(
+          voucherApplied.code,
+          `${salon?.id || 'public'}:${id}`,
+          req.get('authorization')
+        );
+      } catch (error) {
+        // Do not leave an active appointment carrying a voucher discount that
+        // was not atomically consumed by the authoritative Supabase ledger.
+        db.prepare('DELETE FROM bookings WHERE id = ?').run(id);
+        throw error;
+      }
     }
 
     const row = db.prepare('SELECT * FROM bookings WHERE id = ?').get(id);
@@ -841,7 +849,7 @@ ownerBookingsRouter.get('/', (req, res) => {
  * An unpaid booking can never be confirmed here: the advance must have been
  * verified by the payment service first. Owners may still decline or cancel.
  */
-ownerBookingsRouter.patch('/:bookingId', (req, res) => {
+ownerBookingsRouter.patch('/:bookingId', asyncHandler(async (req, res) => {
   const salon = req.salon;
   if (!salon) return res.status(409).json({ error: 'Complete salon onboarding first.' });
   const row = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.bookingId);
@@ -885,13 +893,20 @@ ownerBookingsRouter.patch('/:bookingId', (req, res) => {
   let loyaltyReward = null;
   if (status === 'completed') {
     const updatedRow = db.prepare('SELECT * FROM bookings WHERE id = ?').get(row.id);
-    loyaltyReward = creditLoyaltyPointsForCompletedBooking(updatedRow);
+    try {
+      loyaltyReward = await creditLoyaltyPointsForCompletedBooking(updatedRow, req.get('authorization'));
+    } catch (error) {
+      // Completion is an operational salon action. Keep it completed, but make
+      // the failed points award visible and retryable; the RPC is idempotent.
+      console.error('[loyalty] Supabase award failed for booking', row.id, error.message);
+      loyaltyReward = { awarded: false, retryable: true, message: error.message || 'Points award could not be confirmed.' };
+    }
   }
 
   return res.json({
     booking: serializeBooking(db.prepare('SELECT * FROM bookings WHERE id = ?').get(row.id)),
     loyaltyReward,
   });
-});
+}));
 
 export default bookingsRouter;
