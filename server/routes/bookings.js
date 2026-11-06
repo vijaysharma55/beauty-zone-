@@ -494,6 +494,7 @@ bookingsRouter.post(
     // client-supplied estimate is only used when no published price exists.
     const publishedPrice = resolveServicePricePaise(salon, data.service);
     let amountPaise = publishedPrice ?? data.amountPaise;
+    const voucherBaseAmountPaise = amountPaise;
 
     const reference = uniqueReference(data.reference, salon);
     const ts = nowIso();
@@ -501,7 +502,12 @@ bookingsRouter.post(
 
     let voucherApplied = null;
     if (data.promoCode) {
-      const voucher = await verifyCustomerLoyaltyVoucher(data.promoCode, req.get('authorization'));
+      const voucher = await verifyCustomerLoyaltyVoucher(data.promoCode, req.get('authorization'), {
+        phone: data.phone,
+        serviceTitle: data.service,
+        locationType: data.locationType,
+        billAmount: Math.round(voucherBaseAmountPaise / 100),
+      });
       const discountAmount = Number(voucher.discountAmount);
       if (!Number.isSafeInteger(discountAmount) || discountAmount < 0) {
         throw new HttpError(400, 'Verified voucher has an invalid discount value.', 'INVALID_VOUCHER');
@@ -587,7 +593,13 @@ bookingsRouter.post(
         await consumeCustomerLoyaltyVoucher(
           voucherApplied.code,
           `${salon?.id || 'public'}:${id}`,
-          req.get('authorization')
+          req.get('authorization'),
+          {
+            phone: data.phone,
+            serviceTitle: data.service,
+            locationType: data.locationType,
+            billAmount: Math.round(voucherBaseAmountPaise / 100),
+          }
         );
       } catch (error) {
         // Do not leave an active appointment carrying a voucher discount that
