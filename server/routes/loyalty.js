@@ -109,7 +109,8 @@ export async function verifyCustomerLoyaltyVoucher(code, authorization, bookingC
     p_service_title: String(bookingContext.serviceTitle).slice(0, 160),
     p_location_type: bookingContext.locationType,
     p_bill_amount: Math.max(0, Math.round(Number(bookingContext.billAmount) || 0)),
-    p_distance_km: Number.isFinite(Number(bookingContext.distanceKm)) ? Number(bookingContext.distanceKm) : null,
+    p_distance_km: bookingContext.distanceKm !== null && bookingContext.distanceKm !== undefined
+      && Number.isFinite(Number(bookingContext.distanceKm)) ? Number(bookingContext.distanceKm) : null,
   }, authorization);
   if (!result?.valid || !result?.voucher) {
     throw new HttpError(400, 'This voucher is not eligible for the selected booking.', 'INVALID_VOUCHER');
@@ -129,7 +130,8 @@ export async function consumeCustomerLoyaltyVoucher(code, externalBookingId, aut
     p_service_title: String(bookingContext.serviceTitle).slice(0, 160),
     p_location_type: bookingContext.locationType,
     p_bill_amount: Math.max(0, Math.round(Number(bookingContext.billAmount) || 0)),
-    p_distance_km: Number.isFinite(Number(bookingContext.distanceKm)) ? Number(bookingContext.distanceKm) : null,
+    p_distance_km: bookingContext.distanceKm !== null && bookingContext.distanceKm !== undefined
+      && Number.isFinite(Number(bookingContext.distanceKm)) ? Number(bookingContext.distanceKm) : null,
   };
   // The SQL RPC is idempotent for the same booking reference. Retry once on
   // transient failure/timeout to resolve the "committed but response lost" case.
@@ -158,29 +160,39 @@ export async function releaseCustomerLoyaltyVoucher(code, externalBookingId) {
   if (!normalizedCode || !externalBookingId) {
     throw new HttpError(400, 'Voucher code and booking reference are required.', 'INVALID_VOUCHER');
   }
-  const response = await fetch(SUPABASE_URL + '/rest/v1/rpc/release_customer_loyalty_voucher', {
-    method: 'POST',
-    headers: {
-      apikey: serverKey,
-      Authorization: 'Bearer ' + serverKey,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      p_code: normalizedCode,
-      p_external_booking_id: String(externalBookingId).slice(0, 180),
-    }),
-    signal: AbortSignal.timeout(10000),
-  });
-  const raw = await response.text();
-  let data = null;
-  if (raw) {
-    try { data = JSON.parse(raw); } catch { data = { message: raw.slice(0, 200) }; }
+  const params = {
+    p_code: normalizedCode,
+    p_external_booking_id: String(externalBookingId).slice(0, 180),
+  };
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await fetch(SUPABASE_URL + '/rest/v1/rpc/release_customer_loyalty_voucher', {
+        method: 'POST',
+        headers: {
+          apikey: serverKey,
+          Authorization: 'Bearer ' + serverKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(params),
+        signal: AbortSignal.timeout(10000),
+      });
+      const raw = await response.text();
+      let data = null;
+      if (raw) {
+        try { data = JSON.parse(raw); } catch { data = { message: raw.slice(0, 200) }; }
+      }
+      if (!response.ok) {
+        const status = response.status === 401 || response.status === 403 ? response.status : response.status >= 500 ? 503 : 400;
+        throw new HttpError(status, data?.message || data?.hint || data?.error || 'Voucher release was rejected.', data?.code || 'VOUCHER_RELEASE_FAILED');
+      }
+      return data;
+    } catch (error) {
+      const transient = error?.status === 503 || error?.name === 'TimeoutError'
+        || error?.name === 'AbortError' || error instanceof TypeError;
+      if (!transient || attempt === 1) throw error;
+    }
   }
-  if (!response.ok) {
-    const status = response.status === 401 || response.status === 403 ? response.status : response.status >= 500 ? 503 : 400;
-    throw new HttpError(status, data?.message || data?.hint || data?.error || 'Voucher release was rejected.', data?.code || 'VOUCHER_RELEASE_FAILED');
-  }
-  return data;
+  throw new HttpError(503, 'Voucher release could not be confirmed.', 'VOUCHER_RELEASE_UNCONFIRMED');
 }
 
 export async function creditLoyaltyPointsForCompletedBooking(booking, actorId) {
