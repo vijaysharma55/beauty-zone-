@@ -119,6 +119,7 @@ async function loginAs(email, password) {
 }
 
 let ownerClient;
+let bookingForVoucherLifecycleId = null;
 let ownerSalon;
 let ownerServiceId;
 let secondClient;
@@ -795,6 +796,7 @@ test('visitor can book a live salon and the owner sees it', async () => {
     estimatedTotal: 24999,
   });
   assert.equal(created.status, 201);
+  bookingForVoucherLifecycleId = created.data.booking.id;
   assert.ok(created.data.booking.reference, 'booking reference issued');
   // 12-hour input is normalised to 24-hour storage.
   assert.equal(created.data.booking.time, '14:30');
@@ -864,46 +866,44 @@ test('visitor can book a live salon and the owner sees it', async () => {
 });
 
 test('cancelled bookings mark voucher release failure and expose an owner retry path', async () => {
-  const anon = makeClient();
-  const created = await anon.post('/api/public/bookings', {
-    slug: 'lumina-luxe',
-    fullName: 'Voucher Release Client',
-    phone: '9000012346',
-    service: 'HD Airbrush Bridal Makeover',
-    date: nextMondayDate(),
-    time: '03:30 PM',
-    locationType: 'salon',
-    estimatedTotal: 24999,
-  });
-  assert.equal(created.status, 201);
+  assert.ok(bookingForVoucherLifecycleId, 'reuses the booking created by the payment lifecycle test');
 
-  // Simulate a voucher reservation already committed to Supabase. The
-  // server process has no service key in this test, so release must fail
-  // closed and remain retryable instead of silently unlocking the voucher.
+  // Simulate a voucher reservation already committed to Supabase. Reuse the
+  // existing booking record so this test does not consume another public
+  // booking rate-limit slot.
   const testDb = new DatabaseSync(path.join(TMP_DATA, 'beautyzone.db'));
   try {
     testDb.exec('PRAGMA busy_timeout = 5000');
     testDb.prepare(
-      "UPDATE bookings SET promo_code = ?, loyalty_voucher_status = 'reserved' WHERE id = ?"
-    ).run('VIP-500-2346-TEST0001', created.data.booking.id);
+      `UPDATE bookings
+       SET status = 'confirmed',
+           final_bill_amount = NULL,
+           loyalty_award_status = 'not_awarded',
+           loyalty_points_awarded = 0,
+           loyalty_award_error = '',
+           promo_code = ?,
+           loyalty_voucher_status = 'reserved',
+           loyalty_voucher_error = ''
+       WHERE id = ?`
+    ).run('VIP-500-2346-TEST0001', bookingForVoucherLifecycleId);
   } finally {
     testDb.close();
   }
 
   const owner = ownerClient;
-  const cancelled = await owner.patch(`/api/salon/bookings/${created.data.booking.id}`, { status: 'cancelled' });
+  const cancelled = await owner.patch(`/api/salon/bookings/${bookingForVoucherLifecycleId}`, { status: 'cancelled' });
   assert.equal(cancelled.status, 200);
   assert.equal(cancelled.data.booking.status, 'cancelled');
   assert.equal(cancelled.data.booking.loyaltyVoucherStatus, 'release_failed');
   assert.equal(cancelled.data.voucherRelease.released, false);
   assert.equal(cancelled.data.voucherRelease.retryable, true);
 
-  const retry = await owner.post(`/api/salon/bookings/${created.data.booking.id}/loyalty/voucher/release`);
+  const retry = await owner.post(`/api/salon/bookings/${bookingForVoucherLifecycleId}/loyalty/voucher/release`);
   assert.equal(retry.status, 200);
   assert.equal(retry.data.booking.loyaltyVoucherStatus, 'release_failed');
   assert.equal(retry.data.voucherRelease.released, false);
 
-  const restore = await owner.patch(`/api/salon/bookings/${created.data.booking.id}`, { status: 'requested' });
+  const restore = await owner.patch(`/api/salon/bookings/${bookingForVoucherLifecycleId}`, { status: 'requested' });
   assert.equal(restore.status, 409);
   assert.equal(restore.data.code, 'VOUCHER_RESERVATION_CLOSED');
 });
