@@ -76,7 +76,10 @@ export async function getSalonSlugs(origin, env = process.env) {
 const xmlEscape = text => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 
 export function createSitemap(origin, publicPaths, slugs) {
-  const paths = new Set(Object.values(publicPaths));
+  // Only deliberately indexable static routes belong in a sitemap. Auth,
+  // owner-dashboard and customer-account routes are private/utility pages.
+  const indexableKeys = ['home', 'salons'];
+  const paths = new Set(indexableKeys.map((key) => publicPaths[key]).filter(Boolean));
   if (!paths.has('/')) throw new Error('Homepage route missing from sitemap');
   for (const slug of validateSlugs(slugs)) paths.add(`/salon/${encodeURIComponent(slug)}`);
   const urls = [...paths].sort().map(route => `  <url><loc>${xmlEscape(origin + route)}</loc></url>`).join('\n');
