@@ -497,10 +497,10 @@ function RouteIndexingPolicy() {
       || pathname === PUBLIC_PATHS.salons
       || /^\/salon\/[a-z0-9-]+$/i.test(pathname);
 
-    let robots = document.getElementById('route-robots-policy');
+    let robots = document.getElementById('route-robots-policy') as HTMLMetaElement | null;
     if (isPrivate || !isPublicIndexable) {
       if (!robots) {
-        robots = document.createElement('meta');
+        robots = document.createElement('meta') as HTMLMetaElement;
         robots.id = 'route-robots-policy';
         robots.name = 'robots';
         document.head.appendChild(robots);
