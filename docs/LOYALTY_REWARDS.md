@@ -27,15 +27,15 @@ Phone OTP is sent using Supabase Auth `/auth/v1/otp` and verified using `/auth/v
 ## Reward rules
 
 - New verified customers receive one 100-point welcome bonus. The account is created/claimed under a transaction lock and the welcome entry is written once.
-- Completed booking awards currently use the persisted booking amount in rupees (`bookings.estimated_total`); base points are the greater of 100 or the rounded bill amount divided by 10. The current booking schema does not yet store a separate owner-entered final invoice amount, so this is the saved booking amount, not a verified POS invoice.
+- The salon owner must enter the actual final bill in whole rupees before marking an appointment completed. Points are calculated only from `bookings.final_bill_amount`, never from the public estimate. The final amount and award status are persisted in SQLite so the owner can retry an award after a temporary Supabase failure.
 - Silver earns 1x, Gold earns 1.25x and Platinum earns 1.5x. The tier used for an award is the tier at the time the completed booking is processed.
 - Tier is based on lifetime earned points: Silver below 500, Gold from 500, Platinum from 1,500. Redeeming points does not downgrade a member.
 - Every completed booking award is idempotent by booking id. Repeating the completed status update cannot award the same booking twice.
-- Reward costs, discount values and eligibility are stored in `public.loyalty_reward_offers`, not inferred from client state. The catalogue enforces a minimum bill where required, service keywords for Hair Spa/Facial/Nail/Bridal rewards, and home-location eligibility for the travel pass.
-- Voucher application also requires the booking contact number to match the verified OTP number. Eligibility is checked once while applying the code and again atomically when the booking consumes it.
+- Reward costs, discount values and eligibility are stored in `public.loyalty_reward_offers`, not inferred from client state. The catalogue enforces minimum bills, service keywords for Hair Spa/Facial/Nail/Bridal rewards, a home-visit requirement and a maximum 15 km distance for the travel pass.
+- Voucher application also requires the booking contact number to match the verified OTP number. Eligibility is checked in the browser, again on the server, and atomically by Postgres when the booking consumes it. The database rechecks service, bill, home/salon location and the 15 km distance cap.
 - Redemptions are atomic: the account row is locked, points are deducted, the voucher and ledger entry are created together. The caller supplies an idempotency UUID so a retry returns the original voucher.
 - Vouchers expire after 60 days. Verification and consumption require the signed-in customer to own the voucher. Consumption is idempotent for the same booking reference.
-- Booking voucher discounts are applied only after Supabase validates the customer's voucher. A newly inserted SQLite booking is deleted if the authoritative Supabase consumption fails, so an unconsumed voucher cannot obtain a discount.
+- Booking voucher discounts are applied only after Supabase validates the customer's voucher. Voucher holds are tracked on the booking: a completed service keeps the voucher consumed, while a cancelled/declined booking releases it. If Supabase cannot confirm release, the owner sees a retryable release state. If booking creation loses the consume response, the server attempts an exact-reference release and retains a retry record when that outcome is uncertain.
 
 ## Existing SQLite loyalty data
 
