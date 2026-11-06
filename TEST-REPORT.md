@@ -46,6 +46,10 @@ No production DB or real provider was used by these test cases.
 | Sample public image | HTTP 200 |
 | Payment config endpoint | HTTP 200 with payment available=false |
 
+## Direct route smoke test
+
+A follow-up request against production and the PR preview showed HTTP 404 for `/login`, `/register`, `/salons`, `/dashboard`, `/my-appointments` and `/salon/lumina-luxe`; `/` and `/spa.html` returned 200. The route fallback therefore remains a P1 issue. This test was HTTP-level; in-app client navigation was not verified.
+
 ## Supabase checks
 
 - Supabase migrations list reviewed.
