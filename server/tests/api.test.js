@@ -852,6 +852,13 @@ test('visitor can book a live salon and the owner sees it', async () => {
   assert.equal(retryAward.data.booking.loyaltyAwardStatus, 'failed');
   assert.equal(retryAward.data.loyaltyReward.awarded, false);
 
+  const attemptedBillChange = await owner.patch(`/api/salon/bookings/${created.data.booking.id}`, {
+    status: 'completed',
+    finalBillAmount: 19999,
+  });
+  assert.equal(attemptedBillChange.status, 409);
+  assert.equal(attemptedBillChange.data.code, 'FINAL_BILL_LOCKED');
+
   const badStatus = await owner.patch(`/api/salon/bookings/${created.data.booking.id}`, { status: 'explode' });
   assert.equal(badStatus.status, 400);
 });
@@ -895,6 +902,10 @@ test('cancelled bookings mark voucher release failure and expose an owner retry 
   assert.equal(retry.status, 200);
   assert.equal(retry.data.booking.loyaltyVoucherStatus, 'release_failed');
   assert.equal(retry.data.voucherRelease.released, false);
+
+  const restore = await owner.patch(`/api/salon/bookings/${created.data.booking.id}`, { status: 'requested' });
+  assert.equal(restore.status, 409);
+  assert.equal(restore.data.code, 'VOUCHER_RESERVATION_CLOSED');
 });
 
 test('preferred specialist is validated, stored and returned with the booking', async () => {
