@@ -67,6 +67,8 @@ const AdminApprovals = React.lazy(() => import('./components/admin/AdminApproval
 const PublicSalonPage = React.lazy(() => import('./components/site/PublicSalonPage').then((module) => ({ default: module.PublicSalonPage })));
 const SalonDirectoryPage = React.lazy(() => import('./components/site/SalonDirectoryPage').then((module) => ({ default: module.SalonDirectoryPage })));
 
+const CustomerPanel = React.lazy(() => import('./components/customer/CustomerPanel').then((module) => ({ default: module.CustomerPanel })));
+
 const BrandingModal = React.lazy(() => import('./components/BrandingModal').then((module) => ({ default: module.BrandingModal })));
 const DesignSystemInspector = React.lazy(() => import('./components/DesignSystemInspector').then((module) => ({ default: module.DesignSystemInspector })));
 const WhiteLabelCustomizer = React.lazy(() => import('./components/WhiteLabelCustomizer').then((module) => ({ default: module.WhiteLabelCustomizer })));
@@ -558,6 +560,9 @@ export function App() {
 
       {/* Public salon directory and search with city filtering */}
       <Route path={PUBLIC_PATHS.salons} element={<SalonDirectoryPage />} />
+
+      {/* Customer area (phone-OTP sign-in) with appointment history. Not in PUBLIC_PATHS: private, noindex. */}
+      <Route path="/my-appointments" element={<CustomerPanel />} />
 
       {/* Public, unauthenticated salon websites with unique URLs */}
       <Route path="/salon/:slug" element={<PublicSalonPage />} />
