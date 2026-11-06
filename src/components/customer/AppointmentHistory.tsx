@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { CalendarClock, Clock, History as HistoryIcon, MapPin, RefreshCw, User } from 'lucide-react';
+import { CalendarClock, Clock, CreditCard, History as HistoryIcon, MapPin, RefreshCw, User } from 'lucide-react';
+import { PaymentCheckout } from '../payment/PaymentCheckout';
+import { getPaymentConfig, type CheckoutBooking, type PaymentConfig, type PaymentResponse } from '../../lib/payments';
 import { Alert, Badge, Button, Card, EmptyState, cn, formatCurrency } from '../ui';
 import {
   APPOINTMENT_FILTERS,
@@ -50,7 +52,7 @@ const DateTile: React.FC<{ appointment: Appointment }> = ({ appointment }) => {
   );
 };
 
-const AppointmentCard: React.FC<{ appointment: Appointment }> = ({ appointment }) => {
+const AppointmentCard: React.FC<{ appointment: Appointment; onPay: (appointment: Appointment) => void }> = ({ appointment, onPay }) => {
   const badge = STATUS_BADGE[appointment.status];
   return (
     <li>
@@ -91,6 +93,10 @@ const AppointmentCard: React.FC<{ appointment: Appointment }> = ({ appointment }
               </div>
             ) : null}
           </dl>
+          {appointment.paymentStatus === 'verification_pending' && <p className="mt-3 text-xs font-semibold text-amber-700">Payment submitted · awaiting salon verification</p>}
+          {['pending_payment', 'payment_failed'].includes(appointment.rawStatus) && (
+            <Button size="sm" variant="gold" className="mt-3" onClick={() => onPay(appointment)}><CreditCard className="h-3.5 w-3.5" />Complete payment</Button>
+          )}
         </div>
         <div className="shrink-0 text-right">
           <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Price</p>
@@ -128,6 +134,8 @@ export const AppointmentHistory: React.FC<{ customerId: string }> = ({ customerI
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [checkoutBooking, setCheckoutBooking] = useState<(CheckoutBooking & { salonName?: string }) | null>(null);
+  const [payConfig, setPayConfig] = useState<PaymentConfig | null>(null);
   // Only the latest request may update state, so a slow earlier filter cannot overwrite a newer one.
   const latestRequest = useRef(0);
 
@@ -164,6 +172,34 @@ export const AppointmentHistory: React.FC<{ customerId: string }> = ({ customerI
       latestRequest.current++;
     };
   }, [filter, load]);
+
+  const startPayment = async (appointment: Appointment) => {
+    setError(null);
+    try {
+      const config = await getPaymentConfig(appointment.salonSlug || undefined);
+      setPayConfig(config);
+      setCheckoutBooking({
+        id: appointment.id,
+        reference: appointment.reference || appointment.id,
+        service: appointment.serviceName,
+        date: appointment.bookingDate,
+        time: appointment.bookingTime || '',
+        locationType: 'salon',
+        status: appointment.rawStatus,
+        paymentStatus: appointment.paymentStatus || 'pending',
+        amountPaise: appointment.pricePaise,
+        advancePaise: appointment.advancePaise,
+        remainingPaise: Math.max(0, appointment.pricePaise - appointment.advancePaise),
+        confirmed: false,
+        calendarEnabled: false,
+        salonName: appointment.salonName || 'Salon',
+      });
+    } catch (err) { setError(describeHistoryError(err)); }
+  };
+  const paymentConfirmed = (_result: PaymentResponse) => {
+    setCheckoutBooking(null);
+    void load(filter, 0);
+  };
 
   return (
     <section aria-labelledby="appointment-history-heading" className="space-y-4">
@@ -240,7 +276,7 @@ export const AppointmentHistory: React.FC<{ customerId: string }> = ({ customerI
           <>
             <ul className="space-y-3">
               {items.map((appointment) => (
-                <AppointmentCard key={appointment.id} appointment={appointment} />
+                <AppointmentCard key={appointment.id} appointment={appointment} onPay={startPayment} />
               ))}
             </ul>
             {error && (
@@ -258,6 +294,13 @@ export const AppointmentHistory: React.FC<{ customerId: string }> = ({ customerI
           </>
         )}
       </div>
+      <PaymentCheckout
+        open={Boolean(checkoutBooking)}
+        booking={checkoutBooking}
+        config={payConfig}
+        onClose={() => setCheckoutBooking(null)}
+        onConfirmed={paymentConfirmed}
+      />
     </section>
   );
 };

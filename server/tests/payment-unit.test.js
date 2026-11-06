@@ -213,6 +213,7 @@ test('razorpay order creation sends the amount server-side and validates the res
     amountPaise: 62_475,
     receipt: 'SALON-ABC',
     notes: { bookingId: 'booking-1' },
+    linkedAccountId: 'acc_SALON12345',
     config: { keyId: 'rzp_test_key', keySecret: SECRET },
     fetchImpl,
   });
@@ -223,6 +224,10 @@ test('razorpay order creation sends the amount server-side and validates the res
   assert.match(calls[0].options.headers.Authorization, /^Basic /);
   assert.equal(JSON.parse(calls[0].options.body).amount, 62_475);
   assert.equal(JSON.parse(calls[0].options.body).currency, 'INR');
+  assert.deepEqual(JSON.parse(calls[0].options.body).transfers, [{
+    account: 'acc_SALON12345', amount: 62_475, currency: 'INR',
+    notes: { bookingId: 'booking-1' }, on_hold: false,
+  }]);
 
   await assert.rejects(
     createRazorpayOrder({

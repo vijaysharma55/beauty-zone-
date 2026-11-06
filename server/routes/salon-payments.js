@@ -19,7 +19,9 @@
  */
 
 import { Router } from 'express';
-import { db, audit, findSalonByOwner } from '../db.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { db, audit, findSalonByOwner, UPLOAD_DIR } from '../db.js';
 import { HttpError, str, rateLimit } from '../security.js';
 import { asyncHandler } from '../middleware.js';
 import { resolvePaymentConfig } from '../payments/config.js';
@@ -43,6 +45,8 @@ import {
   whatsappPublicStatus,
 } from '../notifications/whatsapp.js';
 import { serializeBooking } from './bookings.js';
+import { paymentAuditHistory, paymentDisplayStatus, recordPaymentAudit } from '../payments/audit.js';
+import { refundPayment, serializeRefund } from '../payments/refunds.js';
 
 export const salonPaymentsRouter = Router();
 
@@ -88,7 +92,14 @@ salonPaymentsRouter.get('/payment-settings', (req, res) => {
 salonPaymentsRouter.put('/payment-settings', (req, res) => {
   const salon = ownSalon(req);
   const current = getSalonPaymentSettings(salon.id);
-  const next = validateSettingsPatch(req.body || {}, current);
+  const body = { ...(req.body || {}) };
+  // Owners may submit onboarding details, but cannot self-attest provider KYC.
+  delete body.providerOnboardingStatus;
+  const candidate = validateSettingsPatch(body, current);
+  if (!current.manualUpiEnabled && candidate.manualUpiEnabled && body.confirmActivation !== true) {
+    throw new HttpError(409, 'Confirm the salon name, UPI ID and QR preview before activating payments.', 'ACTIVATION_CONFIRMATION_REQUIRED');
+  }
+  const next = candidate;
   saveSalonPaymentSettings(salon.id, next);
   audit(req, 'salon.payment_settings_updated', 'salon', salon.id, {
     advanceEnabled: next.advanceEnabled,
@@ -99,6 +110,17 @@ salonPaymentsRouter.put('/payment-settings', (req, res) => {
     manualUpiEnabled: next.manualUpiEnabled,
   });
   res.json({ settings: serializeOwnerSettings(salon.id), whatsapp: whatsappPublicStatus() });
+});
+
+salonPaymentsRouter.delete('/payment-qr', (req, res) => {
+  const salon = ownSalon(req);
+  const current = getSalonPaymentSettings(salon.id);
+  const next = { ...current, upiQrUrl: '', manualUpiEnabled: false };
+  saveSalonPaymentSettings(salon.id, next);
+  const match = /^\/api\/uploads\/([A-Za-z0-9._-]+)$/.exec(current.upiQrUrl || '');
+  if (match) fs.rmSync(path.join(UPLOAD_DIR, match[1]), { force: true });
+  audit(req, 'salon.payment_qr_deleted', 'salon', salon.id);
+  res.json({ ok: true, settings: serializeOwnerSettings(salon.id) });
 });
 
 salonPaymentsRouter.get('/payment-methods', (req, res) => {
@@ -164,29 +186,109 @@ function paymentWithBooking(row) {
   };
 }
 
+function filteredPayments(salonId, query = {}) {
+  const clauses = ['p.salon_id = ?'];
+  const params = [salonId];
+  const status = str(query.status, { max: 30, field: 'Status' }) || '';
+  const statusMap = { verified: 'paid', rejected: 'failed', pending_verification: 'verification_pending' };
+  if (status === 'refunded') clauses.push('p.refunded_at IS NOT NULL');
+  else if (status === 'verified') clauses.push("p.status = 'paid' AND p.refunded_at IS NULL");
+  else if (statusMap[status]) { clauses.push('p.status = ?'); params.push(statusMap[status]); }
+  else if (status) { clauses.push('p.status = ?'); params.push(status); }
+  for (const [key, operator] of [['from', '>='], ['to', '<=']]) {
+    const value = str(query[key], { max: 10, field: key });
+    if (value) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new HttpError(400, 'Dates must use YYYY-MM-DD.', 'INVALID_DATE_FILTER');
+      clauses.push(`substr(p.created_at, 1, 10) ${operator} ?`);
+      params.push(value);
+    }
+  }
+  const search = str(query.search || query.q, { max: 100, field: 'Search' });
+  if (search) {
+    clauses.push(`(p.id LIKE ? OR p.provider_payment_id LIKE ? OR p.manual_reference LIKE ?
+      OR b.reference LIKE ? OR b.full_name LIKE ? OR b.service LIKE ?)`);
+    const term = `%${search}%`;
+    params.push(term, term, term, term, term, term);
+  }
+  return db.prepare(
+    `SELECT p.* FROM payments p LEFT JOIN bookings b ON b.id = p.booking_id
+     WHERE ${clauses.join(' AND ')} ORDER BY p.created_at DESC LIMIT 1000`
+  ).all(...params);
+}
+
 salonPaymentsRouter.get('/payments', (req, res) => {
   const salon = ownSalon(req);
-  const status = str(req.query.status, { max: 30, field: 'Status' }) || '';
-  const rows = status
-    ? db.prepare('SELECT * FROM payments WHERE salon_id = ? AND status = ? ORDER BY created_at DESC LIMIT 300').all(salon.id, status)
-    : db.prepare('SELECT * FROM payments WHERE salon_id = ? ORDER BY created_at DESC LIMIT 300').all(salon.id);
+  const rows = filteredPayments(salon.id, req.query);
   res.json({ payments: rows.map(paymentWithBooking) });
 });
 
+salonPaymentsRouter.get('/payments/export.csv', (req, res) => {
+  const salon = ownSalon(req);
+  const rows = filteredPayments(salon.id, req.query);
+  const escape = (value) => {
+    let text = String(value ?? '');
+    // Prevent spreadsheet formulas when customer-supplied values are opened in Excel.
+    if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+    return `"${text.replace(/"/g, '""')}"`;
+  };
+  const lines = [['Transaction ID', 'Customer', 'Booking ID', 'Service', 'Amount (INR)', 'Payment Method', 'Date', 'Status'].map(escape).join(',')];
+  for (const row of rows) {
+    const booking = db.prepare('SELECT reference, full_name, service FROM bookings WHERE id = ?').get(row.booking_id);
+    lines.push([
+      row.provider_payment_id || row.manual_reference || row.id,
+      booking?.full_name || '', booking?.reference || row.booking_id, booking?.service || '',
+      (Number(row.amount_paise) / 100).toFixed(2), row.method || row.provider,
+      row.created_at, paymentDisplayStatus(row),
+    ].map(escape).join(','));
+  }
+  audit(req, 'payment.csv_exported', 'salon', salon.id, { count: rows.length });
+  res.set('Content-Type', 'text/csv; charset=utf-8');
+  res.set('Content-Disposition', `attachment; filename="salon-payments-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.send(`\uFEFF${lines.join('\r\n')}`);
+});
+
+salonPaymentsRouter.get('/payments/details/:paymentId', (req, res) => {
+  const { payment } = ownPayment(req, req.params.paymentId);
+  const refunds = db.prepare('SELECT * FROM payment_refunds WHERE payment_id = ? ORDER BY created_at DESC').all(payment.id);
+  res.json({
+    payment: paymentWithBooking(payment),
+    audit: paymentAuditHistory(payment.id, payment.salon_id),
+    refunds: refunds.map(serializeRefund),
+  });
+});
+
+salonPaymentsRouter.get('/payments/:paymentId/proof', asyncHandler(async (req, res) => {
+  const { payment } = ownPayment(req, req.params.paymentId);
+  const { readPaymentProof } = await import('../payments/proofs.js');
+  const proof = readPaymentProof(payment);
+  res.set('Content-Type', proof.mime);
+  res.set('Content-Disposition', `inline; filename="payment-proof-${payment.id}.${proof.fileName.split('.').pop()}"`);
+  res.set('Cache-Control', 'private, no-store');
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.send(proof.buffer);
+}));
+
 salonPaymentsRouter.get('/payments/summary', (req, res) => {
   const salon = ownSalon(req);
+  const today = new Date().toISOString().slice(0, 10);
+  const month = today.slice(0, 7);
   const sums = db
     .prepare(
       `SELECT
          COALESCE(SUM(CASE WHEN status = 'paid' THEN amount_paise ELSE 0 END), 0) AS received,
          COALESCE(SUM(CASE WHEN status = 'paid' AND kind = 'advance' THEN amount_paise ELSE 0 END), 0) AS advanceReceived,
          COALESCE(SUM(CASE WHEN status = 'paid' AND kind = 'balance' THEN amount_paise ELSE 0 END), 0) AS balanceReceived,
+         COALESCE(SUM(CASE WHEN status = 'paid' AND substr(COALESCE(verified_at, updated_at), 1, 10) = ? THEN amount_paise ELSE 0 END), 0) AS todayReceived,
+         COALESCE(SUM(CASE WHEN status = 'paid' AND substr(COALESCE(verified_at, updated_at), 1, 7) = ? THEN amount_paise ELSE 0 END), 0) AS monthReceived,
+         COALESCE(SUM(refunded_amount_paise), 0) AS refunded,
          SUM(CASE WHEN status = 'verification_pending' THEN 1 ELSE 0 END) AS pendingVerification,
-         SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) AS paidCount,
-         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failedCount
+         COALESCE(SUM(CASE WHEN status = 'verification_pending' THEN amount_paise ELSE 0 END), 0) AS pendingAmount,
+         SUM(CASE WHEN status = 'paid' AND refunded_at IS NULL THEN 1 ELSE 0 END) AS paidCount,
+         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failedCount,
+         SUM(CASE WHEN refunded_at IS NOT NULL THEN 1 ELSE 0 END) AS refundCount
        FROM payments WHERE salon_id = ?`
     )
-    .get(salon.id);
+    .get(today, month, salon.id);
   const balances = db
     .prepare(
       `SELECT COALESCE(SUM(amount_paise - advance_paise), 0) AS outstanding
@@ -199,9 +301,14 @@ salonPaymentsRouter.get('/payments/summary', (req, res) => {
     advanceReceivedPaise: sums.advanceReceived,
     balanceReceivedPaise: sums.balanceReceived,
     outstandingBalancePaise: balances.outstanding,
+    todayCollectionPaise: sums.todayReceived || 0,
+    monthCollectionPaise: sums.monthReceived || 0,
     pendingVerificationCount: sums.pendingVerification || 0,
+    pendingVerificationPaise: sums.pendingAmount || 0,
     paidCount: sums.paidCount || 0,
     failedCount: sums.failedCount || 0,
+    refundedPaise: sums.refunded || 0,
+    refundCount: sums.refundCount || 0,
   });
 });
 
@@ -259,6 +366,29 @@ salonPaymentsRouter.post(
       message: result.message,
       payment: serializePayment(result.payment),
       booking: result.booking ? serializeBooking(result.booking) : null,
+    });
+  })
+);
+
+salonPaymentsRouter.post(
+  '/payments/:paymentId/refund',
+  verifyLimiter,
+  asyncHandler(async (req, res) => {
+    const { payment } = ownPayment(req, req.params.paymentId);
+    const result = await refundPayment({
+      paymentId: payment.id,
+      actor: req.user,
+      amountPaise: req.body?.amountPaise,
+      reference: str(req.body?.reference, { max: 80, field: 'Refund reference' }),
+      reason: str(req.body?.reason, { max: 500, field: 'Refund reason' }),
+      confirmed: req.body?.confirmed === true,
+    });
+    audit(req, 'payment.refunded', 'payment', payment.id, { provider: payment.provider, idempotent: result.idempotent });
+    res.json({
+      idempotent: result.idempotent,
+      message: result.message,
+      payment: serializePayment(result.payment),
+      refund: serializeRefund(result.refund),
     });
   })
 );

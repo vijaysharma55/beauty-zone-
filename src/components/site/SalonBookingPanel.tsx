@@ -174,7 +174,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
   useEffect(() => {
     if (!isWebsiteLive) return;
     let active = true;
-    getPaymentConfig()
+    getPaymentConfig(salon.slug)
       .then((config) => {
         if (active) setPayConfig(config);
       })
@@ -182,7 +182,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
     return () => {
       active = false;
     };
-  }, [isWebsiteLive]);
+  }, [isWebsiteLive, salon.slug]);
 
   const selectedService = useMemo(
     () => bookableServices.find((s) => s.name === serviceName) || bookableServices[0],
@@ -253,10 +253,12 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
     setCheckoutOpen(false);
   };
 
+  const salonPayment = payConfig?.salonPayment;
+  const paymentAvailable = Boolean(payConfig?.available || salonPayment?.manualUpi?.enabled || salonPayment?.gateway?.available);
   const paymentRequired = Boolean(
-    isWebsiteLive && payConfig?.available && payConfig?.advanceRequired && selectedService?.price
+    isWebsiteLive && paymentAvailable && (salonPayment?.advanceEnabled ?? payConfig?.advanceRequired) && selectedService?.price
   );
-  const advancePercent = payConfig?.advancePercent ?? 25;
+  const advancePercent = salonPayment?.advancePercent ?? payConfig?.advancePercent ?? 25;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -307,7 +309,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
       if (res.payment?.required) {
         if (!payConfig) {
           try {
-            setPayConfig(await getPaymentConfig());
+            setPayConfig(await getPaymentConfig(salon.slug));
           } catch {
             // The checkout can still render from the order itself.
           }

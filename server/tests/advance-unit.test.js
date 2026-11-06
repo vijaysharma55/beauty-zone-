@@ -30,6 +30,7 @@ const {
   getSalonPaymentSettings,
   saveSalonPaymentSettings,
   serviceAdvanceFields,
+  resolveSalonChannels,
 } = await import('../payments/salon-settings.js');
 const { resolvePaymentConfig } = await import('../payments/config.js');
 const { validateDob } = await import('../security.js');
@@ -135,6 +136,27 @@ test('salon settings apply only to their own salon', () => {
   assert.equal(b.advancePaise, 25_000); // platform default 25%
   assert.equal(b.source, 'platform');
   assert.equal(a.source, 'salon');
+});
+
+test('production gateway cannot collect into the ordinary platform account', () => {
+  const salon = makeSalon();
+  const liveConfig = resolvePaymentConfig({
+    NODE_ENV: 'production', PAYMENT_MODE: 'razorpay',
+    RAZORPAY_KEY_ID: 'rzp_live_test', RAZORPAY_KEY_SECRET: 'server-only',
+  });
+  const oldEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  try {
+    saveSalonPaymentSettings(salon, defaultSalonPaymentSettings(liveConfig));
+    assert.equal(resolveSalonChannels(salon, liveConfig).gateway, false);
+    const linked = validateSettingsPatch({
+      verificationMode: 'provider', providerAccountId: 'acc_SALON12345', providerOnboardingStatus: 'verified',
+    }, getSalonPaymentSettings(salon, liveConfig));
+    saveSalonPaymentSettings(salon, linked);
+    const channels = resolveSalonChannels(salon, liveConfig);
+    assert.equal(channels.gateway, true);
+    assert.equal(channels.linkedProviderReady, true);
+  } finally { process.env.NODE_ENV = oldEnv; }
 });
 
 test('per-service override beats the salon default', () => {

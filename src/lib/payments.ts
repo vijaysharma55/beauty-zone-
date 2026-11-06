@@ -12,7 +12,22 @@ export type PaymentMode = 'mock' | 'razorpay' | 'disabled';
 export type PaymentMethodKind = 'upi' | 'card' | 'netbanking' | 'wallet';
 export type MockOutcome = 'success' | 'failed' | 'pending' | 'cancelled';
 
+export interface SalonPaymentConfig {
+  advanceEnabled: boolean;
+  advanceType: 'percent' | 'fixed';
+  advancePercent: number;
+  advanceFixedPaise: number;
+  balancePolicy: 'at_salon' | 'online';
+  gateway: { enabled: boolean; available: boolean; mode: PaymentMode | null };
+  manualUpi: { enabled: boolean; upiId: string; displayName: string; qrUrl: string; instructions?: string };
+  methods: Array<{ id: string; label: string; channel: string }>;
+  holdMinutes: number;
+  currency: string;
+  testMode: boolean;
+}
+
 export interface PaymentConfig {
+  salonPayment?: SalonPaymentConfig | null;
   mode: PaymentMode;
   currency: string;
   mock: boolean;
@@ -35,9 +50,11 @@ export interface PaymentConfig {
 export interface PaymentRecord {
   id: string;
   bookingId: string;
-  provider: 'mock' | 'razorpay';
+  provider: 'mock' | 'razorpay' | 'manual_upi';
   method: string;
-  status: 'created' | 'pending' | 'paid' | 'failed' | 'cancelled' | 'expired';
+  kind: 'advance' | 'balance';
+  status: 'created' | 'pending' | 'verification_pending' | 'paid' | 'failed' | 'cancelled' | 'expired';
+  displayStatus?: string;
   orderId: string;
   transactionId: string | null;
   amountPaise: number;
@@ -105,8 +122,20 @@ export interface PublicBookingStatus {
   confirmedAt: string | null;
 }
 
+export interface ManualUpiOrder {
+  upiId: string;
+  displayName?: string;
+  qrUrl: string;
+  paymentLink: string;
+  dynamicQrUrl: string;
+  amountPaise: number;
+  bookingReference: string;
+  instructions: string;
+}
+
 export interface PaymentResponse {
   payment: PaymentRecord | null;
+  manualUpi?: ManualUpiOrder;
   booking?: CheckoutBooking | null;
   bookingStatus?: PublicBookingStatus | null;
   paymentSummary?: BookingPaymentInfo | null;
@@ -133,10 +162,20 @@ export interface BookingCreationResponse {
 
 const unwrapConfig = (res: { payment: PaymentConfig }) => res.payment;
 
-export const getPaymentConfig = () => api.get<{ payment: PaymentConfig }>('/public/payments/config').then(unwrapConfig);
+export const getPaymentConfig = (salonSlug?: string) =>
+  api.get<{ payment: PaymentConfig }>(`/public/payments/config${salonSlug ? `?salon=${encodeURIComponent(salonSlug)}` : ''}`).then(unwrapConfig);
 
-export const createPaymentOrder = (bookingId: string, method?: PaymentMethodKind) =>
-  api.post<PaymentResponse>('/public/payments/orders', { bookingId, ...(method ? { method } : {}) });
+export const createPaymentOrder = (bookingId: string, method?: PaymentMethodKind | 'manual_upi' | 'upi_qr' | string, kind?: 'advance' | 'balance') =>
+  api.post<PaymentResponse>('/public/payments/orders', { bookingId, ...(method ? { method } : {}), ...(kind ? { kind } : {}) });
+
+export const claimManualUpiPayment = (payload: { orderId: string; reference: string; note?: string }) =>
+  api.post<PaymentResponse>('/public/payments/manual/claim', payload);
+
+export const uploadPaymentProof = (orderId: string, file: File) =>
+  api.rawPost<{ uploaded: boolean; verified: false; message: string }>(
+    `/public/payments/manual/proof?orderId=${encodeURIComponent(orderId)}`,
+    file
+  );
 
 export const startMockCheckout = (payload: {
   orderId: string;

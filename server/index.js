@@ -71,6 +71,8 @@ app.use(subdomainMiddleware);
 
 // Raw body for image uploads must be registered before the JSON parser.
 app.use('/api/salon/uploads', express.raw({ type: 'image/*', limit: '5mb' }));
+app.use('/api/public/payments/manual/proof', express.raw({ type: 'image/*', limit: '2mb' }));
+app.use('/api/payments/manual/proof', express.raw({ type: 'image/*', limit: '2mb' }));
 
 // Razorpay signs the exact bytes it sends, so the webhook keeps its raw body.
 app.use('/api/public/payments/razorpay/webhook', express.raw({ type: '*/*', limit: '1mb' }));

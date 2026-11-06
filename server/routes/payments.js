@@ -18,6 +18,8 @@ import { bookingPaymentSummary, isConfirmedStatus, publicBookingStatus, serializ
 import { publicSalonPaymentSummary } from '../payments/salon-settings.js';
 import { buildUpiPaymentLink, renderQrSvg } from '../payments/upi.js';
 import { serializeReceipt } from '../payments/receipts.js';
+import { savePaymentProof } from '../payments/proofs.js';
+import { safeJson } from '../db.js';
 import { getSalonPaymentSettings } from '../payments/salon-settings.js';
 import {
   cancelMockPayment,
@@ -281,11 +283,12 @@ paymentsRouter.get(
       throw new HttpError(400, 'This order is not a direct UPI QR payment.', 'NOT_MANUAL_ORDER');
     }
     const booking = getBookingRow(payment.booking_id);
-    const settings = getSalonPaymentSettings(payment.salon_id);
+    const current = getSalonPaymentSettings(payment.salon_id);
+    const settings = safeJson(payment.raw_json, {}).manualUpi || current;
     if (!settings.upiId) throw new HttpError(409, 'The salon UPI ID is not configured.', 'UPI_NOT_CONFIGURED');
     const link = buildUpiPaymentLink({
       upiId: settings.upiId,
-      displayName: settings.paymentDisplayName,
+      displayName: settings.displayName ?? settings.paymentDisplayName,
       amountPaise: payment.amount_paise,
       bookingReference: booking?.reference || '',
     });
@@ -296,10 +299,21 @@ paymentsRouter.get(
   })
 );
 
+/** Private supporting-evidence upload. This never changes payment status. */
+paymentsRouter.post(
+  '/manual/proof',
+  verifyLimiter,
+  asyncHandler(async (req, res) => {
+    const paymentId = str(req.query.orderId, { max: 80, field: 'Payment order', required: true });
+    const result = savePaymentProof({ paymentId, buffer: req.body, contentType: req.get('content-type') || '' });
+    res.status(201).json({ ...result, verified: false, message: 'Proof uploaded for salon review. It does not confirm payment.' });
+  })
+);
+
 /**
  * Customer submits the UPI transaction reference for a manual QR payment.
  * The booking moves to `payment_verification_pending` — it is NEVER confirmed
- * here. Only the salon owner/admin verification (or a gateway callback) can
+ * here. Only the salon owner's verification (or a gateway callback) can
  * confirm it.
  */
 paymentsRouter.post(

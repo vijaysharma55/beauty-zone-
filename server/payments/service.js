@@ -8,7 +8,7 @@
  */
 
 import crypto from 'node:crypto';
-import { db, newId, nowIso } from '../db.js';
+import { db, newId, nowIso, safeJson } from '../db.js';
 import { HttpError, str, ValidationError } from '../security.js';
 import { sendMail } from '../mailer.js';
 import { CURRENCY, publicPaymentConfig, resolvePaymentConfig } from './config.js';
@@ -28,12 +28,13 @@ import {
 import { buildUpiPaymentLink } from './upi.js';
 import { issueReceiptForPayment, serializeReceipt } from './receipts.js';
 import { queueBookingReceiptWhatsApp } from '../notifications/whatsapp.js';
+import { recordPaymentAudit, paymentDisplayStatus } from './audit.js';
 
 /** Booking states from which a new advance payment order may be created. */
 const BILLABLE_STATUSES = ['pending_payment', 'payment_failed'];
 /** States from which a verified advance payment may confirm the booking.
  *  Includes `payment_verification_pending` (a claimed manual UPI transfer that
- *  the owner/admin has now verified). */
+ *  the salon owner has now verified). */
 const CONFIRMABLE_STATUSES = ['pending_payment', 'payment_failed', 'payment_verification_pending'];
 /** Legacy single-status name kept for readability in guards below. */
 const STATUS_BILLABLE = 'pending_payment';
@@ -49,6 +50,7 @@ export function serializePayment(row) {
     method: row.method || '',
     kind: row.kind || 'advance',
     status: row.status,
+    displayStatus: paymentDisplayStatus(row),
     orderId: row.provider_order_id,
     transactionId: row.provider_payment_id,
     amountPaise: row.amount_paise,
@@ -63,6 +65,12 @@ export function serializePayment(row) {
     verifiedBy: row.verified_by || null,
     verificationNote: row.verification_note || '',
     verifiedAt: row.verified_at,
+    hasPaymentProof: Boolean(row.payment_proof_url),
+    refundedAmountPaise: Number(row.refunded_amount_paise || 0),
+    refundReference: row.refund_reference || '',
+    refundReason: row.refund_reason || '',
+    refundedAt: row.refunded_at || null,
+    refundedBy: row.refunded_by || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -266,6 +274,10 @@ export async function createPaymentOrder({ bookingId, method = '', kind = 'advan
       currency: config.currency,
       receipt: `${booking.reference}${orderKind === 'balance' ? '-BAL' : ''}`,
       notes: { bookingId: booking.id, bookingReference: booking.reference, salonId: booking.salon_id || '', kind: orderKind },
+      linkedAccountId:
+        settings.verificationMode === 'provider' && settings.providerOnboardingStatus === 'verified'
+          ? settings.providerAccountId
+          : '',
       config,
       fetchImpl,
     });
@@ -273,6 +285,16 @@ export async function createPaymentOrder({ bookingId, method = '', kind = 'advan
     rawJson = JSON.stringify(order);
   } else if (provider === 'manual_upi') {
     providerOrderId = `manual_order_${crypto.randomBytes(10).toString('hex')}`;
+    // Freeze the payee configuration on the order. A later QR replacement or
+    // deactivation cannot redirect an already-issued payment to another VPA.
+    rawJson = JSON.stringify({
+      manualUpi: {
+        upiId: settings.upiId,
+        displayName: settings.paymentDisplayName,
+        qrUrl: settings.upiQrUrl || '',
+        instructions: settings.paymentInstructions || '',
+      },
+    });
   } else {
     providerOrderId = `mock_order_${crypto.randomBytes(10).toString('hex')}`;
   }
@@ -313,14 +335,20 @@ export async function createPaymentOrder({ bookingId, method = '', kind = 'advan
     config: publicPaymentConfig(config),
   };
 
+  recordPaymentAudit({
+    paymentId, action: 'order.created', newStatus: 'created', performedBy: null,
+    notes: `${provider} · ${orderKind} · ${amountPaise} paise`,
+  });
+
   if (provider === 'manual_upi') {
+    const snapshot = safeJson(rawJson, {}).manualUpi || settings;
     result.manualUpi = {
-      upiId: settings.upiId,
-      displayName: settings.paymentDisplayName || undefined,
-      qrUrl: settings.upiQrUrl || '',
+      upiId: snapshot.upiId,
+      displayName: snapshot.displayName || undefined,
+      qrUrl: snapshot.qrUrl || '',
       paymentLink: buildUpiPaymentLink({
-        upiId: settings.upiId,
-        displayName: settings.paymentDisplayName,
+        upiId: snapshot.upiId,
+        displayName: snapshot.displayName,
         amountPaise,
         bookingReference: booking.reference,
       }),
@@ -328,6 +356,7 @@ export async function createPaymentOrder({ bookingId, method = '', kind = 'advan
       amountPaise,
       bookingReference: booking.reference,
       instructions:
+        snapshot.instructions ||
         'Scan the QR or open the link in any UPI app and pay the exact amount. Then enter the UPI transaction reference (UTR). Your booking is confirmed only after the salon verifies the payment.',
     };
   }
@@ -546,6 +575,14 @@ export function confirmBookingPayment({ paymentId, providerPaymentId, instrument
            verification_note = COALESCE(?, verification_note)
          WHERE id = ?`
       ).run(providerPaymentId || null, instrument, ts, ts, raw, verifiedBy, verificationNote, payment.id);
+      recordPaymentAudit({
+        paymentId: payment.id,
+        action: payment.provider === 'manual_upi' ? 'manual.verified' : 'provider.verified',
+        previousStatus: paymentDisplayStatus(payment),
+        newStatus: 'verified',
+        performedBy: verifiedBy,
+        notes: verificationNote || `Verified via ${payment.provider}`,
+      });
     };
 
     // Balance payments settle an already-confirmed booking; they never change
@@ -1098,7 +1135,7 @@ export function notifyBookingConfirmed(booking, payment) {
 /**
  * Customer claims to have paid a manual UPI order and submits the UPI
  * transaction reference (UTR). This NEVER confirms the booking — it moves it
- * to `payment_verification_pending` until the salon owner/admin verifies the
+ * to `payment_verification_pending` until the salon owner verifies the
  * transfer against their bank/UPI app.
  */
 export function claimManualUpiPayment({ paymentId, reference, note = '' }) {
@@ -1151,6 +1188,13 @@ export function claimManualUpiPayment({ paymentId, reference, note = '' }) {
     `UPDATE bookings SET status = 'payment_verification_pending', payment_status = 'verification_pending', updated_at = ?
      WHERE id = ?`
   ).run(ts, booking.id);
+  recordPaymentAudit({
+    paymentId: payment.id,
+    action: 'manual.claim_submitted',
+    previousStatus: paymentDisplayStatus(payment),
+    newStatus: 'pending_verification',
+    notes: `Customer submitted UTR ${txnRef}. Awaiting salon bank/UPI verification.`,
+  });
 
   return {
     status: 'verification_pending',
@@ -1169,7 +1213,7 @@ function assertManualVerifiable(payment) {
 }
 
 /**
- * Authorized salon-owner/admin verification of a claimed UPI transfer.
+ * Authorized salon-owner verification of a claimed UPI transfer.
  * The verifier must have checked the credit in their own bank/UPI app.
  */
 export function verifyManualUpiPayment({ paymentId, actor, transactionRef = '', note = '' }) {
@@ -1248,6 +1292,14 @@ export function rejectManualUpiPayment({ paymentId, actor, note = '' }) {
       `UPDATE bookings SET status = 'payment_failed', payment_status = 'failed', updated_at = ? WHERE id = ?`
     ).run(ts, booking.id);
   }
+  recordPaymentAudit({
+    paymentId: payment.id,
+    action: 'manual.rejected',
+    previousStatus: 'pending_verification',
+    newStatus: 'rejected',
+    performedBy: actor?.id || null,
+    notes: reason,
+  });
 
   return {
     status: 'failed',

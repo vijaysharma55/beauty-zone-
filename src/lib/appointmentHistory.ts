@@ -33,21 +33,28 @@ export const APPOINTMENT_FILTERS: ReadonlyArray<{ value: AppointmentFilter; labe
 /** Raw row as returned by PostgREST for the select list below. */
 export interface BookingRow {
   id: string;
+  reference: string | null;
   customer_id: string | null;
   service_id: string | null;
   service: string | null;
   stylist: string | null;
   estimated_total: number | null;
   amount_paise: number | null;
+  advance_paise: number | null;
+  payment_status: string | null;
   booking_date: string; // YYYY-MM-DD
   booking_time: string | null; // e.g. "11:30 AM"
   status: string;
   created_at: string;
-  salons: { name: string | null } | null;
+  salons: { name: string | null; slug: string | null } | null;
 }
 
 export interface Appointment {
   id: string;
+  reference: string | null;
+  salonSlug: string | null;
+  advancePaise: number;
+  paymentStatus: string | null;
   serviceId: string | null;
   serviceName: string;
   staffName: string | null;
@@ -73,7 +80,7 @@ const ACTIVE_STATUSES = ['requested', 'pending_payment', 'payment_verification_p
 const CANCELLED_STATUSES = ['cancelled', 'declined', 'expired', 'payment_failed'];
 
 const SELECT_COLUMNS =
-  'id,customer_id,service_id,service,stylist,estimated_total,amount_paise,booking_date,booking_time,status,created_at,salons(name)';
+  'id,reference,customer_id,service_id,service,stylist,estimated_total,amount_paise,advance_paise,payment_status,booking_date,booking_time,status,created_at,salons(name,slug)';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -124,6 +131,10 @@ export function mapBookingRow(row: BookingRow, today: string = localISODate()): 
   const estimatedRupees = Number(row.estimated_total) || 0;
   return {
     id: row.id,
+    reference: row.reference,
+    salonSlug: row.salons?.slug || null,
+    advancePaise: Number(row.advance_paise) || 0,
+    paymentStatus: row.payment_status,
     serviceId: row.service_id,
     serviceName: (row.service || '').trim() || 'Appointment',
     staffName: (row.stylist || '').trim() || null,

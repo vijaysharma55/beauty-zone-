@@ -349,6 +349,65 @@ addColumn('payments', 'customer_note', "TEXT NOT NULL DEFAULT ''");
 addColumn('payments', 'claimed_at', 'TEXT');
 addColumn('payments', 'verified_by', 'TEXT');
 addColumn('payments', 'verification_note', "TEXT NOT NULL DEFAULT ''");
+addColumn('payments', 'payment_proof_url', 'TEXT');
+addColumn('payments', 'refunded_amount_paise', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('payments', 'refund_reference', "TEXT NOT NULL DEFAULT ''");
+addColumn('payments', 'refund_reason', "TEXT NOT NULL DEFAULT ''");
+addColumn('payments', 'refunded_at', 'TEXT');
+addColumn('payments', 'refunded_by', 'TEXT');
+
+/* Salon identity, instructions and optional provider linked-account metadata. */
+addColumn('salon_payment_settings', 'bank_name', "TEXT NOT NULL DEFAULT ''");
+addColumn('salon_payment_settings', 'payment_instructions', "TEXT NOT NULL DEFAULT ''");
+addColumn('salon_payment_settings', 'verification_mode', "TEXT NOT NULL DEFAULT 'static_qr'");
+addColumn('salon_payment_settings', 'provider_account_id', "TEXT NOT NULL DEFAULT ''");
+addColumn('salon_payment_settings', 'provider_onboarding_status', "TEXT NOT NULL DEFAULT 'not_started'");
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_payments_salon_created ON payments(salon_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_payments_salon_status ON payments(salon_id, status);
+
+  CREATE TABLE IF NOT EXISTS payment_audit_logs (
+    id TEXT PRIMARY KEY,
+    payment_id TEXT REFERENCES payments(id) ON DELETE CASCADE,
+    salon_id TEXT REFERENCES salons(id) ON DELETE CASCADE,
+    action TEXT NOT NULL,
+    previous_status TEXT,
+    new_status TEXT,
+    performed_by TEXT,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_payment_audit_payment ON payment_audit_logs(payment_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_payment_audit_salon ON payment_audit_logs(salon_id, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS payment_refunds (
+    id TEXT PRIMARY KEY,
+    payment_id TEXT NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
+    salon_id TEXT REFERENCES salons(id) ON DELETE CASCADE,
+    amount_paise INTEGER NOT NULL CHECK (amount_paise > 0),
+    provider_refund_id TEXT UNIQUE,
+    reference TEXT NOT NULL DEFAULT '',
+    reason TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL CHECK (status IN ('processed','recorded')),
+    performed_by TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_payment_refunds_payment ON payment_refunds(payment_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_payment_refunds_salon ON payment_refunds(salon_id, created_at DESC);
+`);
+
+/* The bank/UTR reference is unique across active claims. The service performs
+   the same check for a portable, descriptive 409 response; this index is the
+   concurrency backstop. Existing rejected attempts do not block a correction. */
+try {
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_manual_reference_active
+    ON payments(manual_reference)
+    WHERE manual_reference IS NOT NULL AND manual_reference <> ''
+      AND status IN ('verification_pending', 'paid')`);
+} catch (err) {
+  console.warn('[migrations] active UPI-reference unique index skipped:', err.message);
+}
 
 /* Receipts + WhatsApp notification ledger. */
 db.exec(`

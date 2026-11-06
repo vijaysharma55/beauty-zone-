@@ -49,6 +49,8 @@ const WebsiteEditor = React.lazy(() => import('./components/dashboard/WebsiteEdi
 const ServicesPage = React.lazy(() => import('./components/dashboard/ServicesPage').then((module) => ({ default: module.ServicesPage })));
 const StaffPage = React.lazy(() => import('./components/dashboard/StaffPage').then((module) => ({ default: module.StaffPage })));
 const BillingPage = React.lazy(() => import('./components/dashboard/BillingPage').then((module) => ({ default: module.BillingPage })));
+const PaymentSettingsPage = React.lazy(() => import('./components/dashboard/PaymentSettingsPage').then((module) => ({ default: module.PaymentSettingsPage })));
+const MyPaymentsPage = React.lazy(() => import('./components/dashboard/MyPaymentsPage').then((module) => ({ default: module.MyPaymentsPage })));
 const BookingsPage = React.lazy(() => import('./components/dashboard/BookingsPage').then((module) => ({ default: module.BookingsPage })));
 const AnalyticsPage = React.lazy(() => import('./components/dashboard/AnalyticsPage').then((module) => ({ default: module.AnalyticsPage })));
 const AccountPage = React.lazy(() => import('./components/dashboard/AccountPage').then((module) => ({ default: module.AccountPage })));
@@ -62,12 +64,14 @@ const AdminUsers = React.lazy(() => import('./components/admin/AdminUsers').then
 const AdminSalons = React.lazy(() => import('./components/admin/AdminSalons').then((module) => ({ default: module.AdminSalons })));
 const AdminSubscriptions = React.lazy(() => import('./components/admin/AdminSubscriptions').then((module) => ({ default: module.AdminSubscriptions })));
 const AdminSettings = React.lazy(() => import('./components/admin/AdminSettings').then((module) => ({ default: module.AdminSettings })));
+const AdminPayments = React.lazy(() => import('./components/admin/AdminPayments').then((module) => ({ default: module.AdminPayments })));
 const AdminApprovals = React.lazy(() => import('./components/admin/AdminApprovals').then((module) => ({ default: module.AdminApprovals })));
 
 const PublicSalonPage = React.lazy(() => import('./components/site/PublicSalonPage').then((module) => ({ default: module.PublicSalonPage })));
 const SalonDirectoryPage = React.lazy(() => import('./components/site/SalonDirectoryPage').then((module) => ({ default: module.SalonDirectoryPage })));
 
 const CustomerPanel = React.lazy(() => import('./components/customer/CustomerPanel').then((module) => ({ default: module.CustomerPanel })));
+const ReceiptPage = React.lazy(() => import('./components/customer/ReceiptPage').then((module) => ({ default: module.ReceiptPage })));
 
 const BrandingModal = React.lazy(() => import('./components/BrandingModal').then((module) => ({ default: module.BrandingModal })));
 const DesignSystemInspector = React.lazy(() => import('./components/DesignSystemInspector').then((module) => ({ default: module.DesignSystemInspector })));
@@ -598,6 +602,9 @@ export function App() {
         <Route path="bookings" element={<BookingsPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="billing" element={<BillingPage />} />
+        <Route path="payments" element={<MyPaymentsPage />} />
+        <Route path="settings/payments" element={<PaymentSettingsPage />} />
+        <Route path="payment-settings" element={<PaymentSettingsPage />} />
         <Route path="account" element={<AccountPage />} />
       </Route>
 
@@ -615,6 +622,7 @@ export function App() {
         <Route path="approvals" element={<AdminApprovals />} />
         <Route path="salons" element={<AdminSalons />} />
         <Route path="subscriptions" element={<AdminSubscriptions />} />
+        <Route path="payments" element={<AdminPayments />} />
         <Route path="settings" element={<AdminSettings />} />
       </Route>
 
@@ -623,6 +631,7 @@ export function App() {
 
       {/* Customer area (phone-OTP sign-in) with appointment history. Not in PUBLIC_PATHS: private, noindex. */}
       <Route path="/my-appointments" element={<CustomerPanel />} />
+      <Route path="/receipt/:bookingId" element={<ReceiptPage />} />
 
       {/* Public, unauthenticated salon websites with unique URLs */}
       <Route path="/salon/:slug" element={<PublicSalonPage />} />
