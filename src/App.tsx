@@ -511,8 +511,10 @@ function RouteIndexingPolicy() {
     }
 
     const canonical = document.querySelector('link[rel="canonical"]');
+    const socialUrl = document.querySelector('meta[property="og:url"]');
     if (isPrivate || !isPublicIndexable) {
       canonical?.remove();
+      socialUrl?.remove();
     } else {
       const url = new URL(pathname, SITE_ORIGIN);
       if (canonical) canonical.setAttribute('href', url.href);
@@ -521,6 +523,13 @@ function RouteIndexingPolicy() {
         link.rel = 'canonical';
         link.href = url.href;
         document.head.appendChild(link);
+      }
+      if (socialUrl) socialUrl.setAttribute('content', url.href);
+      else {
+        const meta = document.createElement('meta');
+        meta.setAttribute('property', 'og:url');
+        meta.content = url.href;
+        document.head.appendChild(meta);
       }
     }
   }, [pathname]);
