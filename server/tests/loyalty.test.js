@@ -180,5 +180,5 @@ test('migration protects balance writes, award RPC and all six catalogue costs',
   assert.match(migration, /This voucher is valid only for an eligible doorstep home booking/i);
   assert.match(migration, /revoke all on function private\.redeem_customer_loyalty_reward/i);
   assert.match(migration, /loyalty_vouchers_redeem_request_uidx/i);
-  assert.match(migration, /source_booking_id\) where source_booking_id is not null and transaction_type = 'earn'/i);
+  assert.match(migration, /on public\.loyalty_transactions\(source_booking_id\)\s+where source_booking_id is not null and transaction_type = 'earn'/i);
 });
