@@ -41,7 +41,24 @@ export const authRouter = Router();
 
 const EMAIL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
-const isProduction = () => process.env.NODE_ENV === 'production';
+const isProduction = () => process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
+
+// Seed/demo identities are for disposable local development only. They must
+// never authenticate in a production or Vercel deployment.
+function isSeededDemoEmail(email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  const configured = [
+    'admin@beautyzone.app',
+    'owner@luminaluxe.in',
+    process.env.SEED_ADMIN_EMAIL,
+    process.env.SEED_OWNER_EMAIL,
+  ].filter(Boolean).map((value) => String(value).trim().toLowerCase());
+  return configured.includes(normalized)
+    || /^owner(?:-[a-z0-9-]+|[0-9]+)?@jaipur\\.salon$/.test(normalized);
+}
+
+const DUMMY_PASSWORD_HASH = ['scrypt', '16384', '8', '1', '0'.repeat(32), '0'.repeat(128)]
+  .join(String.fromCharCode(36));
 
 function verificationUrl(req, token) {
   const configured = (process.env.APP_URL || '').replace(/\/+$/, '');
@@ -163,8 +180,12 @@ authRouter.post(
       throw new HttpError(401, 'Supabase did not return a verified account identity.');
     }
 
+    if (!identity.email_confirmed_at && !identity.confirmed_at) {
+      throw new HttpError(403, 'Verify your email address before opening the salon dashboard.');
+    }
+
     const profileResponse = await fetch(
-      projectUrl + '/rest/v1/profiles?id=eq.' + encodeURIComponent(identity.id) + '&select=id,email,name,role,date_of_birth&limit=1',
+      projectUrl + '/rest/v1/profiles?id=eq.' + encodeURIComponent(identity.id) + '&select=id,email,name,role,status,date_of_birth&limit=1',
       { headers: { apikey: publishableKey, Authorization: 'Bearer ' + accessToken } }
     );
     if (!profileResponse.ok) {
@@ -175,9 +196,15 @@ authRouter.post(
     if (!profile || profile.id !== identity.id) {
       throw new HttpError(409, 'Your BeautyZone profile is still being created. Please try again in a moment.');
     }
+    if (profile.status !== 'active') {
+      throw new HttpError(403, 'This BeautyZone account has been disabled. Please contact support.');
+    }
+    if (String(profile.email || '').trim().toLowerCase() !== email) {
+      throw new HttpError(403, 'Your Supabase identity does not match its BeautyZone profile.');
+    }
 
-    // Never accept roles from user metadata or the browser. Only the Supabase profile
-    // and an existing, previously provisioned local super-admin role are trusted.
+    // Never accept roles from user metadata or a local SQLite user. The
+    // trusted Supabase profile is the sole source of authorization.
     const profileRole = profile.role === 'super_admin' ? 'super_admin' : profile.role === 'salon_owner' ? 'salon_owner' : null;
     const provider = identity.app_metadata?.provider === 'google' ? 'google' : 'password';
     const providerId = Array.isArray(identity.identities)
@@ -201,9 +228,9 @@ authRouter.post(
     let localUser = db.prepare('SELECT * FROM users WHERE supabase_uid = ?').get(identity.id);
     if (!localUser) localUser = findUserByEmail(email);
 
-    // Preserve a trusted local super-admin when linking a seeded/legacy account.
-    // Promote the matching Supabase profiles row separately before using database RLS as admin.
-    const role = profileRole === 'super_admin' || localUser?.role === 'super_admin' ? 'super_admin' : profileRole;
+    // Super-admin access must be granted through the trusted Supabase
+    // profile bootstrap workflow, never inherited from a local SQLite row.
+    const role = profileRole;
     if (!role) throw new HttpError(403, 'Your account does not have an approved application role.');
 
     if (localUser) {
@@ -304,20 +331,28 @@ authRouter.post(
       return res.status(400).json({ error: 'Please enter both email and password.' });
     }
 
-    const isDemo = Boolean(DEMO_CREDENTIALS[email]);
+    const genericError = 'Invalid email or password.';
+
+    // Seed users have predictable bootstrap credentials. Reject them before
+    // looking up a local row so an ephemeral serverless instance cannot
+    // recreate and authenticate a demo administrator.
+    if (isProduction() && isSeededDemoEmail(email)) {
+      await verifyPassword(password, DUMMY_PASSWORD_HASH);
+      return res.status(401).json({ error: genericError });
+    }
+
+    const demoAuthEnabled = !isProduction() && process.env.ALLOW_DEMO_AUTH !== 'false';
+    const isDemo = demoAuthEnabled && Boolean(DEMO_CREDENTIALS[email]);
     let user = findUserByEmail(email);
 
-    // Auto-provision or heal demo users if needed
+    // Auto-provision/heal demo users only in non-production environments.
     if (!user && isDemo) {
       ensureDemoUsers(hashPasswordSync);
       user = findUserByEmail(email);
     }
 
-    const genericError = 'Invalid email or password.';
-
     if (!user) {
-      // Equalise timing against a dummy hash so unknown emails are not obviously faster.
-      await verifyPassword(password, 'scrypt$16384$8$1$0000000000000000000000000000000$' + '0'.repeat(128));
+      await verifyPassword(password, DUMMY_PASSWORD_HASH);
       return res.status(401).json({ error: genericError });
     }
 
