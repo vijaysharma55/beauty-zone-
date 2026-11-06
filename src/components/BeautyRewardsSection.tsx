@@ -45,6 +45,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
   const [actionError, setActionError] = useState<string | null>(null);
   const [redeemingOfferId, setRedeemingOfferId] = useState<string | null>(null);
   const [pendingRedemptionIds, setPendingRedemptionIds] = useState<Record<string, string>>({});
+  const redemptionLock = React.useRef(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [recentlyRedeemed, setRecentlyRedeemed] = useState<{
     title: string;
@@ -184,12 +185,13 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
   };
 
   const handleRedeemReward = async (offer: RewardOffer) => {
-    if (!customer || redeemingOfferId) return;
+    if (!customer || redemptionLock.current || redeemingOfferId) return;
     if (customer.totalPoints < offer.pointsCost) {
       setActionError('You need ' + (offer.pointsCost - customer.totalPoints) + ' more points to redeem this reward.');
       return;
     }
 
+    redemptionLock.current = true;
     setActionError(null);
     setRedeemingOfferId(offer.id);
     try {
@@ -231,6 +233,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Reward redemption failed. Please retry.');
     } finally {
+      redemptionLock.current = false;
       setRedeemingOfferId(null);
     }
   };
