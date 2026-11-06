@@ -521,7 +521,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
                       <strong className="text-[#D09A40] font-bold font-mono">
                         {progressStats.remaining} more points
                       </strong>{' '}
-                      to unlock <strong>{progressStats.nextTierName}</strong> perks!
+                      to reach <strong>{progressStats.nextTierName}</strong>.
                     </p>
                   ) : (
                     <p className="text-emerald-800 font-medium">
@@ -532,7 +532,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
 
                 <div className="mt-5">
                   <p className="text-xs font-bold uppercase tracking-wider text-[#4A4A4A] mb-2.5">
-                    Your Active {currentTierConfig.name} Privileges:
+                    How {currentTierConfig.name} works:
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {currentTierConfig.perks.map((perk, idx) => (
