@@ -198,6 +198,8 @@ db.exec(`
     loyalty_award_status TEXT NOT NULL DEFAULT 'not_awarded' CHECK (loyalty_award_status IN ('not_awarded','pending','awarded','failed','not_eligible')),
     loyalty_points_awarded INTEGER NOT NULL DEFAULT 0 CHECK (loyalty_points_awarded >= 0),
     loyalty_award_error TEXT NOT NULL DEFAULT '',
+    loyalty_voucher_status TEXT NOT NULL DEFAULT 'none' CHECK (loyalty_voucher_status IN ('none','reserved','used','released','release_failed')),
+    loyalty_voucher_error TEXT NOT NULL DEFAULT '',
     advance_paid INTEGER NOT NULL DEFAULT 0,
     advance_ref TEXT,
     amount_paise INTEGER NOT NULL DEFAULT 0,
@@ -413,6 +415,8 @@ const bookingColumnMigrations = [
   ['loyalty_award_status', "TEXT NOT NULL DEFAULT 'not_awarded' CHECK (loyalty_award_status IN ('not_awarded','pending','awarded','failed','not_eligible'))"],
   ['loyalty_points_awarded', 'INTEGER NOT NULL DEFAULT 0 CHECK (loyalty_points_awarded >= 0)'],
   ['loyalty_award_error', "TEXT NOT NULL DEFAULT ''"],
+  ['loyalty_voucher_status', "TEXT NOT NULL DEFAULT 'none' CHECK (loyalty_voucher_status IN ('none','reserved','used','released','release_failed'))"],
+  ['loyalty_voucher_error', "TEXT NOT NULL DEFAULT ''"],
 ];
 for (const [column, definition] of bookingColumnMigrations) {
   if (!bookingColumns.has(column)) {
