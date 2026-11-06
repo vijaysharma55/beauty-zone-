@@ -183,7 +183,7 @@ export interface LoyaltyActivity {
   serviceTitle: string;
   billAmount: number;
   pointsEarned: number;
-  type: 'visit' | 'bonus' | 'referral';
+  type: 'visit' | 'bonus' | 'referral' | 'redeem';
 }
 
 export interface RedeemedReward {
@@ -193,7 +193,7 @@ export interface RedeemedReward {
   pointsCost: number;
   dateRedeemed: string;
   validTill: string;
-  status: 'active' | 'used';
+  status: 'active' | 'used' | 'expired';
   discountValue: string;
 }
 
