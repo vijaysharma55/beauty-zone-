@@ -13,12 +13,12 @@ import {
   TrendingUp,
   MapPin,
   Calendar,
+  Phone,
 } from 'lucide-react';
 import { LOYALTY_TIERS, REWARD_OFFERS } from '../data/loyaltyData';
 import { LoyaltyCustomer, RewardOffer } from '../types';
 import { WhatsAppIcon } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
-import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 
 interface BeautyRewardsSectionProps {
