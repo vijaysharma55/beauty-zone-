@@ -127,7 +127,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
     event.preventDefault();
     setAuthError(null);
     setAuthNotice('');
-    const digits = phoneNumberInput.replace(/\\D/g, '');
+    const digits = phoneNumberInput.replace(/\D/g, '');
     if (digits.length !== 10) {
       setAuthError('Enter a valid 10-digit Indian mobile number.');
       return;
@@ -148,8 +148,8 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
   const handleVerifyOtp = async (event: React.FormEvent) => {
     event.preventDefault();
     setAuthError(null);
-    const digits = phoneNumberInput.replace(/\\D/g, '');
-    const code = otp.replace(/\\D/g, '');
+    const digits = phoneNumberInput.replace(/\D/g, '');
+    const code = otp.replace(/\D/g, '');
     if (digits.length !== 10 || code.length !== 6) {
       setAuthError('Enter your 10-digit mobile number and 6-digit OTP.');
       return;
@@ -269,7 +269,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
                     <label className="block text-xs font-semibold text-[#0F172A]">Mobile number
                       <div className="mt-1.5 flex rounded-xl border border-neutral-200 bg-neutral-50 overflow-hidden focus-within:border-[#D09A40]">
                         <span className="px-3 py-3 text-sm font-semibold text-neutral-600 border-r border-neutral-200">+91</span>
-                        <input type="tel" inputMode="numeric" autoComplete="tel-national" maxLength={10} value={phoneNumberInput} onChange={(event) => setPhoneNumberInput(event.target.value.replace(/\\D/g, '').slice(0,10))} placeholder="10-digit mobile number" className="min-w-0 flex-1 px-3 py-3 bg-transparent text-sm text-[#0F172A] outline-none" required />
+                        <input type="tel" inputMode="numeric" autoComplete="tel-national" maxLength={10} value={phoneNumberInput} onChange={(event) => setPhoneNumberInput(event.target.value.replace(/\D/g, '').slice(0,10))} placeholder="10-digit mobile number" className="min-w-0 flex-1 px-3 py-3 bg-transparent text-sm text-[#0F172A] outline-none" required />
                       </div>
                     </label>
                     <button type="submit" disabled={authBusy} className="w-full rounded-xl bg-[#D09A40] hover:bg-[#DCA54A] disabled:opacity-60 text-[#0F172A] font-bold text-sm py-3 transition-colors">{authBusy ? 'Sending OTP…' : 'Send OTP'}</button>
@@ -278,7 +278,7 @@ export const BeautyRewardsSection: React.FC<BeautyRewardsSectionProps> = ({
                   <form onSubmit={handleVerifyOtp} className="space-y-4">
                     <p className="text-sm text-neutral-600">Enter the code sent to <strong>+91 {phoneNumberInput}</strong>.</p>
                     <label className="block text-xs font-semibold text-[#0F172A]">6-digit OTP
-                      <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp} onChange={(event) => setOtp(event.target.value.replace(/\\D/g, '').slice(0,6))} placeholder="Enter OTP" className="mt-1.5 w-full px-4 py-3 rounded-xl border border-neutral-200 bg-neutral-50 text-center text-lg tracking-[0.35em] text-[#0F172A] focus:outline-none focus:border-[#D09A40]" required />
+                      <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0,6))} placeholder="Enter OTP" className="mt-1.5 w-full px-4 py-3 rounded-xl border border-neutral-200 bg-neutral-50 text-center text-lg tracking-[0.35em] text-[#0F172A] focus:outline-none focus:border-[#D09A40]" required />
                     </label>
                     <button type="submit" disabled={authBusy} className="w-full rounded-xl bg-[#D09A40] hover:bg-[#DCA54A] disabled:opacity-60 text-[#0F172A] font-bold text-sm py-3 transition-colors">{authBusy ? 'Verifying…' : 'Verify & Open Rewards'}</button>
                     <button type="button" disabled={authBusy} onClick={() => { setOtpRequested(false); setOtp(''); setAuthError(null); }} className="w-full text-xs font-semibold text-neutral-600 hover:text-[#0F172A]">Change mobile number</button>
