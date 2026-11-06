@@ -74,7 +74,9 @@ async function callServerAwardRpc(params) {
     method: 'POST',
     headers: {
       apikey: serverKey,
-      Authorization: 'Bearer ' + serverKey,
+      // New sb_secret_* keys are opaque API keys, not JWTs. Legacy
+      // service_role keys are JWTs and must also be sent as Bearer tokens.
+      ...(serverKey.startsWith('sb_secret_') ? {} : { Authorization: 'Bearer ' + serverKey }),
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(params),
@@ -170,7 +172,9 @@ export async function releaseCustomerLoyaltyVoucher(code, externalBookingId) {
         method: 'POST',
         headers: {
           apikey: serverKey,
-          Authorization: 'Bearer ' + serverKey,
+          // New sb_secret_* keys are opaque API keys, not JWTs. Legacy
+          // service_role keys are JWTs and must also be sent as Bearer tokens.
+          ...(serverKey.startsWith('sb_secret_') ? {} : { Authorization: 'Bearer ' + serverKey }),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(params),
