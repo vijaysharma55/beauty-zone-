@@ -140,14 +140,14 @@ export const supabase = {
     },
     verifyPhoneOtp: async (phone: string, token: string): Promise<AuthResult> => {
       const normalizedPhone = String(phone || '').trim();
-      const normalizedToken = String(token || '').trim();
+      if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone) || !/^\d{6}$/.test(normalizedToken)) {
       if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone)) {
         throw new Error('Enter the 6-digit code sent to your verified mobile number.');
       }
       const result = await authRequest<any>('/verify', {
         type: 'sms',
         phone: normalizedPhone,
-        token: normalizedToken,
+      if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone) || !/^\d{6}$/.test(normalizedToken)) {
       });
       const session = normalizedSession(result);
       if (!session) throw new Error('Supabase did not return a verified phone session.');
