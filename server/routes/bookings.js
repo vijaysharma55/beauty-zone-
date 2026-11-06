@@ -26,7 +26,12 @@ import { asyncHandler } from '../middleware.js';
 import { findLiveSalon } from './public.js';
 import { sendMail } from '../mailer.js';
 import { generateSlots } from '../availability.js';
-import { creditLoyaltyPointsForCompletedBooking, verifyCustomerLoyaltyVoucher, consumeCustomerLoyaltyVoucher } from './loyalty.js';
+import {
+  creditLoyaltyPointsForCompletedBooking,
+  verifyCustomerLoyaltyVoucher,
+  consumeCustomerLoyaltyVoucher,
+  releaseCustomerLoyaltyVoucher,
+} from './loyalty.js';
 import { getLiveContent, hasLiveApproval } from '../workflow.js';
 import { resolvePaymentConfig } from '../payments/config.js';
 import { toPaise } from '../payments/amounts.js';
@@ -315,6 +320,8 @@ export function serializeBooking(row) {
     loyaltyAwardStatus: row.loyalty_award_status || 'not_awarded',
     loyaltyPointsAwarded: Number(row.loyalty_points_awarded || 0),
     loyaltyAwardError: row.loyalty_award_error || '',
+    loyaltyVoucherStatus: row.loyalty_voucher_status || 'none',
+    loyaltyVoucherError: row.loyalty_voucher_error || '',
     amountPaise: totalPaise,
     advancePaise,
     /** Rupees actually received so far — never the amount still due. */
@@ -511,6 +518,7 @@ bookingsRouter.post(
         serviceTitle: data.service,
         locationType: data.locationType,
         billAmount: Math.round(voucherBaseAmountPaise / 100),
+        distanceKm: data.distanceKm,
       });
       const discountAmount = Number(voucher.discountAmount);
       if (!Number.isSafeInteger(discountAmount) || discountAmount < 0) {
@@ -603,8 +611,12 @@ bookingsRouter.post(
             serviceTitle: data.service,
             locationType: data.locationType,
             billAmount: Math.round(voucherBaseAmountPaise / 100),
+            distanceKm: data.distanceKm,
           }
         );
+        db.prepare(
+          "UPDATE bookings SET loyalty_voucher_status = 'reserved', loyalty_voucher_error = '' WHERE id = ?"
+        ).run(id);
       } catch (error) {
         // Do not leave an active appointment carrying a voucher discount that
         // was not atomically consumed by the authoritative Supabase ledger.
@@ -918,6 +930,54 @@ ownerBookingsRouter.post('/:bookingId/loyalty/retry', asyncHandler(async (req, r
  * are never calculated from the public booking estimate. If the server-side
  * award fails, the completion remains saved and the owner can retry it.
  */
+async function releaseBookingLoyaltyVoucher(row) {
+  if (!row?.promo_code || row.loyalty_voucher_status !== 'reserved') {
+    return { released: false, alreadyReleased: true };
+  }
+  const externalBookingId = `${row.salon_id || 'public'}:${row.id}`;
+  try {
+    const result = await releaseCustomerLoyaltyVoucher(row.promo_code, externalBookingId);
+    const succeeded = Boolean(result?.released || result?.alreadyReleased || result?.expired);
+    const status = succeeded ? 'released' : 'release_failed';
+    const message = succeeded ? '' : 'Voucher could not be released. Retry from the booking record.';
+    db.prepare(
+      'UPDATE bookings SET loyalty_voucher_status = ?, loyalty_voucher_error = ?, updated_at = ? WHERE id = ?'
+    ).run(status, message, nowIso(), row.id);
+    return { ...result, released: succeeded, message: succeeded ? undefined : message };
+  } catch (error) {
+    const message = String(error?.message || 'Voucher release could not be confirmed.').slice(0, 500);
+    db.prepare(
+      "UPDATE bookings SET loyalty_voucher_status = 'release_failed', loyalty_voucher_error = ?, updated_at = ? WHERE id = ?"
+    ).run(message, nowIso(), row.id);
+    return { released: false, retryable: true, message };
+  }
+}
+
+ownerBookingsRouter.post('/:bookingId/loyalty/voucher/release', asyncHandler(async (req, res) => {
+  const salon = req.salon;
+  if (!salon) return res.status(409).json({ error: 'Complete salon onboarding first.' });
+  const row = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.bookingId);
+  if (!row || row.salon_id !== salon.id) return res.status(404).json({ error: 'Booking not found' });
+  if (!['cancelled','declined'].includes(row.status)) {
+    throw new HttpError(409, 'Only cancelled or declined bookings can release a rewards voucher.', 'VOUCHER_RELEASE_NOT_READY');
+  }
+  if (row.loyalty_voucher_status === 'released' || row.loyalty_voucher_status === 'none') {
+    return res.json({ booking: serializeBooking(row), voucherRelease: { released: true, alreadyReleased: true } });
+  }
+  if (row.loyalty_voucher_status === 'used') {
+    throw new HttpError(409, 'This booking has already consumed the rewards voucher.', 'VOUCHER_ALREADY_USED');
+  }
+  const voucherRelease = await releaseBookingLoyaltyVoucher(row);
+  return res.json({
+    booking: serializeBooking(db.prepare('SELECT * FROM bookings WHERE id = ?').get(row.id)),
+    voucherRelease,
+  });
+}));
+
+/**
+ * Confirms / declines / completes / cancels one booking (tenant-scoped).
+ * Completion requires an actual final bill; points use that amount only.
+ */
 ownerBookingsRouter.patch('/:bookingId', asyncHandler(async (req, res) => {
   const salon = req.salon;
   if (!salon) return res.status(409).json({ error: 'Complete salon onboarding first.' });
@@ -934,9 +994,7 @@ ownerBookingsRouter.patch('/:bookingId', asyncHandler(async (req, res) => {
     ? null
     : Number(row.final_bill_amount);
   if (status === 'completed') {
-    if (req.body?.finalBillAmount !== undefined) {
-      finalBillAmount = Number(req.body.finalBillAmount);
-    }
+    if (req.body?.finalBillAmount !== undefined) finalBillAmount = Number(req.body.finalBillAmount);
     if (!Number.isSafeInteger(finalBillAmount) || finalBillAmount <= 0 || finalBillAmount > 10000000) {
       throw new ValidationError('Enter the actual final bill amount (₹1 to ₹1,00,00,000) before completing this booking.');
     }
@@ -950,11 +1008,7 @@ ownerBookingsRouter.patch('/:bookingId', asyncHandler(async (req, res) => {
   const isConfirmation = ['confirmed', 'advance_paid', 'completed'].includes(status);
   const paymentVerified = ['advance_paid', 'paid', 'not_required'].includes(row.payment_status);
   if (isConfirmation && !paymentVerified) {
-    throw new HttpError(
-      409,
-      'This booking cannot be confirmed until the advance payment is verified.',
-      'PAYMENT_REQUIRED'
-    );
+    throw new HttpError(409, 'This booking cannot be confirmed until the advance payment is verified.', 'PAYMENT_REQUIRED');
   }
 
   const ts = nowIso();
@@ -965,16 +1019,12 @@ ownerBookingsRouter.patch('/:bookingId', asyncHandler(async (req, res) => {
          SET status = ?, final_bill_amount = ?,
              loyalty_award_status = CASE WHEN loyalty_award_status = 'awarded' THEN 'awarded' ELSE 'pending' END,
              loyalty_award_error = CASE WHEN loyalty_award_status = 'awarded' THEN loyalty_award_error ELSE '' END,
+             loyalty_voucher_status = CASE WHEN loyalty_voucher_status = 'reserved' THEN 'used' ELSE loyalty_voucher_status END,
              confirmed_at = COALESCE(confirmed_at, ?), updated_at = ?
          WHERE id = ?`
       ).run(status, finalBillAmount, ts, ts, row.id);
     } else if (isConfirmation && row.advance_paise > 0 && !row.confirmed_at) {
-      db.prepare('UPDATE bookings SET status = ?, confirmed_at = ?, updated_at = ? WHERE id = ?').run(
-        status,
-        ts,
-        ts,
-        row.id
-      );
+      db.prepare('UPDATE bookings SET status = ?, confirmed_at = ?, updated_at = ? WHERE id = ?').run(status, ts, ts, row.id);
     } else {
       db.prepare('UPDATE bookings SET status = ?, updated_at = ? WHERE id = ?').run(status, ts, row.id);
     }
@@ -991,14 +1041,19 @@ ownerBookingsRouter.patch('/:bookingId', asyncHandler(async (req, res) => {
   });
 
   let loyaltyReward = null;
+  let voucherRelease = null;
   if (status === 'completed') {
     const updatedRow = db.prepare('SELECT * FROM bookings WHERE id = ?').get(row.id);
     loyaltyReward = await awardBookingLoyalty(updatedRow, req.user?.supabase_uid);
+  }
+  if (['cancelled','declined'].includes(status) && row.loyalty_voucher_status === 'reserved') {
+    voucherRelease = await releaseBookingLoyaltyVoucher(db.prepare('SELECT * FROM bookings WHERE id = ?').get(row.id));
   }
 
   return res.json({
     booking: serializeBooking(db.prepare('SELECT * FROM bookings WHERE id = ?').get(row.id)),
     loyaltyReward,
+    voucherRelease,
   });
 }));
 
