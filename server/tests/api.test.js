@@ -7,6 +7,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -57,6 +58,8 @@ before(async () => {
       SEED_OWNER_EMAIL: 'owner@test.local',
       SEED_OWNER_PASSWORD: 'Owner@12345',
       GOOGLE_CLIENT_ID: '',
+      SUPABASE_SECRET_KEY: '',
+      SUPABASE_SERVICE_ROLE_KEY: '',
     },
     stdio: 'ignore',
   });
@@ -851,6 +854,47 @@ test('visitor can book a live salon and the owner sees it', async () => {
 
   const badStatus = await owner.patch(`/api/salon/bookings/${created.data.booking.id}`, { status: 'explode' });
   assert.equal(badStatus.status, 400);
+});
+
+test('cancelled bookings mark voucher release failure and expose an owner retry path', async () => {
+  const anon = makeClient();
+  const created = await anon.post('/api/public/bookings', {
+    slug: 'lumina-luxe',
+    fullName: 'Voucher Release Client',
+    phone: '9000012346',
+    service: 'HD Airbrush Bridal Makeover',
+    date: nextMondayDate(),
+    time: '03:30 PM',
+    locationType: 'salon',
+    estimatedTotal: 24999,
+  });
+  assert.equal(created.status, 201);
+
+  // Simulate a voucher reservation already committed to Supabase. The
+  // server process has no service key in this test, so release must fail
+  // closed and remain retryable instead of silently unlocking the voucher.
+  const testDb = new DatabaseSync(path.join(TMP_DATA, 'beautyzone.db'));
+  try {
+    testDb.exec('PRAGMA busy_timeout = 5000');
+    testDb.prepare(
+      "UPDATE bookings SET promo_code = ?, loyalty_voucher_status = 'reserved' WHERE id = ?"
+    ).run('VIP-500-2346-TEST0001', created.data.booking.id);
+  } finally {
+    testDb.close();
+  }
+
+  const owner = await loginAs('owner@test.local', 'Owner@12345');
+  const cancelled = await owner.patch(`/api/salon/bookings/${created.data.booking.id}`, { status: 'cancelled' });
+  assert.equal(cancelled.status, 200);
+  assert.equal(cancelled.data.booking.status, 'cancelled');
+  assert.equal(cancelled.data.booking.loyaltyVoucherStatus, 'release_failed');
+  assert.equal(cancelled.data.voucherRelease.released, false);
+  assert.equal(cancelled.data.voucherRelease.retryable, true);
+
+  const retry = await owner.post(`/api/salon/bookings/${created.data.booking.id}/loyalty/voucher/release`);
+  assert.equal(retry.status, 200);
+  assert.equal(retry.data.booking.loyaltyVoucherStatus, 'release_failed');
+  assert.equal(retry.data.voucherRelease.released, false);
 });
 
 test('preferred specialist is validated, stored and returned with the booking', async () => {
