@@ -6,6 +6,7 @@ Working branch: audit/beautyzone-production-hardening
 
 The repository implements a substantial salon website and owner/admin dashboard. The main production gap is not a missing UI screen: it is the split persistence architecture. Core Express routes use SQLite while customer history, selected content and rewards use Supabase PostgreSQL.
 
+| Deep links / route fallback | Vercel declares rewrite to `spa.html` | Direct requests to `/login`, `/register`, `/salons`, `/dashboard`, `/my-appointments` and `/salon/lumina-luxe` return HTTP 404 in production and PR preview. | P1 |
 ## 1. Essential to existing functionality
 
 | Module | Present implementation | Missing / incomplete | Priority |
