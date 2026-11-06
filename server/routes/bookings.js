@@ -311,6 +311,10 @@ export function serializeBooking(row) {
     notes: row.notes,
     promoCode: row.promo_code,
     estimatedTotal: Math.round(totalPaise / 100),
+    finalBillAmount: row.final_bill_amount === null || row.final_bill_amount === undefined ? null : Number(row.final_bill_amount),
+    loyaltyAwardStatus: row.loyalty_award_status || 'not_awarded',
+    loyaltyPointsAwarded: Number(row.loyalty_points_awarded || 0),
+    loyaltyAwardError: row.loyalty_award_error || '',
     amountPaise: totalPaise,
     advancePaise,
     /** Rupees actually received so far — never the amount still due. */
@@ -861,6 +865,59 @@ ownerBookingsRouter.get('/', (req, res) => {
  * An unpaid booking can never be confirmed here: the advance must have been
  * verified by the payment service first. Owners may still decline or cancel.
  */
+async function awardBookingLoyalty(row, actorId) {
+  try {
+    const result = await creditLoyaltyPointsForCompletedBooking(row, actorId);
+    const confirmed = Boolean(result?.awarded || result?.alreadyAwarded);
+    const status = confirmed ? 'awarded' : 'failed';
+    const points = Math.max(0, Number(result?.pointsEarned) || 0);
+    const message = confirmed ? '' : String(result?.reason || result?.message || 'Points award could not be confirmed.').slice(0, 500);
+    db.prepare(
+      'UPDATE bookings SET loyalty_award_status = ?, loyalty_points_awarded = ?, loyalty_award_error = ?, updated_at = ? WHERE id = ?'
+    ).run(status, points, message, nowIso(), row.id);
+    return {
+      ...result,
+      awarded: confirmed,
+      retryable: !confirmed,
+      message: confirmed ? undefined : message,
+    };
+  } catch (error) {
+    const message = String(error?.message || 'Points award could not be confirmed.').slice(0, 500);
+    db.prepare(
+      "UPDATE bookings SET loyalty_award_status = 'failed', loyalty_award_error = ?, updated_at = ? WHERE id = ?"
+    ).run(message, nowIso(), row.id);
+    console.error('[loyalty] Supabase award failed for booking', row.id, message);
+    return { awarded: false, retryable: true, message };
+  }
+}
+
+ownerBookingsRouter.post('/:bookingId/loyalty/retry', asyncHandler(async (req, res) => {
+  const salon = req.salon;
+  if (!salon) return res.status(409).json({ error: 'Complete salon onboarding first.' });
+  const row = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.bookingId);
+  if (!row || row.salon_id !== salon.id) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+  if (row.status !== 'completed' || !row.final_bill_amount) {
+    throw new HttpError(409, 'Complete the appointment and save its final bill before retrying loyalty points.', 'LOYALTY_RETRY_NOT_READY');
+  }
+  if (row.loyalty_award_status === 'awarded') {
+    return res.json({ booking: serializeBooking(row), loyaltyReward: { awarded: true, alreadyAwarded: true, pointsEarned: row.loyalty_points_awarded } });
+  }
+  const result = await awardBookingLoyalty(row, req.user?.supabase_uid);
+  return res.json({
+    booking: serializeBooking(db.prepare('SELECT * FROM bookings WHERE id = ?').get(row.id)),
+    loyaltyReward: result,
+  });
+}));
+
+/**
+ * Confirms / declines / completes / cancels one booking (tenant-scoped).
+ *
+ * Completing a booking requires the actual final bill in whole rupees. Points
+ * are never calculated from the public booking estimate. If the server-side
+ * award fails, the completion remains saved and the owner can retry it.
+ */
 ownerBookingsRouter.patch('/:bookingId', asyncHandler(async (req, res) => {
   const salon = req.salon;
   if (!salon) return res.status(409).json({ error: 'Complete salon onboarding first.' });
@@ -873,6 +930,23 @@ ownerBookingsRouter.patch('/:bookingId', asyncHandler(async (req, res) => {
     throw new ValidationError('Invalid booking status');
   }
 
+  let finalBillAmount = row.final_bill_amount === null || row.final_bill_amount === undefined
+    ? null
+    : Number(row.final_bill_amount);
+  if (status === 'completed') {
+    if (req.body?.finalBillAmount !== undefined) {
+      finalBillAmount = Number(req.body.finalBillAmount);
+    }
+    if (!Number.isSafeInteger(finalBillAmount) || finalBillAmount <= 0 || finalBillAmount > 10000000) {
+      throw new ValidationError('Enter the actual final bill amount (₹1 to ₹1,00,00,000) before completing this booking.');
+    }
+    if (row.loyalty_award_status === 'awarded' && finalBillAmount !== Number(row.final_bill_amount)) {
+      throw new HttpError(409, 'The final bill cannot be changed after loyalty points have been awarded.', 'LOYALTY_ALREADY_AWARDED');
+    }
+  } else if (req.body?.finalBillAmount !== undefined) {
+    throw new ValidationError('Final bill amount can only be submitted when marking a booking completed.');
+  }
+
   const isConfirmation = ['confirmed', 'advance_paid', 'completed'].includes(status);
   const paymentVerified = ['advance_paid', 'paid', 'not_required'].includes(row.payment_status);
   if (isConfirmation && !paymentVerified) {
@@ -883,16 +957,26 @@ ownerBookingsRouter.patch('/:bookingId', asyncHandler(async (req, res) => {
     );
   }
 
+  const ts = nowIso();
   try {
-    if (isConfirmation && row.advance_paise > 0 && !row.confirmed_at) {
+    if (status === 'completed') {
+      db.prepare(
+        `UPDATE bookings
+         SET status = ?, final_bill_amount = ?,
+             loyalty_award_status = CASE WHEN loyalty_award_status = 'awarded' THEN 'awarded' ELSE 'pending' END,
+             loyalty_award_error = CASE WHEN loyalty_award_status = 'awarded' THEN loyalty_award_error ELSE '' END,
+             confirmed_at = COALESCE(confirmed_at, ?), updated_at = ?
+         WHERE id = ?`
+      ).run(status, finalBillAmount, ts, ts, row.id);
+    } else if (isConfirmation && row.advance_paise > 0 && !row.confirmed_at) {
       db.prepare('UPDATE bookings SET status = ?, confirmed_at = ?, updated_at = ? WHERE id = ?').run(
         status,
-        nowIso(),
-        nowIso(),
+        ts,
+        ts,
         row.id
       );
     } else {
-      db.prepare('UPDATE bookings SET status = ?, updated_at = ? WHERE id = ?').run(status, nowIso(), row.id);
+      db.prepare('UPDATE bookings SET status = ?, updated_at = ? WHERE id = ?').run(status, ts, row.id);
     }
   } catch (err) {
     if (isConfirmation && /UNIQUE|constraint/i.test(err.message || '')) {
@@ -900,19 +984,16 @@ ownerBookingsRouter.patch('/:bookingId', asyncHandler(async (req, res) => {
     }
     throw err;
   }
-  audit(req, 'booking.status_changed', 'booking', row.id, { from: row.status, to: status });
+  audit(req, 'booking.status_changed', 'booking', row.id, {
+    from: row.status,
+    to: status,
+    ...(status === 'completed' ? { finalBillAmount } : {}),
+  });
 
   let loyaltyReward = null;
   if (status === 'completed') {
     const updatedRow = db.prepare('SELECT * FROM bookings WHERE id = ?').get(row.id);
-    try {
-      loyaltyReward = await creditLoyaltyPointsForCompletedBooking(updatedRow, req.user?.supabase_uid);
-    } catch (error) {
-      // Completion is an operational salon action. Keep it completed, but make
-      // the failed points award visible and retryable; the RPC is idempotent.
-      console.error('[loyalty] Supabase award failed for booking', row.id, error.message);
-      loyaltyReward = { awarded: false, retryable: true, message: error.message || 'Points award could not be confirmed.' };
-    }
+    loyaltyReward = await awardBookingLoyalty(updatedRow, req.user?.supabase_uid);
   }
 
   return res.json({
