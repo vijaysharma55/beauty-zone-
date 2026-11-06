@@ -155,8 +155,10 @@ of being sent through an SMTP provider. Outside production the API also returns
 5. `/dashboard/approval` — workflow stepper, blockers, submit/resubmit, publish/unpublish and the
    full submission history with reviewer notes.
 6. `/dashboard/services` — full CRUD for services (price in paise server-side, duration bounds).
-7. `/dashboard/staff` — full CRUD for team members, photo upload, specialties and an
-   “accepts online bookings” switch per specialist.
+7. `/dashboard/staff` — **Staff Management**: full CRUD for team members, photo upload, specialties,
+   an “accepts online bookings” switch and an availability status (`available` / `busy` / `on_leave`)
+   per specialist. Only `available` staff can be booked online; the booking API returns `409
+   STAFF_NOT_BOOKABLE` otherwise.
 8. `/dashboard/bookings` — appointment inbox: every request submitted from the live website,
    filterable by status, with confirm / complete / decline / cancel actions.
 9. `/dashboard/preview` — the current draft rendering, private to the owner.
