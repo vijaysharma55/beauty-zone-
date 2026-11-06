@@ -154,9 +154,9 @@ export async function creditLoyaltyPointsForCompletedBooking(booking, actorId) {
   const phone = normalizeLoyaltyPhone(booking.phone);
   if (!phone) return { awarded: false, reason: 'Customer mobile number is invalid.' };
 
-  const billAmount = Number(booking.estimated_total);
-  if (!Number.isFinite(billAmount) || billAmount <= 0) {
-    return { awarded: false, reason: 'No eligible final bill amount was recorded.' };
+  const billAmount = Number(booking.final_bill_amount);
+  if (!Number.isSafeInteger(billAmount) || billAmount <= 0 || billAmount > 10000000) {
+    return { awarded: false, reason: 'A valid final bill amount must be recorded before points can be awarded.' };
   }
 
   if (!actorId) {
