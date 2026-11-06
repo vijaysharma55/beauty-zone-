@@ -983,6 +983,53 @@ test('specialist online-booking switch round-trips and stays tenant-scoped', asy
   assert.equal(on.data.staff.bookingEnabled, true);
 });
 
+test('staff availability status round-trips, validates and stays tenant-scoped', async () => {
+  const owner = await loginAs('owner@test.local', 'Owner@12345');
+  const list = await owner.get('/api/salon/staff');
+  assert.equal(list.status, 200);
+  const member = list.data.staff[0];
+
+  // Existing / new staff default to 'available'.
+  assert.equal(member.availabilityStatus, 'available');
+
+  const busy = await owner.patch(`/api/salon/staff/${member.id}`, { availabilityStatus: 'busy' });
+  assert.equal(busy.status, 200);
+  assert.equal(busy.data.staff.availabilityStatus, 'busy');
+
+  const leave = await owner.patch(`/api/salon/staff/${member.id}`, { availabilityStatus: 'on_leave' });
+  assert.equal(leave.status, 200);
+  assert.equal(leave.data.staff.availabilityStatus, 'on_leave');
+
+  // Unknown statuses are rejected and do not change the stored value.
+  const invalid = await owner.patch(`/api/salon/staff/${member.id}`, { availabilityStatus: 'vacation' });
+  assert.equal(invalid.status, 400);
+  const afterInvalid = await owner.get('/api/salon/staff');
+  assert.equal(afterInvalid.data.staff.find((s) => s.id === member.id).availabilityStatus, 'on_leave');
+
+  // The other owner must not be able to change it.
+  const other = await loginAs('second@test.local', 'Second@54321');
+  const forged = await other.patch(`/api/salon/staff/${member.id}`, { availabilityStatus: 'available' });
+  assert.equal(forged.status, 404);
+
+  // New staff can be created with a status and default to 'available' otherwise.
+  const created = await owner.post('/api/salon/staff', {
+    name: 'Availability Tester',
+    roleTitle: 'Stylist',
+    specialties: ['Haircut'],
+    availabilityStatus: 'busy',
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.data.staff.availabilityStatus, 'busy');
+  const createdDefault = await owner.post('/api/salon/staff', { name: 'Default Status Tester', specialties: [] });
+  assert.equal(createdDefault.status, 201);
+  assert.equal(createdDefault.data.staff.availabilityStatus, 'available');
+
+  // Cleanup so other tests keep a stable roster.
+  await owner.del(`/api/salon/staff/${created.data.staff.id}`);
+  await owner.del(`/api/salon/staff/${createdDefault.data.staff.id}`);
+  await owner.patch(`/api/salon/staff/${member.id}`, { availabilityStatus: 'available' });
+});
+
 /* ------------------------------------------------------------------ */
 /* Staff Profiles, Consent, Demo Protection & Publishing Lock          */
 /* ------------------------------------------------------------------ */
@@ -1289,6 +1336,27 @@ test('unpublished salon websites block booking API calls and automatically activ
   });
   assert.equal(disabledStaffBooking.status, 409);
   assert.equal(disabledStaffBooking.data.code, 'STAFF_NOT_BOOKABLE');
+
+  // A busy / on-leave specialist is not bookable even when the booking switch is on,
+  // and the public roster reflects it as not bookable.
+  await studioOwner.patch(`/api/salon/staff/${realStaffId}`, { bookingEnabled: true, availabilityStatus: 'busy' });
+  const busyStaffBooking = await anon.post('/api/public/bookings', {
+    slug: newSalonSlug,
+    fullName: 'Client Busy',
+    phone: '9811122246',
+    service: 'Couture Bridal Makeup',
+    stylistId: realStaffId,
+    date: nextMondayDate(),
+    time: '03:00 PM',
+  });
+  assert.equal(busyStaffBooking.status, 409);
+  assert.equal(busyStaffBooking.data.code, 'STAFF_NOT_BOOKABLE');
+  const publicRoster = await anon.get(`/api/public/salons/${newSalonSlug}`);
+  const publicBusyMember = publicRoster.data.staff.find((s) => s.id === realStaffId);
+  assert.equal(publicBusyMember.availabilityStatus, 'busy');
+  assert.equal(publicBusyMember.bookingEnabled, false);
+  // Restore the state the rest of this flow expects (switch off, status available).
+  await studioOwner.patch(`/api/salon/staff/${realStaffId}`, { bookingEnabled: false, availabilityStatus: 'available' });
 
   // Unpublishing immediately disables booking API again.
   await studioOwner.post('/api/salon/unpublish');

@@ -25,12 +25,19 @@ import {
   Input,
   Modal,
   PageHeader,
+  Select,
   Textarea,
   Toggle,
   Switch,
 } from '../ui';
 import { ImageUploader, uploadOrInlineImage } from './ImageUploader';
 import { StylistProfileModal, staffToProfile } from '../StylistProfileModal';
+import type { StaffAvailability } from '../../types/auth';
+import {
+  STAFF_AVAILABILITY_OPTIONS,
+  getAvailabilityMeta,
+  getStaffAvailability,
+} from '../../lib/staffAvailability';
 
 interface Draft {
   name: string;
@@ -46,6 +53,7 @@ interface Draft {
   reviewCount: string;
   active: boolean;
   bookingEnabled: boolean;
+  availabilityStatus: StaffAvailability;
 }
 
 const emptyDraft: Draft = {
@@ -62,6 +70,7 @@ const emptyDraft: Draft = {
   reviewCount: '',
   active: true,
   bookingEnabled: true,
+  availabilityStatus: 'available',
 };
 
 const initials = (name: string) =>
@@ -87,6 +96,7 @@ export const StaffPage: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<SalonStaff | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [previewMember, setPreviewMember] = useState<SalonStaff | null>(null);
+  const [availabilityFilter, setAvailabilityFilter] = useState<'all' | StaffAvailability>('all');
   const workPhotoInputRef = useRef<HTMLInputElement | null>(null);
 
   const load = async () => {
@@ -136,6 +146,7 @@ export const StaffPage: React.FC = () => {
           : '',
       active: member.active,
       bookingEnabled: member.bookingEnabled !== false,
+      availabilityStatus: getStaffAvailability(member),
     });
     setWorkPhotoUrlInput('');
     setShowWorkPhotoUrl(false);
@@ -214,6 +225,7 @@ export const StaffPage: React.FC = () => {
         reviewCount: draft.reviewCount.trim() === '' ? 0 : Math.max(0, Math.round(Number(draft.reviewCount) || 0)),
         active: draft.active,
         bookingEnabled: draft.bookingEnabled,
+        availabilityStatus: draft.availabilityStatus,
       };
       if (editing) {
         const res = await api.patch<{ staff: SalonStaff }>(`/salon/staff/${editing.id}`, payload);
@@ -254,6 +266,26 @@ export const StaffPage: React.FC = () => {
     }
   };
 
+  const changeAvailability = async (member: SalonStaff, next: StaffAvailability) => {
+    const previous = getStaffAvailability(member);
+    if (next === previous) return;
+    setStaff((prev) => prev.map((s) => (s.id === member.id ? { ...s, availabilityStatus: next } : s)));
+    try {
+      const res = await api.patch<{ staff: SalonStaff }>(`/salon/staff/${member.id}`, { availabilityStatus: next });
+      setStaff((prev) => prev.map((s) => (s.id === member.id ? res.staff : s)));
+    } catch (err) {
+      setStaff((prev) => prev.map((s) => (s.id === member.id ? { ...s, availabilityStatus: previous } : s)));
+      setError(errorMessage(err));
+    }
+  };
+
+  const availabilityCounts = STAFF_AVAILABILITY_OPTIONS.map((option) => ({
+    ...option,
+    count: staff.filter((s) => getStaffAvailability(s) === option.value).length,
+  }));
+  const visibleStaff =
+    availabilityFilter === 'all' ? staff : staff.filter((s) => getStaffAvailability(s) === availabilityFilter);
+
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -274,8 +306,8 @@ export const StaffPage: React.FC = () => {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Your people"
-        title="Team & staff"
-        description="Manage your salon specialists, credentials and portfolio galleries. Changes sync automatically across all website and booking templates."
+        title="Staff Management"
+        description="Add, edit or remove your salon specialists, set their specialties and availability, and manage credentials and portfolio galleries. Changes sync automatically across all website and booking templates."
         actions={
           <Button variant="gold" onClick={openCreate}>
             <Plus className="h-4 w-4" /> Add team member
@@ -285,6 +317,28 @@ export const StaffPage: React.FC = () => {
 
       {error && !modalOpen && <Alert tone="error">{error}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}
+
+      {!loading && staff.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter staff by availability">
+          <Button
+            variant={availabilityFilter === 'all' ? 'gold' : 'secondary'}
+            size="sm"
+            onClick={() => setAvailabilityFilter('all')}
+          >
+            All ({staff.length})
+          </Button>
+          {availabilityCounts.map((option) => (
+            <Button
+              key={option.value}
+              variant={availabilityFilter === option.value ? 'gold' : 'secondary'}
+              size="sm"
+              onClick={() => setAvailabilityFilter(option.value)}
+            >
+              {option.label} ({option.count})
+            </Button>
+          ))}
+        </div>
+      )}
 
       {loading ? (
         <Card className="p-10 text-center text-sm text-slate-500">Loading team…</Card>
@@ -301,9 +355,15 @@ export const StaffPage: React.FC = () => {
             }
           />
         </Card>
+      ) : visibleStaff.length === 0 ? (
+        <Card className="p-8 text-center text-sm text-slate-500">
+          No team members are marked “{getAvailabilityMeta(availabilityFilter === 'all' ? 'available' : availabilityFilter).label}” right now.
+        </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {staff.map((member) => {
+          {visibleStaff.map((member) => {
+            const availability = getStaffAvailability(member);
+            const availabilityMeta = getAvailabilityMeta(availability);
             const hasGenuineRating =
               member.rating !== null && member.rating !== undefined && Number(member.rating) > 0;
             const workPhotoCount = Array.isArray(member.workPhotos) ? member.workPhotos.length : 0;
@@ -341,6 +401,7 @@ export const StaffPage: React.FC = () => {
                       </div>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                         {!member.active && <Badge tone="amber">Hidden</Badge>}
+                        <Badge tone={availabilityMeta.tone}>{availabilityMeta.label}</Badge>
                         {hasGenuineRating && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-[#D09A40]/15 px-2 py-0.5 text-[11px] font-semibold text-[#6d4f14]">
                             <Star className="h-3 w-3 fill-[#D09A40] text-[#D09A40]" />
@@ -365,6 +426,25 @@ export const StaffPage: React.FC = () => {
                       } accepting online bookings for ${member.name}`}
                       hideLabel
                     />
+                  </div>
+
+                  <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2">
+                    <label htmlFor={`availability-${member.id}`} className="text-[11px] font-semibold text-slate-600">
+                      Availability
+                    </label>
+                    <Select
+                      id={`availability-${member.id}`}
+                      value={availability}
+                      onChange={(e) => changeAvailability(member, e.target.value as StaffAvailability)}
+                      className="!w-auto !py-1 text-xs"
+                      aria-label={`Availability status for ${member.name}`}
+                    >
+                      {STAFF_AVAILABILITY_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
                   </div>
 
                   {member.bio && <p className="mt-3 line-clamp-2 text-sm text-slate-600">{member.bio}</p>}
@@ -530,6 +610,24 @@ export const StaffPage: React.FC = () => {
               onChange={(e) => setDraft({ ...draft, specialties: e.target.value })}
               placeholder="HD Bridal, Airbrush, Saree Draping, Editorial Styling"
             />
+          </Field>
+
+          <Field
+            label="Availability status"
+            htmlFor="staff-availability"
+            hint={getAvailabilityMeta(draft.availabilityStatus).hint}
+          >
+            <Select
+              id="staff-availability"
+              value={draft.availabilityStatus}
+              onChange={(e) => setDraft({ ...draft, availabilityStatus: e.target.value as StaffAvailability })}
+            >
+              {STAFF_AVAILABILITY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
           </Field>
 
           <Field

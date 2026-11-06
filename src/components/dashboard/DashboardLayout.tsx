@@ -28,7 +28,7 @@ const navItems = [
   { to: '/dashboard', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/dashboard/website', label: 'My Website', icon: Globe },
   { to: '/dashboard/services', label: 'Services & Prices', icon: Scissors },
-  { to: '/dashboard/staff', label: 'Team', icon: Users },
+  { to: '/dashboard/staff', label: 'Staff Management', icon: Users },
   { to: '/dashboard/bookings', label: 'Bookings', icon: Calendar },
   { to: '/dashboard/analytics', label: 'Analytics', icon: TrendingUp },
   { to: '/dashboard/approval', label: 'Approvals', icon: FileCheck2 },

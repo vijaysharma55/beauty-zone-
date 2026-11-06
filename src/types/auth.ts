@@ -147,6 +147,9 @@ export interface StaffWorkPhoto {
   caption?: string;
 }
 
+/** Owner-managed availability. Only 'available' staff can be booked online. */
+export type StaffAvailability = 'available' | 'busy' | 'on_leave';
+
 export interface SalonStaff {
   id: string;
   salonId: string;
@@ -161,6 +164,8 @@ export interface SalonStaff {
   active: boolean;
   /** When false the specialist is listed but cannot be booked online. */
   bookingEnabled?: boolean;
+  /** Availability status set by the owner (defaults to 'available' when absent). */
+  availabilityStatus?: StaffAvailability;
   /** Optional reputation fields shown in the booking picker when genuine rating data is available. */
   rating?: number | null;
   reviewCount?: number | null;

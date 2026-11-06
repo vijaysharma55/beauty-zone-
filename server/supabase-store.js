@@ -171,6 +171,7 @@ export function mapStaff(row) {
     bio: row.bio || '', photoUrl: row.photo_url || '',
     specialties: Array.isArray(row.specialties) ? row.specialties : [],
     active: Boolean(row.active), bookingEnabled: row.booking_enabled !== false,
+    availabilityStatus: ['available', 'busy', 'on_leave'].includes(row.availability_status) ? row.availability_status : 'available',
     sortOrder: Number(row.sort_order || 0), createdAt: row.created_at, updatedAt: row.updated_at,
   };
 }

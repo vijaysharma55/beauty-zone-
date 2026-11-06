@@ -523,6 +523,11 @@ export function serializeStaff(row, options = {}) {
   const workPhotosConsent = Boolean(row.work_photos_consent);
   const parsedRating = row.rating !== null && row.rating !== undefined && row.rating !== '' ? Number(row.rating) : null;
   const genuineRating = parsedRating !== null && Number.isFinite(parsedRating) && parsedRating > 0 ? parsedRating : null;
+  const availabilityStatus = ['available', 'busy', 'on_leave'].includes(row.availability_status)
+    ? row.availability_status
+    : 'available';
+  const bookingSwitchOn =
+    row.booking_enabled === undefined || row.booking_enabled === null ? true : !!row.booking_enabled;
 
   return {
     id: row.id,
@@ -540,7 +545,10 @@ export function serializeStaff(row, options = {}) {
     reviewCount: genuineRating !== null ? Math.max(0, Number(row.review_count) || 0) : 0,
     experience: row.experience || '',
     active: !!row.active,
-    bookingEnabled: row.booking_enabled === undefined || row.booking_enabled === null ? true : !!row.booking_enabled,
+    // Public payloads fold availability into bookingEnabled so every website
+    // template stops offering busy / on-leave staff without template changes.
+    bookingEnabled: publicView ? bookingSwitchOn && availabilityStatus === 'available' : bookingSwitchOn,
+    availabilityStatus,
     sortOrder: row.sort_order,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

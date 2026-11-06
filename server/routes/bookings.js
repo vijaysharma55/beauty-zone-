@@ -183,6 +183,16 @@ function resolveBookableStaff(salonId, staffId) {
       'STAFF_NOT_BOOKABLE'
     );
   }
+  // Owner-managed availability: only 'available' specialists can be booked online.
+  if (anyStaffRow.availability_status && anyStaffRow.availability_status !== 'available') {
+    throw new HttpError(
+      409,
+      anyStaffRow.availability_status === 'on_leave'
+        ? 'This specialist is currently on leave.'
+        : 'This specialist is currently busy and not taking online bookings.',
+      'STAFF_NOT_BOOKABLE'
+    );
+  }
   return anyStaffRow;
 }
 

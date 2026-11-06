@@ -74,6 +74,13 @@ db.prepare("UPDATE staff SET qualifications_json = '[]' WHERE qualifications_jso
 db.prepare("UPDATE staff SET work_photos_json = '[]' WHERE work_photos_json IS NULL OR work_photos_json = ''").run();
 db.prepare('UPDATE staff SET work_photos_consent = 0 WHERE work_photos_consent IS NULL').run();
 
+/* Staff: owner-managed availability status (available | busy | on_leave).
+   Only 'available' staff can be booked online; existing rows default to it. */
+addColumn('staff', 'availability_status', "TEXT NOT NULL DEFAULT 'available'");
+db.prepare(
+  "UPDATE staff SET availability_status = 'available' WHERE availability_status IS NULL OR availability_status NOT IN ('available','busy','on_leave')"
+).run();
+
 /* Submitted / reviewed website versions (snapshot of the working content) */
 db.exec(`
   CREATE TABLE IF NOT EXISTS salon_versions (

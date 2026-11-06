@@ -538,6 +538,8 @@ function serializeStaffWorkPhotos(workPhotos) {
   );
 }
 
+const STAFF_AVAILABILITY_STATUSES = ['available', 'busy', 'on_leave'];
+
 function staffPayload(body, { partial = false } = {}) {
   if (body?.isDemo === true || (typeof body?.id === 'string' && /^demo[-_:]/i.test(body.id.trim()))) {
     throw new ValidationError('Demo staff profiles are for preview only and cannot be saved as salon employees.');
@@ -593,6 +595,13 @@ function staffPayload(body, { partial = false } = {}) {
   // "Accepts online booking" — when off the specialist is still shown on the
   // website but is not offered in the booking picker.
   if (body.bookingEnabled !== undefined) out.booking_enabled = bool(body.bookingEnabled, true) ? 1 : 0;
+  // Availability status — only 'available' staff are offered for online booking.
+  if (body.availabilityStatus !== undefined) {
+    if (!STAFF_AVAILABILITY_STATUSES.includes(body.availabilityStatus)) {
+      throw new ValidationError('Availability must be one of: available, busy, on_leave');
+    }
+    out.availability_status = body.availabilityStatus;
+  }
   if (body.sortOrder !== undefined) out.sort_order = int(body.sortOrder, { min: 0, max: 10_000, field: 'Sort order' });
   return out;
 }
@@ -620,9 +629,9 @@ salonRouter.post('/staff', (req, res) => {
     `INSERT INTO staff (
        id, salon_id, name, role_title, bio, photo_url,
        specialties_json, qualifications_json, work_photos_json, work_photos_consent,
-       rating, review_count, experience, active, booking_enabled, sort_order, created_at, updated_at
+       rating, review_count, experience, active, booking_enabled, availability_status, sort_order, created_at, updated_at
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     salon.id,
@@ -639,6 +648,7 @@ salonRouter.post('/staff', (req, res) => {
     data.experience ?? '',
     data.active ?? 1,
     data.booking_enabled ?? 1,
+    data.availability_status ?? 'available',
     data.sort_order ?? getStaffForSalon(salon.id).length,
     ts,
     ts
