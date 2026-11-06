@@ -477,6 +477,56 @@ const NotFoundPage: React.FC = () => (
   </div>
 );
 
+function RouteIndexingPolicy() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const privatePaths = new Set([
+      PUBLIC_PATHS.login,
+      PUBLIC_PATHS.register,
+      PUBLIC_PATHS.forgotPassword,
+      PUBLIC_PATHS.resetPassword,
+      PUBLIC_PATHS.verifyEmail,
+      '/my-appointments',
+    ]);
+    const isPrivate = privatePaths.has(pathname)
+      || pathname === '/dashboard'
+      || pathname.startsWith('/dashboard/')
+      || pathname === '/admin'
+      || pathname.startsWith('/admin/');
+    const isPublicIndexable = pathname === PUBLIC_PATHS.home
+      || pathname === PUBLIC_PATHS.salons
+      || /^\\/salon\\/[a-z0-9-]+$/i.test(pathname);
+
+    let robots = document.getElementById('route-robots-policy');
+    if (isPrivate || !isPublicIndexable) {
+      if (!robots) {
+        robots = document.createElement('meta');
+        robots.id = 'route-robots-policy';
+        robots.name = 'robots';
+        document.head.appendChild(robots);
+      }
+      robots.content = 'noindex,nofollow,noarchive';
+    } else if (robots) {
+      robots.remove();
+    }
+
+    const canonical = document.querySelector('link[rel="canonical"]');
+    if (isPrivate || !isPublicIndexable) {
+      canonical?.remove();
+    } else {
+      const url = new URL(pathname, SITE_ORIGIN);
+      if (canonical) canonical.setAttribute('href', url.href);
+      else {
+        const link = document.createElement('link');
+        link.rel = 'canonical';
+        link.href = url.href;
+        document.head.appendChild(link);
+      }
+    }
+  }, [pathname]);
+  return null;
+}
+
 function HomeMetadata() {
   const { pathname } = useLocation();
   const { brand } = useBrand();
@@ -507,6 +557,7 @@ export function App() {
   return (
     <>
     <HomeMetadata />
+    <RouteIndexingPolicy />
     <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#FAF5E5] text-sm text-slate-600">Loading page…</div>}>
     <Routes>
       {/* Public marketing site — subdomain-aware: tenant subdomains render the salon site */}
