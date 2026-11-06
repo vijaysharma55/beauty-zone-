@@ -9,6 +9,9 @@ create table if not exists public.loyalty_reward_offers (
   points_cost integer not null check (points_cost > 0),
   discount_amount bigint not null default 0 check (discount_amount >= 0),
   discount_value text not null default '',
+  minimum_bill_amount bigint not null default 0 check (minimum_bill_amount >= 0),
+  eligible_service_keyword text,
+  eligible_location_type text check (eligible_location_type in ('salon','home')),
   category text not null check (category in ('discount','free_service','upgrade','bridal')),
   badge text,
   active boolean not null default true,
@@ -26,20 +29,23 @@ revoke all on table public.loyalty_reward_offers from public, anon, authenticate
 grant select on table public.loyalty_reward_offers to anon, authenticated;
 
 insert into public.loyalty_reward_offers
-  (id,title,description,points_cost,discount_amount,discount_value,category,badge,sort_order,active)
+  (id,title,description,points_cost,discount_amount,discount_value,minimum_bill_amount,eligible_service_keyword,eligible_location_type,category,badge,sort_order,active)
 values
-  ('rew-1','₹500 Instant Salon Voucher','Use on eligible salon services with a minimum bill of ₹1,500.',500,500,'₹500 Flat Off','discount','Popular',1,true),
-  ('rew-2','Free Moroccan Scalp & Hair Spa','Deep nourishing argan oil hair spa with hot towel steam and relaxing head massage.',750,1800,'100% Free Service (Worth ₹1,800)','free_service','Best Value',2,true),
-  ('rew-3','24K Gold Foil Facial Upgrade','Upgrade an eligible regular facial to the signature 24K Gold Leaf facial.',1000,2500,'Free Luxury Upgrade (Worth ₹2,500)','upgrade','Royal Favorite',3,true),
-  ('rew-4','Complimentary Gel Nail Art Set','Complimentary gel nail art set with crystal accents and chrome finish.',650,1499,'100% Free Service (Worth ₹1,499)','free_service',null,4,true),
-  ('rew-5','₹1,500 Royal Bridal Booking Discount','Use on eligible Signature HD or Airbrush bridal makeup packages.',1500,1500,'₹1,500 Off Bridal','bridal','Bridal Special',5,true),
-  ('rew-6','Free Home Salon Travel Pass','Waives eligible doorstep travel fees up to 15 km.',400,600,'Free Home Travel (Worth ₹600)','discount',null,6,true)
+  ('rew-1','₹500 Instant Salon Voucher','Use on eligible salon services with a minimum bill of ₹1,500.',500,500,'₹500 Flat Off',1500,null,null,'discount','Popular',1,true),
+  ('rew-2','Free Moroccan Scalp & Hair Spa','Deep nourishing argan oil hair spa with hot towel steam and relaxing head massage.',750,1800,'100% Free Service (Worth ₹1,800)',1800,'hair spa',null,'free_service','Best Value',2,true),
+  ('rew-3','24K Gold Foil Facial Upgrade','Upgrade an eligible regular facial to the signature 24K Gold Leaf facial.',1000,2500,'Free Luxury Upgrade (Worth ₹2,500)',2500,'facial',null,'upgrade','Royal Favorite',3,true),
+  ('rew-4','Complimentary Gel Nail Art Set','Complimentary gel nail art set with crystal accents and chrome finish.',650,1499,'100% Free Service (Worth ₹1,499)',1499,'nail',null,'free_service',null,4,true),
+  ('rew-5','₹1,500 Royal Bridal Booking Discount','Use on eligible Signature HD or Airbrush bridal makeup packages.',1500,1500,'₹1,500 Off Bridal',0,'bridal',null,'bridal','Bridal Special',5,true),
+  ('rew-6','Free Home Salon Travel Pass','Waives eligible doorstep travel fees up to 15 km.',400,600,'Free Home Travel (Worth ₹600)',0,null,'home','discount',null,6,true)
 on conflict (id) do update set
   title=excluded.title,
   description=excluded.description,
   points_cost=excluded.points_cost,
   discount_amount=excluded.discount_amount,
   discount_value=excluded.discount_value,
+  minimum_bill_amount=excluded.minimum_bill_amount,
+  eligible_service_keyword=excluded.eligible_service_keyword,
+  eligible_location_type=excluded.eligible_location_type,
   category=excluded.category,
   badge=excluded.badge,
   sort_order=excluded.sort_order,
@@ -166,7 +172,7 @@ begin
     return to_jsonb(v_account);
   end if;
 
-  v_member := 'VIP-' || right(v_phone,4) || '-' || upper(substr(encode(gen_random_bytes(4),'hex'),1,8));
+  v_member := 'VIP-' || right(v_phone,4) || '-' || upper(substr(encode(extensions.gen_random_bytes(4),'hex'),1,8));
   insert into public.loyalty_accounts
     (owner_id,customer_id,phone,name,member_id,tier,total_points,lifetime_points,visits_count)
   values
@@ -251,7 +257,9 @@ begin
       select jsonb_agg(jsonb_build_object(
         'id',o.id,'title',o.title,'description',o.description,
         'pointsCost',o.points_cost,'discountAmount',o.discount_amount,
-        'discountValue',o.discount_value,'category',o.category,'badge',o.badge
+        'discountValue',o.discount_value,'minimumBillAmount',o.minimum_bill_amount,
+        'eligibleServiceKeyword',o.eligible_service_keyword,'eligibleLocationType',o.eligible_location_type,
+        'category',o.category,'badge',o.badge
       ) order by o.sort_order asc)
       from public.loyalty_reward_offers o where o.active=true
     ),'[]'::jsonb)
@@ -320,7 +328,7 @@ begin
   where id=v_account.id
   returning * into v_account;
 
-  v_code := 'VIP-'||v_offer.discount_amount::text||'-'||right(v_account.phone,4)||'-'||upper(substr(encode(gen_random_bytes(4),'hex'),1,8));
+  v_code := 'VIP-'||v_offer.discount_amount::text||'-'||right(v_account.phone,4)||'-'||upper(substr(encode(extensions.gen_random_bytes(4),'hex'),1,8));
   insert into public.loyalty_vouchers
     (code,account_id,phone,offer_id,title,discount_amount,points_cost,used,created_at,expires_at,redeem_request_id)
   values
@@ -341,6 +349,11 @@ end;
 $$;
 revoke all on function public.redeem_customer_loyalty_reward(text,uuid) from public, anon;
 grant execute on function public.redeem_customer_loyalty_reward(text,uuid) to authenticated;
+
+revoke all on function private.ensure_customer_loyalty_account(text) from public, anon, authenticated;
+revoke all on function private.redeem_customer_loyalty_reward(text) from public, anon, authenticated;
+revoke all on function private.verify_customer_loyalty_voucher(text) from public, anon, authenticated;
+
 -- Remove the older single-argument RPC: it used a divergent hard-coded catalogue and had no retry key.
 drop function if exists public.redeem_customer_loyalty_reward(text);
 
@@ -375,7 +388,8 @@ begin
     'valid',true,
     'voucher',jsonb_build_object(
       'code',v_voucher.code,'title',v_voucher.title,
-      'discountAmount',v_voucher.discount_amount,'phone',v_voucher.phone
+      'discountAmount',v_voucher.discount_amount,'phone',v_voucher.phone,
+      'offerId',v_voucher.offer_id
     )
   );
 end;
@@ -383,9 +397,12 @@ $$;
 revoke all on function public.verify_customer_loyalty_voucher(text) from public, anon;
 grant execute on function public.verify_customer_loyalty_voucher(text) to authenticated;
 
-create or replace function public.consume_customer_loyalty_voucher(
+create or replace function public.validate_customer_loyalty_voucher(
   p_code text,
-  p_external_booking_id text
+  p_booking_phone text,
+  p_service_title text,
+  p_location_type text,
+  p_bill_amount bigint
 )
 returns jsonb
 language plpgsql
@@ -394,42 +411,154 @@ set search_path = ''
 as $$
 declare
   v_user_id uuid := (select auth.uid());
-  v_phone text;
+  v_verified_phone text;
+  v_booking_phone text;
+  v_account public.loyalty_accounts%rowtype;
   v_voucher public.loyalty_vouchers%rowtype;
+  v_offer public.loyalty_reward_offers%rowtype;
+begin
+  if v_user_id is null then raise exception using errcode='42501', message='Sign in with phone OTP before applying a rewards voucher'; end if;
+  select regexp_replace(u.phone,'[^0-9]','','g') into v_verified_phone
+  from auth.users u where u.id=v_user_id and u.phone_confirmed_at is not null;
+  if v_verified_phone is null then raise exception using errcode='42501', message='Verified phone OTP is required'; end if;
+  if length(v_verified_phone)=12 and left(v_verified_phone,2)='91' then v_verified_phone:=right(v_verified_phone,10); end if;
+
+  v_booking_phone:=regexp_replace(coalesce(p_booking_phone,''),'[^0-9]','','g');
+  if length(v_booking_phone)=12 and left(v_booking_phone,2)='91' then v_booking_phone:=right(v_booking_phone,10); end if;
+  if v_booking_phone<>v_verified_phone then
+    raise exception using errcode='42501', message='The booking mobile number must match the verified rewards account';
+  end if;
+  if coalesce(p_location_type,'') not in ('salon','home') then
+    raise exception using errcode='22023', message='A valid booking location is required';
+  end if;
+  if coalesce(p_bill_amount,0)<0 then
+    raise exception using errcode='22023', message='A valid booking amount is required';
+  end if;
+
+  select * into v_account from public.loyalty_accounts
+  where customer_id=v_user_id and phone=v_verified_phone;
+  if not found then raise exception using errcode='P0002', message='Rewards account not found'; end if;
+
+  select * into v_voucher from public.loyalty_vouchers
+  where upper(code)=upper(trim(p_code)) and account_id=v_account.id
+  for update;
+  if not found then raise exception using errcode='P0002', message='Voucher not found for this verified customer'; end if;
+  if v_voucher.used then raise exception using errcode='23514', message='This voucher has already been used'; end if;
+  if v_voucher.expires_at<=now() then raise exception using errcode='23514', message='This voucher has expired'; end if;
+
+  select * into v_offer from public.loyalty_reward_offers
+  where id=v_voucher.offer_id and active=true;
+  if not found then raise exception using errcode='22023', message='This reward is no longer available'; end if;
+  if coalesce(p_bill_amount,0)<v_offer.minimum_bill_amount then
+    raise exception using errcode='23514', message='This reward requires a minimum eligible bill of ₹'||v_offer.minimum_bill_amount::text;
+  end if;
+  if v_offer.eligible_service_keyword is not null
+    and position(lower(v_offer.eligible_service_keyword) in lower(coalesce(p_service_title,'')))=0 then
+    raise exception using errcode='23514', message='This voucher can only be used for an eligible '||v_offer.eligible_service_keyword||' service';
+  end if;
+  if v_offer.eligible_location_type is not null and v_offer.eligible_location_type<>p_location_type then
+    raise exception using errcode='23514', message='This voucher is valid only for an eligible doorstep home booking';
+  end if;
+
+  return jsonb_build_object(
+    'valid',true,
+    'voucher',jsonb_build_object(
+      'code',v_voucher.code,'title',v_voucher.title,
+      'discountAmount',least(v_voucher.discount_amount,coalesce(p_bill_amount,0)),
+      'phone',v_voucher.phone,'offerId',v_voucher.offer_id
+    )
+  );
+end;
+$$;
+revoke all on function public.validate_customer_loyalty_voucher(text,text,text,text,bigint) from public, anon;
+grant execute on function public.validate_customer_loyalty_voucher(text,text,text,text,bigint) to authenticated;
+create or replace function public.consume_customer_loyalty_voucher(
+  p_code text,
+  p_external_booking_id text,
+  p_booking_phone text,
+  p_service_title text,
+  p_location_type text,
+  p_bill_amount bigint
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user_id uuid := (select auth.uid());
+  v_verified_phone text;
+  v_booking_phone text;
+  v_voucher public.loyalty_vouchers%rowtype;
+  v_account public.loyalty_accounts%rowtype;
+  v_offer public.loyalty_reward_offers%rowtype;
+  v_discount bigint;
 begin
   if v_user_id is null or nullif(trim(p_external_booking_id),'') is null then
     raise exception using errcode='42501', message='A signed-in customer and booking reference are required';
   end if;
-  select regexp_replace(u.phone,'[^0-9]','','g') into v_phone
+  if length(p_external_booking_id)>180 then
+    raise exception using errcode='22023', message='Booking reference is too long';
+  end if;
+  select regexp_replace(u.phone,'[^0-9]','','g') into v_verified_phone
   from auth.users u where u.id=v_user_id and u.phone_confirmed_at is not null;
-  if v_phone is null then raise exception using errcode='42501', message='Verified phone OTP is required'; end if;
-  if length(v_phone)=12 and left(v_phone,2)='91' then v_phone:=right(v_phone,10); end if;
+  if v_verified_phone is null then raise exception using errcode='42501', message='Verified phone OTP is required'; end if;
+  if length(v_verified_phone)=12 and left(v_verified_phone,2)='91' then v_verified_phone:=right(v_verified_phone,10); end if;
 
-  select v.* into v_voucher
-  from public.loyalty_vouchers v
-  join public.loyalty_accounts a on a.id=v.account_id
-  where upper(v.code)=upper(trim(p_code))
-    and a.customer_id=v_user_id and a.phone=v_phone
-  for update of v;
+  v_booking_phone:=regexp_replace(coalesce(p_booking_phone,''),'[^0-9]','','g');
+  if length(v_booking_phone)=12 and left(v_booking_phone,2)='91' then v_booking_phone:=right(v_booking_phone,10); end if;
+  if v_booking_phone<>v_verified_phone then
+    raise exception using errcode='42501', message='The booking mobile number must match the verified rewards account';
+  end if;
+  if coalesce(p_location_type,'') not in ('salon','home') then
+    raise exception using errcode='22023', message='A valid booking location is required';
+  end if;
+  if coalesce(p_bill_amount,0)<0 then
+    raise exception using errcode='22023', message='A valid booking amount is required';
+  end if;
+
+  select * into v_account from public.loyalty_accounts
+  where customer_id=v_user_id and phone=v_verified_phone;
+  if not found then raise exception using errcode='P0002', message='Rewards account not found'; end if;
+
+  select * into v_voucher from public.loyalty_vouchers
+  where upper(code)=upper(trim(p_code)) and account_id=v_account.id
+  for update;
   if not found then raise exception using errcode='P0002', message='Voucher not found for this verified customer'; end if;
   if v_voucher.used then
     if v_voucher.external_booking_id=p_external_booking_id then
-      return jsonb_build_object('success',true,'alreadyConsumed',true,'discountAmount',v_voucher.discount_amount,'title',v_voucher.title);
+      return jsonb_build_object('success',true,'alreadyConsumed',true,
+        'discountAmount',least(v_voucher.discount_amount,coalesce(p_bill_amount,0)),'title',v_voucher.title);
     end if;
     raise exception using errcode='23514', message='This voucher has already been used';
   end if;
   if v_voucher.expires_at<=now() then raise exception using errcode='23514', message='This voucher has expired'; end if;
 
+  select * into v_offer from public.loyalty_reward_offers
+  where id=v_voucher.offer_id and active=true;
+  if not found then raise exception using errcode='22023', message='This reward is no longer available'; end if;
+  if coalesce(p_bill_amount,0)<v_offer.minimum_bill_amount then
+    raise exception using errcode='23514', message='This reward requires a minimum eligible bill of ₹'||v_offer.minimum_bill_amount::text;
+  end if;
+  if v_offer.eligible_service_keyword is not null
+    and position(lower(v_offer.eligible_service_keyword) in lower(coalesce(p_service_title,'')))=0 then
+    raise exception using errcode='23514', message='This voucher can only be used for an eligible '||v_offer.eligible_service_keyword||' service';
+  end if;
+  if v_offer.eligible_location_type is not null and v_offer.eligible_location_type<>p_location_type then
+    raise exception using errcode='23514', message='This voucher is valid only for an eligible doorstep home booking';
+  end if;
+
+  v_discount:=least(v_voucher.discount_amount,coalesce(p_bill_amount,0));
   update public.loyalty_vouchers
   set used=true,external_booking_id=p_external_booking_id
   where id=v_voucher.id;
 
-  return jsonb_build_object('success',true,'alreadyConsumed',false,'discountAmount',v_voucher.discount_amount,'title',v_voucher.title);
+  return jsonb_build_object('success',true,'alreadyConsumed',false,
+    'discountAmount',v_discount,'title',v_voucher.title);
 end;
 $$;
-revoke all on function public.consume_customer_loyalty_voucher(text,text) from public, anon;
-grant execute on function public.consume_customer_loyalty_voucher(text,text) to authenticated;
-
+revoke all on function public.consume_customer_loyalty_voucher(text,text,text,text,text,bigint) from public, anon;
+grant execute on function public.consume_customer_loyalty_voucher(text,text,text,text,text,bigint) to authenticated;
 create or replace function public.award_completed_loyalty_points(
   p_actor_id uuid,
   p_phone text,
@@ -445,6 +574,7 @@ set search_path = ''
 as $$
 declare
   v_role text;
+  v_profile_status text;
   v_phone text;
   v_account public.loyalty_accounts%rowtype;
   v_existing public.loyalty_transactions%rowtype;
@@ -459,7 +589,10 @@ begin
   end if;
   if p_actor_id is null then raise exception using errcode='22023', message='Authenticated salon owner identity is required'; end if;
 
-  select role into v_role from public.profiles where id=p_actor_id;
+  select role,status into v_role,v_profile_status from public.profiles where id=p_actor_id;
+  if coalesce(v_profile_status,'')<>'active' then
+    raise exception using errcode='42501', message='The salon owner or admin profile is not active';
+  end if;
   if coalesce(v_role,'') not in ('salon_owner','super_admin') then
     raise exception using errcode='42501', message='Only a salon owner or super admin may award visit points';
   end if;
@@ -482,7 +615,7 @@ begin
   perform pg_advisory_xact_lock(hashtextextended(v_phone,0));
   select * into v_account from public.loyalty_accounts where phone=v_phone for update;
   if not found then
-    v_member := 'VIP-'||right(v_phone,4)||'-'||upper(substr(encode(gen_random_bytes(4),'hex'),1,8));
+    v_member := 'VIP-'||right(v_phone,4)||'-'||upper(substr(encode(extensions.gen_random_bytes(4),'hex'),1,8));
     insert into public.loyalty_accounts
       (owner_id,customer_id,phone,name,member_id,tier,total_points,lifetime_points,visits_count)
     values
