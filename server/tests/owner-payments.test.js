@@ -468,14 +468,27 @@ test('owner sets a per-service advance override used at checkout', async () => {
   assert.equal(patch.status, 200);
   assert.equal(patch.data.service.advanceMode, 'fixed');
 
-  // The override is on the working copy; publish a new approved version so the
-  // public snapshot picks it up. Re-approve via admin.
+  // The override lives on the working copy; a super admin must approve a new
+  // snapshot before the public checkout reflects it. Spending data may already
+  // have left a pending version queued, so submit only when none is waiting.
   const admin = makeClient();
-  await admin.post('/api/auth/login', { email: 'admin@owner.test', password: 'Admin@12345' });
-  const submitted = await owner.post('/api/salon/submit', {});
-  assert.equal(submitted.status, 201, JSON.stringify(submitted.data));
+  // Administrators sign in through the isolated super admin portal.
+  await admin.post('/api/auth/admin/login', { email: 'admin@owner.test', password: 'Admin@12345' });
+
+  const current = await owner.get('/api/salon');
+  if (!current.data.workflow?.pendingVersion) {
+    const submitted = await owner.post('/api/salon/submit', {});
+    assert.equal(submitted.status, 201, JSON.stringify(submitted.data));
+  }
+
+  // Self-approval remains impossible at every step.
+  const ownerPublish = await owner.post('/api/salon/publish');
+  assert.equal(ownerPublish.status, 403);
+  assert.equal(ownerPublish.data.code, 'SELF_APPROVAL_FORBIDDEN');
+
   const pending = await admin.get('/api/admin/approvals');
-  const version = (pending.data.approvals || []).find((v) => v.salon?.slug === 'lumina-luxe') || (pending.data.approvals || [])[0];
+  const version =
+    (pending.data.approvals || []).find((v) => v.salon?.slug === 'lumina-luxe') || (pending.data.approvals || [])[0];
   assert.ok(version, 'a pending version exists to approve');
   const reviewed = await admin.post(`/api/admin/approvals/${version.id}/review`, { action: 'approve' });
   assert.equal(reviewed.status, 200, JSON.stringify(reviewed.data));
@@ -506,7 +519,8 @@ test('signup stores DOB privately; it is never exposed publicly', async () => {
 
   // Admin user list must NOT include DOB.
   const admin = makeClient();
-  await admin.post('/api/auth/login', { email: 'admin@owner.test', password: 'Admin@12345' });
+  // Administrators sign in through the isolated super admin portal.
+  await admin.post('/api/auth/admin/login', { email: 'admin@owner.test', password: 'Admin@12345' });
   const users = await admin.get('/api/admin/users');
   const row = users.data.users.find((u) => u.email === 'dobowner@test.local');
   assert.ok(row);

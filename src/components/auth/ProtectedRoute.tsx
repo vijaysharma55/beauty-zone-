@@ -3,7 +3,7 @@ import { Link, Navigate, useLocation } from 'react-router-dom';
 import { ShieldAlert } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { homeForAuthUser } from '../../lib/authRoutes';
-import { normalizeRole, canAccessAdminConsole, canAccessOwnerDashboard } from '../../lib/roles.js';
+import { normalizeRole, canAccessOwnerDashboard, canReviewSalonWebsites } from '../../lib/roles.js';
 import { noteRedirect, resetRedirectHistory } from '../../lib/redirectGuard.js';
 import { Spinner } from '../ui';
 import type { Role } from '../../types/auth';
@@ -65,6 +65,9 @@ interface ProtectedRouteProps {
  * - Uses the server-verified role, never localStorage.
  * - Sends a role mismatch to that role's real home (/dashboard for owners,
  *   /admin for admins, /my-appointments for customers), never to a dead end.
+ * - Protects the two workspaces from each other: only salon owners may open
+ *   /dashboard, and only administrators may open /admin. Approval endpoints are
+ *   additionally restricted to super admins on the server.
  * - Detects same-path / repeated redirects and renders a recovery screen
  *   instead of looping forever.
  */
@@ -94,12 +97,13 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ role, roles, chi
   }
 
   const hasExplicitRoles = Boolean(allowedRoles?.length);
+  const normalizedRole = normalizeRole(user.role);
   const roleAllowed = hasExplicitRoles
-    ? allowedRoles!.includes(normalizeRole(user.role))
+    ? allowedRoles!.includes(normalizedRole)
     : currentPath.startsWith('/admin')
-      ? canAccessAdminConsole(user.role)
+      ? canReviewSalonWebsites(normalizedRole) || normalizedRole === 'admin'
       : currentPath.startsWith('/dashboard')
-        ? canAccessOwnerDashboard(user.role)
+        ? canAccessOwnerDashboard(normalizedRole) && normalizedRole === 'salon_owner'
         : true;
 
   if (!roleAllowed) {

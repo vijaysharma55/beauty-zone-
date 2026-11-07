@@ -255,63 +255,29 @@ salonRouter.patch('/', (req, res) => {
   });
 });
 
-salonRouter.post(
-  '/publish',
-  asyncHandler(async (req, res) => {
-    const salon = requireOwnSalon(req);
-    const { workflow } = workflowInfo(salon, req.user);
-
-    if (salon.suspended) {
-      return res.status(403).json({
-        error: `This salon is suspended by the platform: ${salon.suspended_reason || 'contact support.'}`,
-        code: 'SUSPENDED',
-      });
-    }
-    if (!req.user.email_verified) {
-      return res.status(403).json({
-        error: 'Verify your email address before publishing your website.',
-        code: 'EMAIL_UNVERIFIED',
-      });
-    }
-    if (!workflow.canPublish) {
-      return res.status(409).json({
-        error:
-          salon.status === 'pending'
-            ? 'Your first submission is still awaiting review. You can publish as soon as it is approved.'
-            : 'Your website must be approved by a platform admin before it can go live.',
-        code: 'APPROVAL_REQUIRED',
-        status: salon.status,
-      });
-    }
-
-    const ts = nowIso();
-    db.prepare(
-      'UPDATE salons SET website_published = 1, published_at = COALESCE(published_at, ?), updated_at = ? WHERE id = ?'
-    ).run(ts, ts, salon.id);
-    audit(req, 'salon.published', 'salon', salon.id, { version: workflow.approvedVersion.version });
-    const updated = findSalonByOwner(req.user.id);
-    return res.json({
-      salon: serializeSalon(updated),
-      workflow: workflowInfo(updated, req.user).workflow,
-      url: `/salon/${salon.slug}`,
-    });
-  })
-);
-
-salonRouter.post('/unpublish', (req, res) => {
-  const salon = requireOwnSalon(req);
-  db.prepare('UPDATE salons SET website_published = 0, updated_at = ? WHERE id = ?').run(nowIso(), salon.id);
-  audit(req, 'salon.unpublished', 'salon', salon.id);
-  const updated = findSalonByOwner(req.user.id);
-  return res.json({
-    salon: serializeSalon(updated),
-    workflow: workflowInfo(updated, req.user).workflow,
-  });
-});
-
 /* ------------------------------------------------------------------ */
 /* Approval workflow                                                   */
+/*                                                                     */
+/* The ONLY state transition a salon owner may perform is               */
+/* Draft → Pending Approval (POST /salon/submit).                       */
+/*                                                                     */
+/* Reviewing (approve / reject / request changes) and publishing live   */
+/* (Approved → Published) are super-admin-only transitions exposed by   */
+/* /api/admin/*. The former owner publish/unpublish endpoints were      */
+/* removed because they let an owner make their own website live        */
+/* without any platform review. Requests to them now fail closed with   */
+/* 403 SELF_APPROVAL_FORBIDDEN instead of silently doing nothing.       */
 /* ------------------------------------------------------------------ */
+
+const ownerPublishBlocked = (req, res) =>
+  res.status(403).json({
+    error:
+      'Publishing is a platform decision. Submit your website for review and a super admin will approve and publish it.',
+    code: 'SELF_APPROVAL_FORBIDDEN',
+  });
+
+salonRouter.post('/publish', ownerPublishBlocked);
+salonRouter.post('/unpublish', ownerPublishBlocked);
 
 salonRouter.post(
   '/submit',
@@ -342,13 +308,6 @@ salonRouter.get('/versions', (req, res) => {
     })),
     workflow: workflowInfo(salon, req.user).workflow,
   });
-});
-
-salonRouter.post('/unpublish', (req, res) => {
-  const salon = requireOwnSalon(req);
-  db.prepare('UPDATE salons SET website_published = 0, updated_at = ? WHERE id = ?').run(nowIso(), salon.id);
-  audit(req, 'salon.unpublished', 'salon', salon.id);
-  return res.json({ salon: serializeSalon(findSalonByOwner(req.user.id)) });
 });
 
 salonRouter.get('/subscription', (req, res) => {

@@ -179,7 +179,7 @@ export const DashboardLayout: React.FC = () => {
               <p className="hidden text-xs text-slate-500 sm:block">
                 {salon?.suspended
                   ? 'Your website is suspended by the platform.'
-                  : salon?.published
+                  : salon?.published && workflow?.status === 'approved'
                     ? 'Your website is live and accepting visitors.'
                     : (STATUS_META[workflow?.status || salon?.status || 'draft'] || STATUS_META.draft).description}
               </p>
@@ -187,12 +187,9 @@ export const DashboardLayout: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             {workflow?.status === 'approved' && !salon?.published && (
-              <Link
-                to="/dashboard/approval"
-                className="hidden items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 sm:inline-flex"
-              >
-                <Rocket className="h-3.5 w-3.5" /> Approved — publish now
-              </Link>
+              <span className="hidden items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 sm:inline-flex">
+                <Rocket className="h-3.5 w-3.5" /> Approved — publishing by platform
+              </span>
             )}
             {salon?.published && (
               <a
@@ -209,7 +206,7 @@ export const DashboardLayout: React.FC = () => {
               className="inline-flex items-center gap-1.5 rounded-lg bg-[#D09A40] px-3 py-2 text-xs font-semibold text-slate-900 hover:bg-[#DCA54A]"
             >
               <Calendar className="h-3.5 w-3.5" />
-              {workflow?.status === 'approved' ? 'Publish website' : workflow?.status === 'pending' ? 'Review status' : 'Manage website'}
+              {workflow?.status === 'approved' ? 'Live website' : workflow?.status === 'pending' ? 'Review status' : 'Manage website'}
             </Link>
           </div>
         </header>

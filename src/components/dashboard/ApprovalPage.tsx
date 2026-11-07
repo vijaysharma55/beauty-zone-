@@ -1,6 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, Clock, Eye, FileClock, MailWarning, Sparkles } from 'lucide-react';
+import {
+  CheckCircle2,
+  Clock,
+  Eye,
+  FileClock,
+  FileEdit,
+  MailWarning,
+  ShieldCheck,
+  Sparkles,
+} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api, errorMessage } from '../../lib/api';
 import type { SalonVersion } from '../../types/auth';
@@ -51,7 +60,7 @@ export const ApprovalPage: React.FC = () => {
       <PageHeader
         eyebrow="Approval workflow"
         title="Submit & approval status"
-        description="Only approved websites can go live. Track every submission and the reviewer's decision here."
+        description="You submit, a platform super admin reviews. Only a super admin can approve or publish a website."
         actions={
           <>
             <Link to="/dashboard/preview">
@@ -68,6 +77,43 @@ export const ApprovalPage: React.FC = () => {
 
       <EmailVerificationBanner />
       {error && <Alert tone="error">{error}</Alert>}
+
+      {/* Explicit, read-only statement of the workflow so an owner never looks
+          for an approve/publish control that does not exist by design. */}
+      <Card className="p-5">
+        <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+          <ShieldCheck className="h-4 w-4 text-[#8a641f]" /> Who can do what
+        </p>
+        <ol className="mt-3 grid gap-3 sm:grid-cols-3">
+          <li className="rounded-xl border border-slate-200 p-3">
+            <Badge tone="slate">
+              <FileEdit className="h-3.5 w-3.5" /> 1 · Draft
+            </Badge>
+            <p className="mt-2 text-xs leading-relaxed text-slate-600">
+              <strong className="text-slate-800">You</strong> edit your website, services, staff, prices and
+              settings. Nothing is public yet.
+            </p>
+          </li>
+          <li className="rounded-xl border border-slate-200 p-3">
+            <Badge tone="blue">
+              <Clock className="h-3.5 w-3.5" /> 2 · Pending approval
+            </Badge>
+            <p className="mt-2 text-xs leading-relaxed text-slate-600">
+              <strong className="text-slate-800">You</strong> click “Submit for review”. A snapshot enters the
+              platform review queue — it does <em>not</em> go live.
+            </p>
+          </li>
+          <li className="rounded-xl border border-slate-200 p-3">
+            <Badge tone="green">
+              <CheckCircle2 className="h-3.5 w-3.5" /> 3 · Approved &amp; published
+            </Badge>
+            <p className="mt-2 text-xs leading-relaxed text-slate-600">
+              <strong className="text-slate-800">A super admin only</strong> approves the submission and
+              publishes the website at <span className="font-mono text-[11px]">/salon/{salon.slug}</span>.
+            </p>
+          </li>
+        </ol>
+      </Card>
 
       <Card className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -154,7 +200,7 @@ export const ApprovalPage: React.FC = () => {
           <EmptyState
             icon={<FileClock className="h-6 w-6" />}
             title="No submissions yet"
-            description="When your website is ready, submit it for review. A platform admin will approve it or send it back with notes."
+            description="When your website is ready, submit it for review. A platform super admin will approve it or send it back with notes, then publish it for you."
           />
         ) : (
           <ul className="divide-y divide-slate-100">

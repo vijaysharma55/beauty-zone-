@@ -1,23 +1,52 @@
 # BeautyZone — White-Label Salon Websites with Authentication & RBAC
 
 A full-stack salon website platform. Salon owners sign up, verify their email, complete salon
-onboarding, build and submit their website for approval, then publish a unique public URL once a
-platform admin approves it. A super admin console manages every user, salon, submission,
-subscription and platform setting. Visitors browse published salon websites without logging in.
+onboarding, build and submit their website for review. **Only a platform super admin can approve a
+submission and publish the website live.** A super admin console manages every user, salon,
+submission, subscription and platform setting. Visitors browse published salon websites without
+logging in.
 
-### Approval lifecycle
+### Approval lifecycle (super-admin-gated)
 
 ```
-Registered → Onboarding → Draft → Pending approval → Approved → Published
+Registered → Onboarding → 1 Draft → 2 Pending approval → 3 Approved / Published
+                            │              │                       │
+                       owner edits    owner clicks          super admin only
+                                   "Submit for review"
 ```
 
-- **Draft** — only the owner can see it (`/dashboard/preview`).
-- **Pending** — a submission snapshot is waiting for a super admin. The owner keeps editing, but
-  the public site keeps serving the *previously approved* version.
-- **Changes requested / Rejected** — the site is taken offline and stays fully editable; the
-  owner can resubmit. A reviewer note is required and shown in the dashboard.
-- **Approved** — the owner can publish (email must be verified).
-- **Suspended** (admin) — publishing and submissions are blocked and the site goes offline.
+| State | Database | Who moves it here |
+| --- | --- | --- |
+| **1 · Draft** | `status = 'draft'`, `website_status = 'draft'`, `website_published = 0` | Salon owner (onboarding + edits) |
+| **2 · Pending approval** | `status = 'pending'`, `website_status = 'pending_approval'` | Salon owner — `POST /api/salon/submit` only. Never publishes. |
+| **3 · Approved / Published** | `status = 'approved'`, `website_status = 'approved'`, `website_published = 1` | **Super admin only** — `POST /api/admin/approvals/:id/review` and `POST /api/admin/salons/:id/publish` |
+
+- **Draft** — only the owner can see it (`/dashboard/preview`). Nothing is public.
+- **Pending** — a submission snapshot is waiting for a super admin. The owner may keep editing; the
+  public site keeps serving the *previously approved* version, and an unreviewed working copy is
+  never rendered. A first-time submission is not public at all.
+- **Changes requested / Rejected** — the site is taken offline and stays fully editable; the owner
+  can resubmit. A reviewer note is required and shown in the dashboard.
+- **Approved** — the submission passed review. Publication is a separate super-admin action.
+- **Suspended** (super admin) — submissions and publishing are blocked and the site goes offline.
+
+### Why an owner cannot self-approve
+
+Three independent layers, so a single missing guard cannot publish an unreviewed website:
+
+1. **Route table.** `POST /api/salon/publish` and `/api/salon/unpublish` were removed from the owner
+   router and now answer `403 SELF_APPROVAL_FORBIDDEN`. The whole `/api/admin/*` surface is mounted
+   behind `requireRole('super_admin', 'admin')`, and every approval/publishing route adds
+   `requireSuperAdmin`.
+2. **Workflow module.** `server/workflow.js` refuses `reviewSubmission()` and `publishSalon()` unless
+   `reviewer.role === 'super_admin'`, and independently rejects a reviewer who owns the salon. The
+   one owner transition, `submitForApproval()`, writes only `status = 'pending'`.
+3. **Database.** The Supabase migration `20261107_beautyzone_strict_approval_rbac.sql` adds a
+   constrained `website_status` column plus `guard_salon_workflow_fields()` and
+   `guard_salon_version_state()` triggers: an owner session can only move Draft → Pending Approval,
+   can never write `website_published`/`approved_at`/`suspended`, and can never update or delete a
+   submitted `salon_versions` row. A `CHECK` constraint makes "published but never approved"
+   unrepresentable.
 
 The original luxury salon showcase remains the public marketing homepage at `/`.
 
@@ -25,25 +54,28 @@ The original luxury salon showcase remains the public marketing homepage at `/`.
 
 ## 1. Roles & permissions
 
-| Capability | Super admin | Salon owner | Public visitor |
-| --- | :---: | :---: | :---: |
-| Browse marketing site | ✅ | ✅ | ✅ |
-| Verify email (link, 24 h, single use) | ✅ | ✅ | — |
-| Submit website for approval / resubmit | — | ✅ | — |
-| Review queue: approve / reject / request changes | ✅ | — | — |
-| Suspend / reinstate any salon (force offline) | ✅ | — | — |
-| Open a **published** salon website (`/salon/:slug`) | ✅ | ✅ | ✅ |
-| Register / sign in (email + password or Google) | ✅ | ✅ | — |
-| Edit own salon profile, logo, gallery, contact details | — | ✅ | — |
-| Add / edit / delete own services, prices, staff | — | ✅ | — |
-| Preview own draft website | — | ✅ | — |
-| Publish / unpublish own website | — | ✅ | — |
-| View own subscription | — | ✅ | — |
-| List / create / disable users, change roles | ✅ | — | — |
-| View every salon, inspect services/team, edit website details, force publish / unpublish | ✅ | — | — |
-| Approve only approved versions can be published (server-enforced) | ✅ | ✅ | — |
-| Manage all subscriptions & billing periods | ✅ | — | — |
-| Edit platform settings, view audit log | ✅ | — | — |
+| Capability | Super admin | Operations admin | Salon owner | Public visitor |
+| --- | :---: | :---: | :---: | :---: |
+| Browse marketing site | ✅ | ✅ | ✅ | ✅ |
+| Sign in at `/admin/login` (isolated portal) | ✅ | ✅ | — | — |
+| Sign in at `/login` (salon owner portal) | — | — | ✅ | — |
+| Verify email (link, 24 h, single use) | ✅ | ✅ | ✅ | — |
+| Submit website for review / resubmit | — | — | ✅ | — |
+| **Approve / reject / request changes** | ✅ | — | — | — |
+| **Publish / unpublish a salon website** | ✅ | — | — | — |
+| Suspend / reinstate a salon (force offline) | ✅ | — | — | — |
+| Open a **published** salon website (`/salon/:slug`) | ✅ | ✅ | ✅ | ✅ |
+| Edit own salon profile, logo, gallery, contact details | — | — | ✅ | — |
+| Add / edit / delete own services, prices, staff | — | — | ✅ | — |
+| Preview own draft website | — | — | ✅ | — |
+| View own subscription | — | — | ✅ | — |
+| Read the admin console (users, salons, payments) | ✅ | ✅ | — | — |
+| List / create / disable users, change roles | ✅ | — | — | — |
+| Manage all subscriptions & billing periods | ✅ | — | — | — |
+| Edit platform settings, view audit log | ✅ | — | — | — |
+
+`super_admin` is the only role in `APPROVAL_ROLES` (`src/lib/roles.js`). An `admin` has read-mostly
+console access; a `salon_owner` has no console access at all.
 
 **Tenant isolation is enforced server-side.** Owner routes never accept a salon id from the client:
 the salon is resolved from the authenticated session (`owner_id = session.user_id`). Nested resources
@@ -171,6 +203,10 @@ of being sent through an SMTP provider. Outside production the API also returns
 11. `/dashboard/account` — password change and “sign out everywhere”.
 
 ### Super admin
+Sign in at the isolated portal **`/admin/login`** (no self-service signup; accounts are provisioned via
+`SUPER_ADMIN_EMAILS` or Supabase `private.bootstrap_super_admin()`). Salon owner accounts are refused
+there, and administrator accounts are refused at `/login`.
+
 `/admin` — platform stats including pending approvals; `/admin/approvals` — review queue with the
 submitted snapshot, approve / reject / request changes (with a required note); `/admin/users` —
 create/disable accounts, change roles, reset passwords; `/admin/salons` — inspect any salon's profile,
@@ -348,7 +384,7 @@ server/
   availability.js   Pure time-slot generation engine (opening hours → slots)
   routes/
     auth.js         Register / login / Google / verification / session / password
-    salon.js        Owner dashboard API (tenant-scoped) + submit/publish
+    salon.js        Owner dashboard API (tenant-scoped) + submit for review (no publish)
     admin.js        Super admin API + approval review + suspension
     public.js       Approved salon websites, tenant, availability, booking intake
     bookings.js     Public booking intake + payment-gated confirmation payloads + owner inbox

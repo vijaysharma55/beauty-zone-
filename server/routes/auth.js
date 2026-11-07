@@ -37,6 +37,7 @@ import { verifyGoogleIdToken, googleConfigured } from '../google.js';
 import { sendMail, verificationEmail, passwordResetEmail } from '../mailer.js';
 import { workflowInfo } from '../workflow.js';
 import { verifySupabaseAccessToken, syncLocalUser, forgetVerifiedToken } from '../supabase-auth.js';
+import { SUPER_ADMIN, ADMIN } from '../roles.js';
 
 export const authRouter = Router();
 
@@ -184,6 +185,89 @@ authRouter.post(
   })
 );
 
+/**
+ * Portal-scoped Supabase session bridges.
+ *
+ * The salon-owner workspace and the super-admin console are separate front
+ * doors. Signing in at the wrong one is refused *and* leaves no local session
+ * behind, so a valid Supabase identity cannot be replayed into the other
+ * portal's UI. The role always comes from the trusted public.profiles row —
+ * never from the request body, user metadata or a local SQLite row.
+ */
+
+/** @param {{ adminAllowed?: boolean }} [options] */
+function portalSessionHandler(portal, { adminAllowed }) {
+  return asyncHandler(async (req, res) => {
+    const accessToken = typeof req.body?.accessToken === 'string' ? req.body.accessToken.trim() : '';
+    if (!accessToken || accessToken.length > 8192) {
+      throw new ValidationError('A valid Supabase access token is required.');
+    }
+    const verified = await verifySupabaseAccessToken(accessToken, { fresh: true });
+    if (!verified) {
+      throw new HttpError(401, 'This sign-in method is not available for this portal.');
+    }
+
+    const isAdminRole = verified.role === SUPER_ADMIN || verified.role === ADMIN;
+    if (adminAllowed && !isAdminRole) {
+      forgetVerifiedToken(accessToken);
+      audit({ ...req, user: { id: verified.identityId, email: verified.email } }, 'auth.portal_rejected', 'user', verified.identityId, {
+        portal, role: verified.role,
+      });
+      throw new HttpError(403, 'This account is a salon owner account. Please sign in at the salon owner portal.');
+    }
+    if (!adminAllowed && isAdminRole) {
+      forgetVerifiedToken(accessToken);
+      audit({ ...req, user: { id: verified.identityId, email: verified.email } }, 'auth.portal_rejected', 'user', verified.identityId, {
+        portal, role: verified.role,
+      });
+      throw new HttpError(403, 'Platform administrator accounts must sign in through the super admin portal.');
+    }
+
+    const localUser = syncLocalUser(verified, { touchLogin: true });
+    createSession(req, res, localUser.id);
+    req.user = findUserById(localUser.id);
+    audit(req, 'auth.supabase_session', 'user', localUser.id, {
+      supabaseUserId: verified.identityId,
+      role: verified.role,
+      method: 'supabase',
+      portal,
+    });
+    return res.json(userPayload(req.user));
+  });
+}
+
+/**
+ * Super admin / operations console sign-in.
+ * Only an administrator profile may use this endpoint.
+ */
+authRouter.post(
+  '/admin/supabase-session',
+  loginLimiter,
+  portalSessionHandler('admin', { adminAllowed: true })
+);
+
+/** Salon owner workspace sign-in. Administrator profiles are refused here. */
+authRouter.post(
+  '/owner/supabase-session',
+  loginLimiter,
+  portalSessionHandler('owner', { adminAllowed: false })
+);
+
+/**
+ * Which portal does this (already authenticated) account belong to?
+ * Used by the login pages to send a mismatched account to the right front door
+ * instead of showing a generic error.
+ */
+authRouter.get('/portal', (req, res) => {
+  if (!req.user) return res.json({ portal: null });
+  const isAdmin = req.user.role === SUPER_ADMIN || req.user.role === ADMIN;
+  return res.json({
+    portal: isAdmin ? 'admin' : 'owner',
+    role: req.user.role,
+    loginPath: isAdmin ? '/admin/login' : '/login',
+  });
+});
+
 /* ------------------------------------------------------------------ */
 /* Register (salon owner self-service)                                 */
 /* ------------------------------------------------------------------ */
@@ -327,11 +411,86 @@ authRouter.post(
       }
     }
 
+    // Portal isolation: this is the salon owner front door. Administrator
+    // accounts must use the super admin portal, and no session is created here
+    // so a console cookie can never be minted by an owner login form.
+    if (user.role === SUPER_ADMIN || user.role === ADMIN) {
+      audit({ ...req, user: { id: user.id, email: user.email } }, 'auth.portal_rejected', 'user', user.id, {
+        portal: 'owner', role: user.role,
+      });
+      return res.status(403).json({
+        error: 'Platform administrator accounts must sign in through the super admin portal.',
+        code: 'WRONG_PORTAL',
+      });
+    }
+
     // Rotate / create session
     touchUserLogin(user.id);
     createSession(req, res, user.id);
     req.user = findUserById(user.id);
     audit(req, 'auth.login', 'user', user.id);
+    return res.json(userPayload(findUserById(user.id)));
+  })
+);
+
+/**
+ * Super admin console sign-in with email + password.
+ *
+ * Exists for deployments that do not route administrator credentials through
+ * Supabase (seeded/local admin accounts). It is a separate endpoint so the owner
+ * login can never mint an administrator session, and it enforces the same
+ * isolation rule: only an administrator role may sign in here. There is no
+ * self-service super-admin signup — accounts are provisioned out of band by
+ * SUPER_ADMIN_EMAILS or private.bootstrap_super_admin() in Supabase.
+ */
+authRouter.post(
+  '/admin/login',
+  loginLimiter,
+  asyncHandler(async (req, res) => {
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    const genericError = 'Invalid administrator credentials.';
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Please enter both email and password.' });
+    }
+    if (isProduction() && isSeededDemoEmail(email)) {
+      await verifyPassword(password, DUMMY_PASSWORD_HASH);
+      return res.status(401).json({ error: genericError });
+    }
+
+    const user = findUserByEmail(email);
+    if (!user || !user.password_hash) {
+      await verifyPassword(password, DUMMY_PASSWORD_HASH);
+      return res.status(401).json({ error: genericError });
+    }
+    if (user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
+      return res.status(429).json({ error: 'Too many failed attempts. Please try again in a few minutes.' });
+    }
+    const ok = await verifyPassword(password, user.password_hash);
+    if (!ok) {
+      const failed = (user.failed_logins || 0) + 1;
+      const lock = failed >= MAX_FAILED_LOGINS ? new Date(Date.now() + LOCK_MS).toISOString() : null;
+      db.prepare('UPDATE users SET failed_logins = ?, locked_until = ? WHERE id = ?').run(failed, lock, user.id);
+      return res.status(401).json({ error: genericError });
+    }
+    if (user.status !== 'active') {
+      return res.status(403).json({ error: 'This account has been disabled. Please contact support.' });
+    }
+    if (user.role !== SUPER_ADMIN && user.role !== ADMIN) {
+      // A salon owner who finds this page gets a clear pointer, never a session.
+      audit({ ...req, user: { id: user.id, email: user.email } }, 'auth.portal_rejected', 'user', user.id, {
+        portal: 'admin', role: user.role,
+      });
+      return res.status(403).json({
+        error: 'This account is a salon owner account. Please sign in at the salon owner portal.',
+        code: 'WRONG_PORTAL',
+      });
+    }
+
+    touchUserLogin(user.id);
+    createSession(req, res, user.id);
+    req.user = findUserById(user.id);
+    audit(req, 'auth.admin_login', 'user', user.id, { role: user.role });
     return res.json(userPayload(findUserById(user.id)));
   })
 );
@@ -377,6 +536,13 @@ authRouter.post(
          VALUES (?, ?, NULL, 'google', ?, ?, 'salon_owner', 'active', 1, ?, ?, ?)`
       ).run(id, profile.email, profile.sub, profile.name.slice(0, 120), ts, ts, ts);
       user = findUserById(id);
+    }
+
+    if (user.role === SUPER_ADMIN || user.role === ADMIN) {
+      return res.status(403).json({
+        error: 'Platform administrator accounts must sign in through the super admin portal.',
+        code: 'WRONG_PORTAL',
+      });
     }
 
     touchUserLogin(user.id);

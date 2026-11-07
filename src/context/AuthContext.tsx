@@ -6,6 +6,9 @@ import type { AuthResponse, AuthUser, MembershipPlan, Role, Salon, SalonWorkflow
 
 export type RegisterResult = AuthResponse | { user: null; emailVerificationSent: true; pendingEmail: string };
 
+/** Which front door a sign-in attempt is using. */
+export type AuthPortal = 'owner' | 'admin';
+
 interface AuthContextValue {
   user: AuthUser | null;
   salon: Salon | null;
@@ -19,6 +22,8 @@ interface AuthContextValue {
   isStaff: boolean;
   role: Role | null;
   login: (email: string, password: string) => Promise<AuthResponse>;
+  /** Super admin portal sign-in. Refuses salon owner accounts server-side. */
+  adminLogin: (email: string, password: string) => Promise<AuthResponse>;
   register: (name: string, email: string, password: string) => Promise<RegisterResult>;
   loginWithGoogle: (credential: string) => Promise<AuthResponse>;
   logout: () => Promise<void>;
@@ -73,14 +78,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setWorkflow(data.workflow ?? null);
   }, []);
 
-  const syncAccessToken = useCallback(async (rawToken: string): Promise<AuthResponse> => {
+  /**
+   * Exchanges a Supabase access token for an application session.
+   *
+   * `portal` selects the front door: the owner endpoint refuses administrator
+   * profiles and the admin endpoint refuses salon owners, so a token can never
+   * be replayed into the wrong workspace. `session` is the neutral restore path
+   * used on reload (route guards still enforce the role).
+   */
+  const syncAccessToken = useCallback(async (
+    rawToken: string,
+    portal: AuthPortal | 'session' = 'session'
+  ): Promise<AuthResponse> => {
     const accessToken = String(rawToken || '').trim();
     if (!accessToken) throw new Error('Sign-in did not create a valid session. Please try again.');
-    const pending = syncInFlight.current.get(accessToken);
+    const cacheKey = `${portal}:${accessToken}`;
+    const pending = syncInFlight.current.get(cacheKey);
     if (pending) return pending;
 
+    // 'session' is the neutral reload path: the neutral bridge accepts any
+    // verified profile and the route guards still enforce the role.
+    const endpoint =
+      portal === 'session' ? '/auth/supabase-session' : `/auth/${portal}/supabase-session`;
     const sequence = ++latestSyncSeq.current;
-    const task = api.post<AuthResponse>('/auth/supabase-session', { accessToken })
+    const task = api.post<AuthResponse>(endpoint, { accessToken })
       .then((data) => {
         if (!data?.user?.role) {
           throw new Error('Your account role could not be verified. Please contact support.');
@@ -88,14 +109,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (sequence === latestSyncSeq.current) apply(data);
         return data;
       });
-    syncInFlight.current.set(accessToken, task);
+    syncInFlight.current.set(cacheKey, task);
     try {
       return await task;
     } finally {
       // Only the creator removes its own entry; otherwise a second caller's
       // early `finally` could let a duplicate request through.
-      if (syncInFlight.current.get(accessToken) === task) {
-        syncInFlight.current.delete(accessToken);
+      if (syncInFlight.current.get(cacheKey) === task) {
+        syncInFlight.current.delete(cacheKey);
       }
     }
   }, [apply]);
@@ -196,22 +217,76 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [apply, syncAccessToken]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    let result;
+  /**
+   * Email + password sign-in, scoped to exactly one portal.
+   *
+   * 1. Supabase Auth is the primary identity provider; the access token is
+   *    exchanged at the portal-specific bridge endpoint, which refuses an
+   *    account that belongs to the other portal.
+   * 2. When Supabase is not configured/unreachable (local development), the
+   *    legacy server-side password endpoint for the same portal is used. It
+   *    applies the identical role isolation.
+   */
+  const signInToPortal = useCallback(async (portal: AuthPortal, email: string, password: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    let supabaseError: unknown = null;
     try {
-      result = await supabase.auth.signInWithPassword(email.trim().toLowerCase(), password);
+      const result = await supabase.auth.signInWithPassword(normalizedEmail, password);
+      if (!result.session?.access_token) {
+        throw new Error('Sign-in did not create a valid session. Check your email confirmation and try again.');
+      }
+      try {
+        return await syncAccessToken(result.session.access_token, portal);
+      } catch (err) {
+        // The bridge rejected this identity (wrong portal). Drop the Supabase
+        // session so the browser cannot carry a half-authenticated token into
+        // the other workspace's UI.
+        if (err instanceof ApiError && err.code === 'WRONG_PORTAL') {
+          await supabase.auth.signOut('local').catch(() => undefined);
+          throw err;
+        }
+        throw err;
+      }
     } catch (err) {
-      throw friendlyAuthError(err);
+      supabaseError = err;
+      if (err instanceof ApiError && err.code === 'WRONG_PORTAL') throw friendlyAuthError(err);
     }
-    if (!result.session?.access_token) {
-      throw new Error('Sign-in did not create a valid session. Please check your email confirmation and try again.');
-    }
+
+    // Local/offline fallback with the same portal isolation.
     try {
-      return await syncAccessToken(result.session.access_token);
+      const data = await api.post<AuthResponse>(
+        portal === 'admin' ? '/auth/admin/login' : '/auth/login',
+        { email: normalizedEmail, password }
+      );
+      apply(data);
+      return data;
     } catch (err) {
-      throw friendlyAuthError(err);
+      if (err instanceof ApiError && err.code === 'WRONG_PORTAL') {
+        throw new Error(
+          portal === 'admin'
+            ? 'This account is a salon owner account. Please sign in at the salon owner portal.'
+            : 'This account is a platform administrator. Please sign in at the super admin portal.'
+        );
+      }
+      if (err instanceof ApiError && err.status === 0) throw friendlyAuthError(supabaseError);
+      if (err instanceof ApiError && err.status > 0 && err.status < 500) throw friendlyAuthError(err);
+      throw friendlyAuthError(supabaseError || err);
     }
-  }, [syncAccessToken]);
+  }, [apply, syncAccessToken]);
+
+  const login = useCallback(
+    (email: string, password: string) => signInToPortal('owner', email, password),
+    [signInToPortal]
+  );
+
+  /**
+   * Super admin portal sign-in. Administrator accounts are refused by the owner
+   * endpoint and vice versa, so this can never mint an owner session.
+   */
+  const adminLogin = useCallback(
+    (email: string, password: string) => signInToPortal('admin', email, password),
+    [signInToPortal]
+  );
 
   const register = useCallback(async (name: string, email: string, password: string): Promise<RegisterResult> => {
     let result;
@@ -220,7 +295,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err) {
       throw friendlyAuthError(err);
     }
-    if (result.session?.access_token) return syncAccessToken(result.session.access_token);
+    if (result.session?.access_token) return syncAccessToken(result.session.access_token, 'owner');
     apply(null);
     return { user: null, emailVerificationSent: true, pendingEmail: email.trim().toLowerCase() };
   }, [apply, syncAccessToken]);
@@ -233,7 +308,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw friendlyAuthError(err);
     }
     if (!result.session?.access_token) throw new Error('Google sign-in did not create a valid session.');
-    return syncAccessToken(result.session.access_token);
+    return syncAccessToken(result.session.access_token, 'owner');
   }, [syncAccessToken]);
 
   const logout = useCallback(async () => {
@@ -271,8 +346,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isOwner: isOwnerRole(user?.role),
     isCustomer: isCustomerRole(user?.role),
     isStaff: isAdminRole(user?.role) || isOwnerRole(user?.role),
-    login, register, loginWithGoogle, logout, logoutAll, refresh, setSession,
-  }), [user, salon, subscription, workflow, loading, login, register, loginWithGoogle, logout, logoutAll, refresh, setSession]);
+    login, adminLogin, register, loginWithGoogle, logout, logoutAll, refresh, setSession,
+  }), [user, salon, subscription, workflow, loading, login, adminLogin, register, loginWithGoogle, logout, logoutAll, refresh, setSession]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

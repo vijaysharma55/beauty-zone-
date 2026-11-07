@@ -42,6 +42,17 @@ const api = (c) => ({
   get: (p) => c('GET', p), post: (p, b, h) => c('POST', p, b, h),
   put: (p, b) => c('PUT', p, b), patch: (p, b) => c('PATCH', p, b), del: (p) => c('DELETE', p),
 });
+/**
+ * Administrators use the isolated super admin portal; salon owners use the
+ * owner portal. The two front doors refuse each other's accounts.
+ */
+async function adminLogin(email, password) {
+  const c = client();
+  const res = await api(c).post('/api/auth/admin/login', { email, password });
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  return c;
+}
+
 async function login(email, password) {
   const c = client();
   const res = await api(c).post('/api/auth/login', { email, password });
@@ -64,7 +75,7 @@ before(async () => {
     await new Promise((r) => setTimeout(r, 150));
   }
   ownerA = await login('a@qr.test', 'Owner@12345');
-  admin = await login('admin@qr.test', 'Admin@12345');
+  admin = await adminLogin('admin@qr.test', 'Admin@12345');
   const rawB = client();
   const registration = await api(rawB).post('/api/auth/register', { name: 'Salon B Owner', email: 'b@qr.test', password: 'OwnerB@12345', dateOfBirth: '1990-01-01' });
   assert.equal(registration.status, 201, JSON.stringify(registration.data));

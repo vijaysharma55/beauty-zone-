@@ -179,8 +179,24 @@ export function requireRole(...allowedRoles) {
   };
 }
 
-/** Named convenience gate for the entire super-admin surface. */
+/**
+ * Named convenience gate for the entire super-admin surface.
+ *
+ * Only `super_admin` passes. It is used for every approval, publishing,
+ * suspension, role-grant and platform-setting route, so an operational `admin`
+ * (read-only console access) or a `salon_owner` can never approve a website.
+ */
 export const requireSuperAdmin = requireRole('super_admin');
+
+/**
+ * Approval authority gate.
+ *
+ * Separate from requireSuperAdmin so the intent is explicit at call sites:
+ * reviewing submissions and publishing websites is super-admin-only. The salon
+ * owner router never mounts this guard, and the owner publish endpoints were
+ * removed, so an owner has no approval capability anywhere in the API.
+ */
+export const requireApprovalAuthority = requireSuperAdmin;
 
 /* Salon owners may only ever touch the salon they own. req.salon is resolved
    server-side from the session user id — never from client-supplied input. */

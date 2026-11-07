@@ -5,10 +5,10 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  APPLICATION_ROLES, ADMIN_ROLES, STAFF_ROLES,
+  APPLICATION_ROLES, ADMIN_ROLES, APPROVAL_ROLES, STAFF_ROLES,
   normalizeRole, isAdminRole, isSuperAdminRole, isOwnerRole, isCustomerRole,
-  canAccessAdminConsole, canAccessOwnerDashboard, canEditCatalog, roleHome,
-  allowedRoutePrefixes,
+  canAccessAdminConsole, canReviewSalonWebsites, canAccessOwnerDashboard,
+  canEditCatalog, roleHome, allowedRoutePrefixes,
 } from '../../src/lib/roles.js';
 import {
   homeForRole, homeForUser, homeForAuthUser, postLoginDestination,
@@ -35,6 +35,19 @@ test('legacy role spellings normalize; unknown values degrade to customer', () =
   assert.equal(normalizeRole('root-of-all-evil'), 'customer');
   assert.equal(normalizeRole(null), 'customer');
   assert.equal(normalizeRole(undefined), 'customer');
+});
+
+test('only a super admin holds approval/publishing authority', () => {
+  assert.deepEqual([...APPROVAL_ROLES], ['super_admin']);
+  assert.equal(canReviewSalonWebsites('super_admin'), true);
+  assert.equal(canReviewSalonWebsites('admin'), false, 'operational admins cannot approve salons');
+  assert.equal(canReviewSalonWebsites('salon_owner'), false, 'owners can never self-approve');
+  assert.equal(canReviewSalonWebsites('customer'), false);
+  assert.equal(canReviewSalonWebsites(null), false);
+  assert.equal(canReviewSalonWebsites('root-of-all-evil'), false);
+  // Console access stays wider than approval authority.
+  assert.equal(canAccessAdminConsole('admin'), true);
+  assert.equal(canReviewSalonWebsites('admin'), false);
 });
 
 test('role helpers never grant admin from a customer or unknown role', () => {
