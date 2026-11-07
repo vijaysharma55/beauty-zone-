@@ -151,12 +151,14 @@ function createSession(req, res, userId) {
 /* Supabase Auth session bridge                                        */
 /* Verifies the access token with Supabase before issuing the legacy   */
 /* HttpOnly session cookie used by existing salon/dashboard APIs.      */
+/*                                                                     */
+/* bridgeSupabaseAccessToken() is shared by the sign-in route below and */
+/* by bearerSession(), which re-verifies the token on protected API     */
+/* requests. The local SQLite session cookie cannot be relied on alone  */
+/* on Vercel, where each serverless instance has its own /tmp database. */
 /* ------------------------------------------------------------------ */
-authRouter.post(
-  '/supabase-session',
-  loginLimiter,
-  asyncHandler(async (req, res) => {
-    const accessToken = typeof req.body?.accessToken === 'string' ? req.body.accessToken : '';
+export async function bridgeSupabaseAccessToken(accessToken) {
+  {
     if (!accessToken || accessToken.length > 8192) {
       throw new ValidationError('A valid Supabase access token is required.');
     }
@@ -255,6 +257,16 @@ authRouter.post(
     if (!localUser || localUser.status !== 'active') {
       throw new HttpError(403, 'This account has been disabled. Please contact support.');
     }
+    return { localUser, identity };
+  }
+}
+
+authRouter.post(
+  '/supabase-session',
+  loginLimiter,
+  asyncHandler(async (req, res) => {
+    const accessToken = typeof req.body?.accessToken === 'string' ? req.body.accessToken : '';
+    const { localUser, identity } = await bridgeSupabaseAccessToken(accessToken);
     touchUserLogin(localUser.id);
     createSession(req, res, localUser.id);
     req.user = findUserById(localUser.id);
@@ -262,6 +274,45 @@ authRouter.post(
     return res.json(userPayload(req.user));
   })
 );
+
+/* Stateless authentication for protected API routes.
+   When no cookie session is recognised (new serverless instance, expired /tmp
+   database) but the request carries the user's Supabase access token, verify
+   that token again and resolve the same role-checked local user. A short cache
+   keeps this to one Supabase round trip per token every 30 seconds. Any failure
+   leaves the request unauthenticated so the route guard answers 401/403. */
+const BEARER_CACHE_TTL_MS = 30 * 1000;
+const BEARER_CACHE_MAX = 500;
+const JWT_SHAPE = /^[\w-]+\.[\w-]+\.[\w-]+$/;
+const bearerCache = new Map();
+
+export async function bearerSession(req, res, next) {
+  if (req.user) return next();
+  const match = /^Bearer\s+(\S+)$/i.exec(req.get('authorization') || '');
+  const token = match?.[1];
+  if (!token || token.length > 8192 || !JWT_SHAPE.test(token)) return next();
+
+  const key = hashToken(token);
+  try {
+    const cached = bearerCache.get(key);
+    let user = cached && cached.expires > Date.now() ? findUserById(cached.userId) : null;
+    if (!user) {
+      const { localUser } = await bridgeSupabaseAccessToken(token);
+      user = findUserById(localUser.id);
+      if (bearerCache.size >= BEARER_CACHE_MAX) {
+        const now = Date.now();
+        for (const [k, v] of bearerCache) if (v.expires <= now) bearerCache.delete(k);
+        if (bearerCache.size >= BEARER_CACHE_MAX) bearerCache.clear();
+      }
+      if (user) bearerCache.set(key, { userId: user.id, expires: Date.now() + BEARER_CACHE_TTL_MS });
+    }
+    if (user && user.status === 'active') req.user = user;
+  } catch (err) {
+    bearerCache.delete(key);
+    if (!(err instanceof HttpError)) console.error('[auth] bearer session failed:', err.message);
+  }
+  return next();
+}
 
 /* ------------------------------------------------------------------ */
 /* Register (salon owner self-service)                                 */

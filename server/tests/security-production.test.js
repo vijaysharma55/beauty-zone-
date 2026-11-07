@@ -44,12 +44,13 @@ async function waitForApi() {
   throw new Error('Production-mode test API did not start in time.');
 }
 
-async function request(method, endpoint, body) {
+async function request(method, endpoint, body, extraHeaders = {}) {
   const response = await fetch(`http://127.0.0.1:${apiPort}${endpoint}`, {
     method,
     headers: {
       Origin: `http://127.0.0.1:${apiPort}`,
       'X-Requested-With': 'beautyzone',
+      ...extraHeaders,
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -172,4 +173,32 @@ test('disabled and unverified Supabase identities cannot create application sess
   mockIdentity = { ...mockIdentity, email_confirmed_at: null, confirmed_at: null };
   const unverified = await request('POST', '/api/auth/supabase-session', { accessToken: 'unverified-test-access-token' });
   assert.equal(unverified.status, 403);
+});
+
+test('protected API routes authenticate from the Supabase bearer token without a cookie session', async () => {
+  mockIdentity = { ...mockIdentity, email_confirmed_at: '2026-01-01T00:00:00.000Z' };
+  const bearer = (token) => ({ Authorization: `Bearer ${token}` });
+
+  // No cookie and no token: unauthenticated.
+  const anonymous = await request('GET', '/api/admin/overview');
+  assert.equal(anonymous.status, 401);
+
+  // A token that is not JWT-shaped is ignored without calling Supabase.
+  const malformed = await request('GET', '/api/admin/overview', undefined, bearer('not-a-jwt'));
+  assert.equal(malformed.status, 401);
+
+  // Valid token, Supabase profile role is salon_owner: authenticated (not 401) but not an admin.
+  mockProfile = { ...mockProfile, role: 'salon_owner', status: 'active' };
+  const owner = await request('GET', '/api/admin/overview', undefined, bearer('aaa.bbb.owner'));
+  assert.equal(owner.status, 403);
+
+  // Valid token, Supabase profile role is super_admin: admin API is reachable with no cookie at all.
+  mockProfile = { ...mockProfile, role: 'super_admin', status: 'active' };
+  const admin = await request('GET', '/api/admin/overview', undefined, bearer('aaa.bbb.admin'));
+  assert.equal(admin.status, 200);
+
+  // A disabled Supabase profile never authenticates.
+  mockProfile = { ...mockProfile, role: 'super_admin', status: 'disabled' };
+  const disabled = await request('GET', '/api/admin/overview', undefined, bearer('aaa.bbb.disabled'));
+  assert.equal(disabled.status, 401);
 });

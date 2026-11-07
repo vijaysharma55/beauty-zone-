@@ -17,7 +17,7 @@ import {
   errorHandler,
 } from './middleware.js';
 import { subdomainMiddleware } from './subdomain.js';
-import { authRouter } from './routes/auth.js';
+import { authRouter, bearerSession } from './routes/auth.js';
 import { salonRouter } from './routes/salon.js';
 import { publicRouter } from './routes/public.js';
 import { adminRouter } from './routes/admin.js';
@@ -94,6 +94,12 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, service: 'beautyzone', time: new Date().toISOString() });
 });
 
+// Protected surfaces also accept the user's Supabase access token (Authorization: Bearer),
+// so authentication survives serverless instance changes where the SQLite session is missing.
+app.use(
+  ['/api/admin', '/api/salon', '/api/ai', '/api/auth/me', '/api/auth/logout', '/api/auth/logout-all', '/api/auth/password', '/api/auth/profile', '/api/auth/resend-verification'],
+  bearerSession
+);
 app.use('/api/auth', authRouter);
 app.use('/api/salon', salonRouter);
 app.use('/api/admin', adminRouter);
