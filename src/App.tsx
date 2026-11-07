@@ -234,6 +234,8 @@ function MarketingSite() {
   };
 
   const handleSelectGalleryItemForBooking = (serviceName: string) => {
+    // Preserve the selected look in the booking form, then scroll to the live
+    // appointment section. The exact service name remains visible to the team.
     setPreselectedServiceTitle(serviceName);
     scrollToSection('booking');
   };
