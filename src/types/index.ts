@@ -1,6 +1,20 @@
 export type ServiceCategory = 'bridal' | 'hair' | 'skin' | 'nails' | 'spa' | 'academy';
 
-export interface ServiceItem {
+/** Rich editorial copy shared by service cards, bridal packages and detail views. */
+export interface TreatmentEditorial {
+  /** Numbered, step-by-step protocol rendered in the "Treatment Journey" panel. */
+  processSteps?: string[];
+  /** Outcome-led benefits shown beside the protocol. */
+  benefits?: string[];
+  /** Suitable skin, hair, nail or experience profiles. */
+  idealFor?: string;
+  /** Genuine, sealed professional brands and tools used during the service. */
+  productsUsed?: string[];
+  /** Transparent pricing note (inclusions, advance payment, taxes). */
+  priceNote?: string;
+}
+
+export interface ServiceItem extends TreatmentEditorial {
   id: string;
   title: string;
   category: ServiceCategory;
@@ -26,7 +40,7 @@ export interface ServiceReview {
   verifiedBooking?: boolean;
 }
 
-export interface BundlePackage {
+export interface BundlePackage extends TreatmentEditorial {
   id: string;
   title: string;
   tagline: string;
@@ -110,7 +124,7 @@ export interface Testimonial {
   weddingVenue?: string;
 }
 
-export interface SalonPackage {
+export interface SalonPackage extends TreatmentEditorial {
   id: string;
   name: string;
   tagline?: string;

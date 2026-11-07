@@ -2,8 +2,11 @@ import React, { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CURATED_BUNDLES } from '../data/bundlesData';
 import { SALON_SERVICES } from '../data/salonData';
-import { SalonPackage, ServiceItem } from '../types';
+import type { SalonPackage, ServiceItem } from '../types';
 import { RevealOnScroll } from './RevealOnScroll';
+import { TreatmentDetailModal } from './TreatmentDetailModal';
+import { toPackageDetail, type TreatmentDetail } from '../data/treatmentCopy';
+import { packageCardDescription } from '../data/packagesData';
 import { useBrand } from '../context/BrandContext';
 import { SmartImage } from './crud/SmartImage';
 import { ItemActions } from './crud/ItemActions';
@@ -18,6 +21,7 @@ import {
   PACKAGE_BADGE_SUGGESTIONS,
   VALIDITY_OPTIONS,
   calculateSavings,
+  enrichPackageCatalog,
 } from '../data/packagesData';
 import { 
   Sparkles, 
@@ -34,7 +38,8 @@ import {
   MapPin,
   CalendarCheck,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  BookOpen
 } from 'lucide-react';
 
 interface BundledServicesSectionProps {
@@ -204,6 +209,7 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
   const { t } = useBrand();
   const [activeTab, setActiveTab] = useState<'curated' | 'custom'>('curated');
   const [expandedRulesId, setExpandedRulesId] = useState<string | null>(null);
+  const [detailPackage, setDetailPackage] = useState<TreatmentDetail | null>(null);
   
   // Custom Bundle Builder state
   const [selectedCustomServiceIds, setSelectedCustomServiceIds] = useState<string[]>([
@@ -215,21 +221,26 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
   // active subset shown on the public site.
   const sourcePackages: SalonPackage[] = useMemo(() => {
     if (packages) {
-      return packages;
+      return enrichPackageCatalog(packages);
     }
-    return CURATED_BUNDLES.map((cb) => ({
+    return enrichPackageCatalog(CURATED_BUNDLES.map((cb) => ({
       id: cb.id,
       name: cb.title,
       tagline: cb.tagline,
       offer_name: cb.badge || 'Curated Offer',
       description: cb.description,
+      processSteps: cb.processSteps,
+      benefits: cb.benefits,
+      idealFor: cb.idealFor,
+      productsUsed: cb.productsUsed,
+      priceNote: cb.priceNote,
       services: cb.servicesIncluded,
       duration: cb.duration,
       regular_price: cb.originalPrice,
       package_price: cb.discountedPrice,
       discount: Math.round(((cb.originalPrice - cb.discountedPrice) / cb.originalPrice) * 100),
       savings: cb.savings,
-      validity: '60 Days from purchase',
+      validity: '90 Days from purchase',
       usage_rules: [
         'Please book your appointment at least 24 hours in advance',
         'Valid across selected studio branches',
@@ -239,7 +250,7 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
       image: cb.image,
       active: true,
       featured: cb.popular,
-    }));
+    })));
   }, [packages]);
 
   const manager = useCardCollection<SalonPackage>(sourcePackages, onUpdatePackages, 'Package');
@@ -474,9 +485,18 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
                       {/* Body Content - flex-1 flex flex-col justify-between so footer remains aligned */}
                       <div className="p-4 sm:p-5 lg:p-6 flex-1 flex flex-col justify-between">
                         <div>
-                          <p className="text-xs sm:text-sm text-[#4A4A4A] leading-relaxed font-light min-h-[36px] line-clamp-3">
-                            {pkg.description}
+                          <p className="text-xs sm:text-sm text-[#4A4A4A] leading-relaxed font-light min-h-[36px] line-clamp-4">
+                            {packageCardDescription(pkg)}
                           </p>
+                          <button
+                            type="button"
+                            onClick={() => setDetailPackage(toPackageDetail(pkg))}
+                            className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] font-bold text-[#D09A40] hover:text-[#0F172A] hover:underline cursor-pointer transition-colors"
+                            aria-label={`View full protocol, benefits, products and pricing for ${pkg.name}`}
+                          >
+                            <BookOpen className="w-3.5 h-3.5" />
+                            <span>View Full Ritual, Products &amp; Pricing</span>
+                          </button>
 
                           {/* Included Services Checklist - flex-1 expands dynamically */}
                           <div className="mt-4 pt-3 border-t border-neutral-100">
@@ -735,6 +755,16 @@ export const BundledServicesSection: React.FC<BundledServicesSectionProps> = ({
             }}
           />
         )}
+        <TreatmentDetailModal
+          detail={detailPackage}
+          onClose={() => setDetailPackage(null)}
+          onBook={(detail) => {
+            const pkg = sourcePackages.find((item) => item.id === detail.id);
+            setDetailPackage(null);
+            if (pkg) handleBookCurated(pkg);
+          }}
+          bookLabel="Book This Package"
+        />
         <CrudToast message={manager.notice} />
       </div>
     </section>

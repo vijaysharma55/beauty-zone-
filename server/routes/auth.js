@@ -36,17 +36,13 @@ import { requireAuth, asyncHandler, touchUserLogin } from '../middleware.js';
 import { verifyGoogleIdToken, googleConfigured } from '../google.js';
 import { sendMail, verificationEmail, passwordResetEmail } from '../mailer.js';
 import { workflowInfo } from '../workflow.js';
+import { verifySupabaseAccessToken, syncLocalUser, forgetVerifiedToken } from '../supabase-auth.js';
 
 export const authRouter = Router();
 
 const EMAIL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const isProduction = () => process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
-// TEMPORARY escape hatch: lets owners open the dashboard before confirming their email.
-// Off unless ALLOW_UNVERIFIED_EMAIL_LOGIN is set. Read per request so it can be flipped
-// without a code change. The local account stays marked unverified, so submitting for
-// approval and publishing a salon still require a confirmed email.
-const allowUnverifiedEmailLogin = () => /^(1|true|yes)$/i.test(process.env.ALLOW_UNVERIFIED_EMAIL_LOGIN || '');
 
 // Seed/demo identities are for disposable local development only. They must
 // never authenticate in a production or Vercel deployment.
@@ -161,109 +157,29 @@ authRouter.post(
   '/supabase-session',
   loginLimiter,
   asyncHandler(async (req, res) => {
-    const accessToken = typeof req.body?.accessToken === 'string' ? req.body.accessToken : '';
+    const accessToken = typeof req.body?.accessToken === 'string' ? req.body.accessToken.trim() : '';
     if (!accessToken || accessToken.length > 8192) {
       throw new ValidationError('A valid Supabase access token is required.');
     }
 
-    const projectUrl = (process.env.SUPABASE_URL || 'https://botkjeikjzhnbxnowdkl.supabase.co').replace(/\/+$/, '');
-    const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY
-      || process.env.SUPABASE_ANON_KEY
-      || process.env.VITE_SUPABASE_PUBLISHABLE_KEY
-      || process.env.VITE_SUPABASE_ANON_KEY
-      || 'sb_publishable_f2nHVHcAdrlosQbZwAAxnQ_vnHQuuv0';
+    // Verify the token with Supabase Auth and resolve RBAC from the trusted
+    // public.profiles row. This is the ONLY place application roles come from.
+    const verified = await verifySupabaseAccessToken(accessToken, { fresh: true });
+    if (!verified) {
+      throw new HttpError(401, 'Phone sign-ins are for customer appointments only. Use an email admin account.');
+    }
+    const localUser = syncLocalUser(verified, { touchLogin: true });
 
-    const identityResponse = await fetch(projectUrl + '/auth/v1/user', {
-      headers: { apikey: publishableKey, Authorization: 'Bearer ' + accessToken },
-    });
-    if (!identityResponse.ok) {
-      throw new HttpError(401, 'Your sign-in session is invalid or has expired. Please sign in again.');
-    }
-    const identity = await identityResponse.json();
-    const email = typeof identity.email === 'string' ? identity.email.trim().toLowerCase() : '';
-    if (!identity.id || !EMAIL_RE.test(email)) {
-      throw new HttpError(401, 'Supabase did not return a verified account identity.');
-    }
-
-    if (!identity.email_confirmed_at && !identity.confirmed_at && !allowUnverifiedEmailLogin()) {
-      throw new HttpError(403, 'Verify your email address before opening the salon dashboard.');
-    }
-
-    const profileResponse = await fetch(
-      projectUrl + '/rest/v1/profiles?id=eq.' + encodeURIComponent(identity.id) + '&select=id,email,name,role,status,date_of_birth&limit=1',
-      { headers: { apikey: publishableKey, Authorization: 'Bearer ' + accessToken } }
-    );
-    if (!profileResponse.ok) {
-      throw new HttpError(503, 'Could not load your BeautyZone profile. Please try again.');
-    }
-    const profiles = await profileResponse.json();
-    const profile = Array.isArray(profiles) ? profiles[0] : null;
-    if (!profile || profile.id !== identity.id) {
-      throw new HttpError(409, 'Your BeautyZone profile is still being created. Please try again in a moment.');
-    }
-    if (profile.status !== 'active') {
-      throw new HttpError(403, 'This BeautyZone account has been disabled. Please contact support.');
-    }
-    if (String(profile.email || '').trim().toLowerCase() !== email) {
-      throw new HttpError(403, 'Your Supabase identity does not match its BeautyZone profile.');
-    }
-
-    // Never accept roles from user metadata or a local SQLite user. The
-    // trusted Supabase profile is the sole source of authorization.
-    const profileRole = profile.role === 'super_admin' ? 'super_admin' : profile.role === 'salon_owner' ? 'salon_owner' : null;
-    const provider = identity.app_metadata?.provider === 'google' ? 'google' : 'password';
-    const providerId = Array.isArray(identity.identities)
-      ? identity.identities.find((item) => item.provider === 'google')?.id || null
-      : null;
-    const name = String(profile.name || identity.user_metadata?.name || identity.user_metadata?.full_name || email.split('@')[0]).slice(0, 120);
-    // DOB comes from the verified Supabase profile (or signup metadata). It is
-    // validated here and never trusted blindly; an invalid value is ignored
-    // and the dashboard will ask the user to complete it.
-    let dob = null;
-    const rawDob = profile.date_of_birth || identity.user_metadata?.date_of_birth || null;
-    if (rawDob) {
-      try {
-        dob = validateDob(String(rawDob), { required: false });
-      } catch {
-        dob = null;
-      }
-    }
-    const ts = nowIso();
-    const verified = Boolean(identity.email_confirmed_at || identity.confirmed_at);
-    let localUser = db.prepare('SELECT * FROM users WHERE supabase_uid = ?').get(identity.id);
-    if (!localUser) localUser = findUserByEmail(email);
-
-    // Super-admin access must be granted through the trusted Supabase
-    // profile bootstrap workflow, never inherited from a local SQLite row.
-    const role = profileRole;
-    if (!role) throw new HttpError(403, 'Your account does not have an approved application role.');
-
-    if (localUser) {
-      if (localUser.supabase_uid && localUser.supabase_uid !== identity.id) {
-        throw new HttpError(409, 'This email is already linked to another sign-in identity.');
-      }
-      db.prepare(
-        `UPDATE users SET supabase_uid = ?, email = ?, name = ?, role = ?, auth_provider = ?,
-          google_sub = COALESCE(?, google_sub), email_verified = ?, email_verified_at = CASE WHEN ? = 1 THEN COALESCE(email_verified_at, ?) ELSE NULL END,
-          date_of_birth = COALESCE(?, date_of_birth), updated_at = ? WHERE id = ?`
-      ).run(identity.id, email, name, role, provider, providerId, verified ? 1 : 0, verified ? 1 : 0, ts, dob, ts, localUser.id);
-      localUser = findUserById(localUser.id);
-    } else {
-      db.prepare(
-        `INSERT INTO users (id, supabase_uid, email, password_hash, auth_provider, google_sub, name, role, status,
-          email_verified, email_verified_at, date_of_birth, created_at, updated_at)
-         VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)`
-      ).run(identity.id, identity.id, email, provider, providerId, name, role, verified ? 1 : 0, verified ? ts : null, dob, ts, ts);
-      localUser = findUserById(identity.id);
-    }
-
-    if (!localUser || localUser.status !== 'active') {
-      throw new HttpError(403, 'This account has been disabled. Please contact support.');
-    }
-    touchUserLogin(localUser.id);
+    // The HttpOnly cookie remains a convenience for warm serverless instances;
+    // protected routes also accept the verified bearer token directly, so a
+    // cold start that loses the SQLite sessions table cannot lock out an admin.
     createSession(req, res, localUser.id);
     req.user = findUserById(localUser.id);
-    audit(req, 'auth.supabase_session', 'user', localUser.id, { supabaseUserId: identity.id });
+    audit(req, 'auth.supabase_session', 'user', localUser.id, {
+      supabaseUserId: verified.identityId,
+      role: verified.role,
+      method: 'supabase',
+    });
     return res.json(userPayload(req.user));
   })
 );
@@ -484,6 +400,8 @@ authRouter.post('/logout', (req, res) => {
   if (req.session?.id) {
     db.prepare('DELETE FROM sessions WHERE id = ?').run(req.session.id);
   }
+  const bearer = /^Bearer\s+(.+)$/i.exec(req.get('authorization') || '')?.[1]?.trim();
+  if (bearer) forgetVerifiedToken(bearer);
   clearSessionCookie(res);
   return res.json({ ok: true });
 });

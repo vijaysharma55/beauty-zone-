@@ -26,7 +26,8 @@ import {
   isSafeImageUrl,
   sanitizeText,
 } from '../security.js';
-import { requireAuth, requireRole, asyncHandler } from '../middleware.js';
+import { requireRole, requireSuperAdmin, asyncHandler } from '../middleware.js';
+import { APPLICATION_ROLES, SUPER_ADMIN, ADMIN, SALON_OWNER, CUSTOMER } from '../roles.js';
 import {
   workflowInfo,
   reviewSubmission,
@@ -40,8 +41,11 @@ import { sendMail, reviewNotificationEmail } from '../mailer.js';
 
 export const adminRouter = Router();
 
-// Hard role gate for the entire admin surface.
-adminRouter.use(requireAuth, requireRole('super_admin'));
+// Hard RBAC gate for the entire admin surface. The role was resolved from the
+// trusted Supabase profile by loadSession (cookie or verified bearer token).
+// Operational admins may view the console; only a super admin may grant
+// roles or change platform-wide settings.
+adminRouter.use(requireRole(SUPER_ADMIN, ADMIN));
 
 const PLANS = new Set(['trial', 'starter', 'pro', 'elite']);
 const SUB_STATUS = new Set(['trialing', 'active', 'past_due', 'canceled']);
@@ -55,7 +59,7 @@ adminRouter.get('/overview', (req, res) => {
   res.json({
     stats: {
       owners: count("SELECT COUNT(*) AS n FROM users WHERE role = 'salon_owner'"),
-      admins: count("SELECT COUNT(*) AS n FROM users WHERE role = 'super_admin'"),
+      admins: count("SELECT COUNT(*) AS n FROM users WHERE role IN ('super_admin','admin')"),
       salons: count('SELECT COUNT(*) AS n FROM salons'),
       published: count('SELECT COUNT(*) AS n FROM salons WHERE website_published = 1'),
       services: count('SELECT COUNT(*) AS n FROM services'),
@@ -91,7 +95,7 @@ adminRouter.get('/users', (req, res) => {
     clauses.push('(u.email LIKE ? OR u.name LIKE ?)');
     params.push(`%${q}%`, `%${q}%`);
   }
-  if (role && ['super_admin', 'salon_owner'].includes(role)) {
+  if (role && APPLICATION_ROLES.includes(role)) {
     clauses.push('u.role = ?');
     params.push(role);
   }
@@ -128,11 +132,13 @@ adminRouter.get('/users', (req, res) => {
 
 adminRouter.post(
   '/users',
+  requireSuperAdmin,
   asyncHandler(async (req, res) => {
     const name = str(req.body?.name, { min: 2, max: 120, field: 'Name', required: true });
     const email = str(req.body?.email, { max: 254, field: 'Email', required: true }).toLowerCase();
     if (!EMAIL_RE.test(email)) throw new ValidationError('Please enter a valid email address');
-    const role = req.body?.role === 'super_admin' ? 'super_admin' : 'salon_owner';
+    const requestedRole = String(req.body?.role || SALON_OWNER);
+    const role = APPLICATION_ROLES.includes(requestedRole) ? requestedRole : SALON_OWNER;
     const password = req.body?.password;
     if (typeof password !== 'string' || password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
       throw new ValidationError('Password must be at least 8 characters and include a letter and a number');
@@ -151,7 +157,7 @@ adminRouter.post(
   })
 );
 
-adminRouter.patch('/users/:userId', (req, res) => {
+adminRouter.patch('/users/:userId', requireSuperAdmin, (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -169,8 +175,8 @@ adminRouter.patch('/users/:userId', (req, res) => {
   }
   if (req.body?.role !== undefined) {
     const role = String(req.body.role);
-    if (!['super_admin', 'salon_owner'].includes(role)) throw new ValidationError('Invalid role');
-    if (user.id === req.user.id && role !== 'super_admin') {
+    if (!APPLICATION_ROLES.includes(role)) throw new ValidationError('Invalid role');
+    if (user.id === req.user.id && role !== SUPER_ADMIN) {
       throw new ValidationError('You cannot remove your own super admin role.');
     }
     updates.role = role;
@@ -568,7 +574,7 @@ adminRouter.get('/settings', (req, res) => {
   res.json({ settings: getSettings() });
 });
 
-adminRouter.patch('/settings', (req, res) => {
+adminRouter.patch('/settings', requireSuperAdmin, (req, res) => {
   const body = req.body || {};
   const patch = {};
   if (body.platformName !== undefined) patch.platformName = str(body.platformName, { min: 2, max: 80, field: 'Platform name', required: true });

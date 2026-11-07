@@ -1,4 +1,10 @@
-export type Role = 'super_admin' | 'salon_owner';
+/**
+ * Canonical RBAC vocabulary. `admin` is an operational administrator with
+ * read-mostly console access; `customer` only sees customer-facing surfaces.
+ * `salon_owner` is retained for all existing owner accounts.
+ * Mirrored in `src/lib/roles.js` (framework-free, shared with the API).
+ */
+export type Role = 'super_admin' | 'admin' | 'salon_owner' | 'customer';
 
 export interface AuthUser {
   id: string;

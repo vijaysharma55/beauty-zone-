@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { ServiceItem } from '../types';
+import type { ServiceItem } from '../types';
+import { serviceCardDescription } from '../data/servicesStore';
 import { Button } from './ui';
 
 interface Props {
@@ -53,10 +54,22 @@ export const RecommendedServicesSection: React.FC<Props> = ({ services, onSelect
             <div key={service.id} className="border border-[#E8DFC8] p-6 rounded-xl bg-white shadow-sm flex flex-col justify-between hover:shadow-md transition">
               <div>
                 <h3 className="font-serif font-semibold text-xl text-slate-900">{service.title}</h3>
-                <p className="text-sm text-slate-600 mt-2 line-clamp-3">{service.description}</p>
+                <p className="text-sm text-slate-600 mt-2 line-clamp-4" title={serviceCardDescription(service)}>
+                  {serviceCardDescription(service)}
+                </p>
+                {!!service.productsUsed?.length && (
+                  <p className="mt-2 text-[11px] font-semibold text-[#A2722A]">
+                    Genuine products: {service.productsUsed.slice(0, 3).join(' · ')}
+                  </p>
+                )}
               </div>
-              <div className="mt-6 flex items-center justify-between pt-4 border-t border-slate-100">
-                <span className="text-sm font-medium text-slate-500">{service.duration || '45 mins'}</span>
+              <div className="mt-6 flex items-center justify-between gap-3 pt-4 border-t border-slate-100">
+                <div>
+                  <span className="block font-mono text-sm font-bold text-slate-900">
+                    ₹{service.price.toLocaleString('en-IN')}
+                  </span>
+                  <span className="text-xs text-slate-500">{service.duration || '45 mins'} · all-inclusive</span>
+                </div>
                 <Button size="sm" onClick={() => onSelectService(service)}>Book Now</Button>
               </div>
             </div>

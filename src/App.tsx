@@ -21,13 +21,25 @@ import { Footer } from './components/Footer';
 import { FloatingActions } from './components/FloatingActions';
 import { MobileBottomDock } from './components/MobileBottomDock';
 import { ServiceCategory, SalonPackage, GalleryItem, VideoItem, ServiceItem } from './types';
-import { getStoredPackages, mergeNewPackagesOnce, saveStoredPackages } from './data/packagesData';
+import {
+  getStoredPackages,
+  mergeNewPackagesOnce,
+  saveStoredPackages,
+  enrichPackageCatalog,
+  reconcilePackageCatalogs,
+} from './data/packagesData';
 import { getStoredGallery, saveStoredGallery } from './data/galleryData';
 import { getStoredVideos, saveStoredVideos } from './data/videosData';
-import { getStoredServices, saveStoredServices } from './data/servicesStore';
+import {
+  getStoredServices,
+  saveStoredServices,
+  reconcileServiceCatalogs,
+} from './data/servicesStore';
+import { catalogsEqual } from './data/catalogHydration.js';
 import { loadSiteSection, saveSiteSection } from './lib/sectionStore';
 import { useBrand } from './context/BrandContext';
 import { useAuth } from './context/AuthContext';
+import { isAdminRole } from './lib/roles.js';
 import { api, ApiError } from './lib/api';
 import type { PublicSalonResponse, SalonStaff } from './types/auth';
 import { Button } from './components/ui';
@@ -108,7 +120,12 @@ function MarketingSite() {
       cancelled = true;
     };
   }, []);
-  // Pull the signed-in owner's published content from Supabase; localStorage remains a fallback cache.
+  /**
+   * Pull the signed-in owner's published content from Supabase; localStorage
+   * remains a durable fallback cache. Cloud and local catalogues are
+   * reconciled by id so a partial/stale cloud read can never delete an
+   * owner's custom cards or reset their prices, and enrichment runs once.
+   */
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -120,26 +137,38 @@ function MarketingSite() {
           loadSiteSection<VideoItem[]>('videos'),
         ]);
         if (cancelled) return;
-        if (cloudServices) { setServices(cloudServices); saveStoredServices(cloudServices); }
-        const packageSource = cloudPackages || packages;
+
+        // Read the freshest cache inside the effect (closure state may be stale).
+        const localServices = getStoredServices();
+        const localPackages = getStoredPackages();
+        const nextServices = reconcileServiceCatalogs(cloudServices, localServices);
+        if (cloudServices || !catalogsEqual(nextServices, services)) {
+          setServices(nextServices);
+          saveStoredServices(nextServices);
+        }
+
+        const reconciledPackages = reconcilePackageCatalogs(cloudPackages, localPackages);
         const packageMigration = mergeNewPackagesOnce(
-          packageSource,
+          reconciledPackages,
           user?.id ? `owner-${user.id}` : 'public'
         );
-        const currentPackages = packageMigration.packages;
-        if (cloudPackages || packageMigration.added) {
+        const currentPackages = enrichPackageCatalog(packageMigration.packages);
+        if (cloudPackages || packageMigration.added || !catalogsEqual(currentPackages, packages)) {
           setPackages(currentPackages);
           saveStoredPackages(currentPackages);
         }
+        // Only write the cloud copy when a seed migration actually changed it.
         if (cloudPackages && user?.id && packageMigration.added) {
           await saveSiteSection('packages', currentPackages);
         }
         if (cloudGallery) { setGalleryItems(cloudGallery); saveStoredGallery(cloudGallery); }
         if (cloudVideos) { setVideos(cloudVideos); saveStoredVideos(cloudVideos); }
-        // First signed-in visit: copy the existing local cache into that owner's cloud section.
+
+        // First signed-in visit: copy the reconciled local cache into that
+        // owner's cloud section so both sources converge.
         if (user?.id) {
           const firstSyncs: Promise<void>[] = [];
-          if (!cloudServices) firstSyncs.push(saveSiteSection('services', services));
+          if (!cloudServices) firstSyncs.push(saveSiteSection('services', nextServices));
           if (!cloudPackages) firstSyncs.push(saveSiteSection('packages', currentPackages));
           if (!cloudGallery) firstSyncs.push(saveSiteSection('gallery', galleryItems));
           if (!cloudVideos) firstSyncs.push(saveSiteSection('videos', videos));
@@ -147,6 +176,8 @@ function MarketingSite() {
         }
       } catch (error) {
         console.error('[site-content] Supabase read failed; using cached content:', error);
+        // The local cache was already hydrated during useState initialization,
+        // so a cloud outage never produces a blank or broken storefront.
       }
     };
     void load();
@@ -208,7 +239,7 @@ function MarketingSite() {
       navigate('/login');
       return;
     }
-    if (user.role === 'super_admin') {
+    if (isAdminRole(user.role)) {
       navigate('/admin/salons');
       return;
     }
@@ -629,7 +660,7 @@ export function App() {
       <Route
         path="/admin"
         element={
-          <ProtectedRoute role="super_admin">
+          <ProtectedRoute roles={['super_admin', 'admin']}>
             <AdminLayout />
           </ProtectedRoute>
         }

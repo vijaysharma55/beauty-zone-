@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import { selectWithFallback, withSelect } from './postgrest.js';
+import { APPLICATION_ROLES, normalizeRole, SALON_OWNER } from './roles.js';
 
 export const SUPABASE_URL = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://botkjeikjzhnbxnowdkl.supabase.co').replace(/\/+$/, '');
 export const SUPABASE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_f2nHVHcAdrlosQbZwAAxnQ_vnHQuuv0';
@@ -48,6 +50,60 @@ export async function requestSupabase(path, token, options = {}) {
   return data;
 }
 
+/* Schema variants: newest deployed schema first, oldest last. Defaults fill
+   optional columns so callers never see `undefined` for status or metadata. */
+export const PROFILE_SELECT_VARIANTS = [
+  { select: 'id,email,name,role,status,email_verified,created_at,updated_at' },
+  { select: 'id,email,name,role,status,created_at,updated_at', defaults: { email_verified: false } },
+  { select: 'id,email,name,role,created_at,updated_at', defaults: { status: 'active', email_verified: false } },
+  { select: '*', defaults: { status: 'active', email_verified: false } },
+];
+
+export const SERVICE_SELECT_VARIANTS = [
+  {
+    select: 'id,salon_id,name,category,description,price_paise,duration_minutes,image_url,active,sort_order,created_at,updated_at',
+  },
+  {
+    select: 'id,salon_id,name,category,description,price_paise,duration_minutes,active,sort_order,created_at,updated_at',
+    defaults: { image_url: '' },
+  },
+  {
+    select: 'id,salon_id,name,category,description,price_paise,duration_minutes,created_at,updated_at',
+    defaults: { image_url: '', active: true, sort_order: 0 },
+  },
+  {
+    select: 'id,salon_id,name,description,price_paise,created_at,updated_at',
+    defaults: { category: 'other', duration_minutes: 30, image_url: '', active: true, sort_order: 0 },
+  },
+  { select: '*', defaults: { active: true, sort_order: 0, duration_minutes: 30, image_url: '' } },
+];
+
+export const STAFF_SELECT_VARIANTS = [
+  { select: 'id,salon_id,name,role_title,bio,photo_url,specialties,active,booking_enabled,availability_status,sort_order,created_at,updated_at' },
+  { select: 'id,salon_id,name,role_title,bio,photo_url,specialties,active,sort_order,created_at,updated_at', defaults: { booking_enabled: true, availability_status: 'available' } },
+  { select: '*', defaults: { booking_enabled: true, availability_status: 'available', sort_order: 0 } },
+];
+
+/** Resilient single-row read (used for profiles and any future metadata). */
+export async function selectProfileRows(basePath, token, { label = 'public.profiles' } = {}) {
+  const result = await selectWithFallback(
+    PROFILE_SELECT_VARIANTS,
+    (select) => requestSupabase(withSelect(basePath, select), token),
+    { label }
+  );
+  return result.rows;
+}
+
+/** Resilient service/staff reads with safe defaults for optional columns. */
+export async function selectTableRows(table, baseQuery, token, variants) {
+  const result = await selectWithFallback(
+    variants,
+    (select) => requestSupabase(withSelect(`/rest/v1/${table}?${baseQuery}`, select), token),
+    { label: `public.${table}` }
+  );
+  return result.rows;
+}
+
 export async function getSupabaseContext(req, { required = true } = {}) {
   const header = String(req.get('authorization') || '');
   const match = header.match(/^Bearer\s+(.+)$/i);
@@ -58,18 +114,25 @@ export async function getSupabaseContext(req, { required = true } = {}) {
   }
   const authUser = await requestSupabase('/auth/v1/user', token);
   if (!authUser?.id) throw new SupabaseApiError(401, 'Your sign-in session is invalid. Please sign in again.');
-  const profiles = await requestSupabase('/rest/v1/profiles?id=eq.' + encodeURIComponent(authUser.id) + '&select=*&limit=1', token);
-  const profile = Array.isArray(profiles) ? profiles[0] : null;
+  const profiles = await selectProfileRows(
+    '/rest/v1/profiles?id=eq.' + encodeURIComponent(authUser.id) + '&limit=1',
+    token
+  );
+  const profile = profiles[0] || null;
   if (!profile) throw new SupabaseApiError(409, 'Your BeautyZone profile is not ready yet. Please sign in again.');
   if (profile.status === 'disabled') throw new SupabaseApiError(403, 'This account has been disabled. Please contact support.');
-  if (!['super_admin', 'salon_owner'].includes(profile.role)) throw new SupabaseApiError(403, 'Your account does not have an application role.');
+  const rawRole = String(profile.role ?? '').trim();
+  const role = rawRole ? normalizeRole(rawRole) : '';
+  if (!rawRole || !APPLICATION_ROLES.includes(role)) {
+    throw new SupabaseApiError(403, 'Your account does not have an application role.');
+  }
   return {
     token,
     authUser,
     profile,
     id: authUser.id,
     email: authUser.email || profile.email || '',
-    role: profile.role,
+    role,
     name: profile.name || authUser.user_metadata?.name || authUser.user_metadata?.full_name || '',
     emailVerified: Boolean(authUser.email_confirmed_at || authUser.confirmed_at || profile.email_verified),
     phoneVerified: Boolean(authUser.phone_confirmed_at),
@@ -94,7 +157,7 @@ export function profileUser(ctx) {
     id: ctx.id,
     email: ctx.email,
     name: ctx.profile.name || ctx.name || '',
-    role: ctx.profile.role,
+    role: normalizeRole(ctx.role),
     status: ctx.profile.status || 'active',
     authProvider: ctx.authUser.app_metadata?.provider === 'google' ? 'google' : 'password',
     emailVerified: ctx.emailVerified,
@@ -205,13 +268,15 @@ export async function getSalonById(ctx, salonId) {
 }
 
 export async function getServices(ctx, salonId, { activeOnly = false } = {}) {
-  const q = 'salon_id=eq.' + encodeURIComponent(salonId) + '&select=*&order=sort_order.asc,created_at.asc' + (activeOnly ? '&active=eq.true' : '');
-  return (await rest(ctx, 'services', q)).map(mapService);
+  const q = 'salon_id=eq.' + encodeURIComponent(salonId) + '&order=sort_order.asc,created_at.asc' + (activeOnly ? '&active=eq.true' : '');
+  const rows = await selectTableRows('services', q, ctx?.token, SERVICE_SELECT_VARIANTS);
+  return rows.map(mapService);
 }
 
 export async function getStaff(ctx, salonId, { activeOnly = false } = {}) {
-  const q = 'salon_id=eq.' + encodeURIComponent(salonId) + '&select=*&order=sort_order.asc,created_at.asc' + (activeOnly ? '&active=eq.true' : '');
-  return (await rest(ctx, 'staff', q)).map(mapStaff);
+  const q = 'salon_id=eq.' + encodeURIComponent(salonId) + '&order=sort_order.asc,created_at.asc' + (activeOnly ? '&active=eq.true' : '');
+  const rows = await selectTableRows('staff', q, ctx?.token, STAFF_SELECT_VARIANTS);
+  return rows.map(mapStaff);
 }
 
 export async function getSubscription(ctx, salonId) {
@@ -298,18 +363,28 @@ export async function getWorkflow(ctx, salon) {
 }
 
 export async function rawServices(ctx, salonId) {
-  return rest(ctx, 'services', 'salon_id=eq.' + encodeURIComponent(salonId) + '&select=*&order=sort_order.asc,created_at.asc');
+  return selectTableRows(
+    'services',
+    'salon_id=eq.' + encodeURIComponent(salonId) + '&order=sort_order.asc,created_at.asc',
+    ctx?.token,
+    SERVICE_SELECT_VARIANTS
+  );
 }
 export async function rawStaff(ctx, salonId) {
-  return rest(ctx, 'staff', 'salon_id=eq.' + encodeURIComponent(salonId) + '&select=*&order=sort_order.asc,created_at.asc');
+  return selectTableRows(
+    'staff',
+    'salon_id=eq.' + encodeURIComponent(salonId) + '&order=sort_order.asc,created_at.asc',
+    ctx?.token,
+    STAFF_SELECT_VARIANTS
+  );
 }
 
 export async function userPayload(ctx, { includeSalon = true } = {}) {
   const user = profileUser(ctx);
-  const salonRow = includeSalon && ctx.role === 'salon_owner' ? await getSalonForOwner(ctx) : null;
+  const salonRow = includeSalon && ctx.role === SALON_OWNER ? await getSalonForOwner(ctx) : null;
   if (!salonRow) return {
     user, salon: null, workflow: null, subscription: null,
-    onboardingRequired: ctx.role === 'salon_owner',
+    onboardingRequired: ctx.role === SALON_OWNER,
   };
   const [workflow, subscription] = await Promise.all([getWorkflow(ctx, salonRow), getSubscription(ctx, salonRow.id)]);
   return {

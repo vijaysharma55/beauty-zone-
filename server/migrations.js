@@ -43,6 +43,82 @@ if (addedVerification) {
   db.prepare("UPDATE users SET email_verified = 1, email_verified_at = COALESCE(email_verified_at, ?)").run(nowIso());
 }
 
+/* ---------------------------------------------------------------------------
+ * RBAC: add the `admin` and `customer` application roles.
+ *
+ * SQLite cannot ALTER a CHECK constraint, so databases created by older builds
+ * are rebuilt in place. Foreign keys are disabled for the swap and every
+ * column is copied explicitly, so existing local user IDs (and therefore the
+ * salons/sessions foreign keys that reference them) are preserved.
+ * ------------------------------------------------------------------------- */
+const USERS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    password_hash TEXT,
+    auth_provider TEXT NOT NULL DEFAULT 'password' CHECK (auth_provider IN ('password', 'google')),
+    google_sub TEXT UNIQUE,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'salon_owner' CHECK (role IN ('super_admin', 'admin', 'salon_owner', 'customer')),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+    email_verified INTEGER NOT NULL DEFAULT 0,
+    email_verified_at TEXT,
+    email_verification_token_hash TEXT,
+    email_verification_expires TEXT,
+    failed_logins INTEGER NOT NULL DEFAULT 0,
+    locked_until TEXT,
+    password_reset_token_hash TEXT,
+    password_reset_expires TEXT,
+    last_login_at TEXT,
+    date_of_birth TEXT,
+    supabase_uid TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`;
+
+const USER_COLUMNS = [
+  'id', 'email', 'password_hash', 'auth_provider', 'google_sub', 'name', 'role', 'status',
+  'email_verified', 'email_verified_at', 'email_verification_token_hash',
+  'email_verification_expires', 'failed_logins', 'locked_until',
+  'password_reset_token_hash', 'password_reset_expires', 'last_login_at',
+  'date_of_birth', 'supabase_uid', 'created_at', 'updated_at',
+];
+
+function usersTableSql() {
+  try {
+    return db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'").get()?.sql || '';
+  } catch {
+    return '';
+  }
+}
+
+if (usersTableSql() && !usersTableSql().includes("'admin'")) {
+  try {
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.exec('BEGIN IMMEDIATE');
+    db.exec('DROP TABLE IF EXISTS users_rbac_upgrade');
+    db.exec(USERS_TABLE_SQL.replace('CREATE TABLE IF NOT EXISTS users', 'CREATE TABLE users_rbac_upgrade'));
+    const current = columns('users');
+    const shared = USER_COLUMNS.filter((column) => current.includes(column));
+    db.exec(
+      `INSERT INTO users_rbac_upgrade (${shared.join(', ')})
+       SELECT ${shared.join(', ')} FROM users`
+    );
+    db.exec('DROP TABLE users');
+    db.exec('ALTER TABLE users_rbac_upgrade RENAME TO users');
+    db.exec('COMMIT');
+    db.exec('PRAGMA foreign_keys = ON');
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_supabase_uid ON users(supabase_uid) WHERE supabase_uid IS NOT NULL');
+    console.log('[migrations] users table upgraded for admin/customer RBAC roles');
+  } catch (err) {
+    try { db.exec('ROLLBACK'); } catch { /* nothing to roll back */ }
+    try { db.exec('PRAGMA foreign_keys = ON'); } catch { /* ignore */ }
+    throw err;
+  }
+}
+db.exec(USERS_TABLE_SQL);
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_supabase_uid ON users(supabase_uid) WHERE supabase_uid IS NOT NULL');
+
 /* Salons: approval workflow + onboarding extras */
 const addedTimings = addColumn('salons', 'timings_json', "TEXT NOT NULL DEFAULT '[]'");
 addColumn('salons', 'status', "TEXT NOT NULL DEFAULT 'draft'");

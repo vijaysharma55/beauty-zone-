@@ -1,10 +1,13 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { SALON_SERVICES } from '../data/salonData';
-import { ServiceCategory, ServiceItem, ServiceReview } from '../types';
+import type { ServiceCategory, ServiceItem, ServiceReview } from '../types';
 import { INITIAL_SERVICE_REVIEWS, BASELINE_SERVICE_RATINGS } from '../data/serviceReviewsData';
+import { enrichServiceCatalog, serviceCardDescription } from '../data/servicesStore';
+import { toServiceDetail, type TreatmentDetail } from '../data/treatmentCopy';
 import { ServiceReviewModal } from './ServiceReviewModal';
 import { ServiceCompareModal } from './ServiceCompareModal';
+import { TreatmentDetailModal } from './TreatmentDetailModal';
 import { ErrorBoundary } from './ErrorBoundary';
 import { RevealOnScroll } from './RevealOnScroll';
 import { useBrand } from '../context/BrandContext';
@@ -36,6 +39,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  BookOpen,
   Tag,
   ArrowLeftRight,
   LayoutGrid,
@@ -75,7 +79,14 @@ const SERVICE_EDITOR_FIELDS: EditorField[] = [
   { key: 'category', type: 'select', label: 'Category', options: SERVICE_CATEGORY_OPTIONS, required: true },
   { key: 'duration', type: 'text', label: 'Duration', placeholder: 'e.g. 90 mins', required: true },
   { key: 'price', type: 'number', label: 'Starting price (₹)', min: 0, required: true },
-  { key: 'description', type: 'textarea', label: 'Description', span: 2, rows: 3 },
+  {
+    key: 'description',
+    type: 'textarea',
+    label: 'Description',
+    span: 2,
+    rows: 5,
+    help: 'Describe the step-by-step process, key benefits, duration, ideal skin/hair types, genuine brands used and what the price includes.',
+  },
   {
     key: 'highlights',
     type: 'tags',
@@ -164,7 +175,10 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
   
   const allServices = useMemo(() => {
     const seen = new Set<string>();
-    return rawServices.filter((s) => {
+    // Enrich first so short or missing copy from older saved catalogs is
+    // replaced with the full luxury editorial record before any card renders.
+    const enriched = enrichServiceCatalog(rawServices);
+    return enriched.filter((s) => {
       const key = `${s.id}-${s.title.toLowerCase().trim()}`;
       if (seen.has(key)) return false;
       seen.add(key);
@@ -196,6 +210,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
   });
 
   const [reviewModalService, setReviewModalService] = useState<ServiceItem | null>(null);
+  const [detailService, setDetailService] = useState<TreatmentDetail | null>(null);
 
   // Comparison Feature State
   const [selectedForCompare, setSelectedForCompare] = useState<ServiceItem[]>([]);
@@ -298,7 +313,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
       shortLabel: 'Bridal',
       icon: Crown, 
       tagline: 'HD Airbrush Bridal Makeup & Draping',
-      description: 'Waterproof HD airbrush makeup, fine jewelry setting, and couture outfit & veil draping.', 
+      description: 'A private consultation and MAC Prep + Prime skin ritual open every bridal booking, followed by layered MAC, Huda Beauty and Temptu HD airbrush artistry, bespoke eyes, Kundan jewellery setting and couture dupatta draping. Expect 16–18 hours of waterproof, camera-ready wear for all Indian skin tones with a complimentary touch-up kit. Priced from ₹11,999 for party glam to ₹34,999 for Chief Artist airbrush bridal looks.', 
       image: '/images/bridal_makeup_jaipur_1790672008691.jpg',
       altText: 'Bride wearing fine gold jewelry and couture lehenga with HD makeup',
       features: ['Temptu HD Airbrush', 'Jewelry Setting', 'Couture Draping', 'Wedding Visits'],
@@ -309,7 +324,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
       shortLabel: 'Hair',
       icon: Scissors, 
       tagline: 'Chemical-Free Hair Botox & Balayage',
-      description: '100% safe formaldehyde-free hair smoothening, Olaplex balayage coloring, and haircuts.', 
+      description: 'Every hair journey starts with a strand, scalp and porosity assessment plus a patch test. We then clarify with L’Oréal Professionnel Metal Detox, protect bonds with Olaplex, apply formaldehyde-free GK Hair nanoplastia, keratin or hand-painted Blond Studio balayage, and seal with Kérastase and a Dyson finish. Ideal for frizzy, porous, colour-treated and hard-water damaged hair, with 3–6 months of mirror shine. Priced from ₹1,499 to ₹7,499.', 
       image: '/images/hair_styling_luxe_1790672021591.jpg',
       altText: 'Client with sleek balayage hair styled at luxury salon',
       features: ['Nanoplastia', 'Olaplex Protection', 'Custom Hair Colors', 'Wash & Blowout'],
@@ -320,7 +335,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
       shortLabel: 'Skin',
       icon: Droplet, 
       tagline: '24K Gold Leaf Glow & Hydra-Facials',
-      description: 'Deep-cleansing HydraFacials, signature 24K real gold leaf facials, and herbal de-tan.', 
+      description: 'Magnified skin analysis, a gentle double cleanse and kesar–sandalwood polish prepare the skin before real 24K gold leaf, ultrasound serum infusion, genuine 7-step HydraFacial MD extraction, LED therapy and cooling rose quartz. Visible radiance, refined pores and deep hyaluronic hydration with zero downtime for dull, oily, congested, pigmented and sensitive skin. Priced from ₹3,299 to ₹5,999 for 60–90 minute rituals.', 
       image: '/images/skin_spa_treatment_1790672037475.jpg',
       altText: 'Client getting a relaxing 24K gold facial at luxury salon',
       features: ['Real 24K Gold', 'Extraction Care', 'Cooling Ice Globes', 'Herbal De-Tan'],
@@ -331,7 +346,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
       shortLabel: 'Nails',
       icon: Sparkle, 
       tagline: 'Gel Extensions & Swarovski Art',
-      description: 'Chip-proof gel nail extensions, chrome finishes, Swarovski crystal art, and Russian manicures.', 
+      description: 'UV-sterilised dry Russian e-file preparation, CND Shellac and OPI GelColor systems, sculpted builder gel extensions and bespoke Swarovski, chrome or 24K gold foil art, all LED-cured for 2–4 weeks of chip-proof wear. Warm paraffin and almond-oil hand spa complete the ritual for short, brittle or dry-cuticle nails. Priced from ₹1,899 to ₹3,499 for 60–90 minute services.', 
       image: '/images/nail_art_luxe_1790676094903.jpg',
       altText: 'Bridal gel nail extensions with stone art',
       features: ['4-Week Gel', 'Swarovski Stones', 'Russian Manicure', 'Paraffin Spa'],
@@ -342,7 +357,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
       shortLabel: 'Makeup',
       icon: Sparkles, 
       tagline: 'HD Airbrush & Sangeet Party Glam Makeovers',
-      description: 'Waterproof HD airbrush makeup, party glam, smokey eyes, and professional bridal makeup artistry.', 
+      description: 'From dewy sangeet glam to full HD bridal artistry: illuminating skin prep, Charlotte Tilbury, Huda Beauty and MAC long-wear bases, glitter or cut-crease eyes, Ardell lashes and Dyson styling. Every look is sealed for 10–18 hours under flash photography and dance-floor lights, with draping and a touch-up kit available. Suitable for all skin types; priced from ₹11,999 to ₹34,999.', 
       image: '/images/bridal_makeup_jaipur_1790672008691.jpg',
       altText: 'Bridal and party makeup artistry',
       features: ['Temptu HD Airbrush', 'Smokey & Cut-Crease Eyes', 'Full Touchup Kit', 'Lashes & Draping'],
@@ -353,7 +368,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
       shortLabel: 'Spa',
       icon: Heart, 
       tagline: 'Rose Petal Milk Baths & Body Polishing',
-      description: 'Indulgent body spa rituals featuring organic milk baths, fresh rose petals, and almond oil massages.', 
+      description: 'Private-suite rituals begin with a wellness consultation, then move through Dead Sea salt and kesar exfoliation, a warm rose petal and organic milk bath, a 40-minute Swedish and lymphatic massage with Forest Essentials almond oils, aromatic steam and a hydrating shea wrap. Satin-soft, evenly toned skin and deep calm for all skin types, especially dry and tired. Priced from ₹3,999 to ₹4,499 for 80–90 minutes.', 
       image: '/images/prebridal_spa_ritual_1790676123541.jpg',
       altText: 'Relaxing rose petal body spa treatment',
       features: ['Rose Milk Soak', 'Herbal Scrub', 'Steam Therapy', 'Essential Oils'],
@@ -364,7 +379,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
       shortLabel: 'Academy',
       icon: GraduationCap, 
       tagline: 'Govt Certified Professional Courses',
-      description: 'Diploma in bridal makeup and advanced hair chemical treatments with practice on live models.', 
+      description: 'ISO and Government-recognised certification with 60–120 hours of theory, educator demonstrations and supervised live-model practice. Learn MAC, Huda Beauty and Temptu airbrush artistry, Dyson styling, L’Oréal Professionnel colour, Olaplex bond protection, GK Hair chemical work, consultation, pricing and portfolio building. Open to beginners and working professionals; ₹28,000–₹45,000 with professional kits included.', 
       image: '/images/academy_makeup_class_1790676134907.jpg',
       altText: 'Students practicing makeup in professional Academy class',
       features: ['Govt & ISO Diploma', 'Full Vanity Kit', 'Live Models', 'Career Support'],
@@ -912,6 +927,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
                   isCompared={selectedCompareIds.has(service.id)}
                   onToggleCompare={handleToggleCompare}
                   onSelectService={onSelectService}
+                  onOpenDetails={(svc) => setDetailService(toServiceDetail(svc))}
                   onImageError={handleImageError}
                   layout="grid"
                   actions={
@@ -984,6 +1000,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
                   selectedCompareIds={selectedCompareIds}
                   onToggleCompare={handleToggleCompare}
                   onSelectService={onSelectService}
+                  onOpenDetails={(svc) => setDetailService(toServiceDetail(svc))}
                   onOpenReviewModal={(svc) => setReviewModalService(svc)}
                   onImageError={handleImageError}
                   onFilterCategory={(id) => {
@@ -1049,6 +1066,18 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
           </div>
         </aside>
       )}
+
+      {/* Full treatment protocol, benefits, ideal profiles, products & pricing */}
+      <TreatmentDetailModal
+        detail={detailService}
+        onClose={() => setDetailService(null)}
+        onBook={(detail) => {
+          const service = allServices.find((item) => item.id === detail.id);
+          setDetailService(null);
+          if (service) onSelectService(service);
+        }}
+        bookLabel="Book This Treatment"
+      />
 
       {/* Service Review Modal */}
       {reviewModalService && (
@@ -1121,6 +1150,7 @@ interface ServiceCardItemProps {
   isCompared: boolean;
   onToggleCompare: (service: ServiceItem) => void;
   onSelectService: (service: ServiceItem) => void;
+  onOpenDetails: (service: ServiceItem) => void;
   onImageError: (id: string) => void;
   layout?: 'grid' | 'carousel';
   actions?: React.ReactNode;
@@ -1133,6 +1163,7 @@ const ServiceCardItem: React.FC<ServiceCardItemProps> = ({
   isCompared,
   onToggleCompare,
   onSelectService,
+  onOpenDetails,
   onImageError,
   layout = 'carousel',
   actions,
@@ -1194,6 +1225,23 @@ const ServiceCardItem: React.FC<ServiceCardItemProps> = ({
             ✓ {service.highlights[0]}
           </p>
         )}
+
+        {/* Rich, never-blank treatment description on every service card */}
+        <p
+          className={`mt-1.5 text-[10px] leading-relaxed text-[#4A4A4A] ${layout === 'grid' ? 'line-clamp-3' : 'line-clamp-2'}`}
+          title={serviceCardDescription(service)}
+        >
+          {serviceCardDescription(service)}
+        </p>
+        <button
+          type="button"
+          onClick={() => onOpenDetails(service)}
+          className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-[#D09A40] hover:text-[#0F172A] hover:underline cursor-pointer transition-colors"
+          aria-label={`View full protocol, benefits, products and pricing for ${service.title}`}
+        >
+          <BookOpen className="w-3 h-3" />
+          <span>Full Protocol &amp; Pricing</span>
+        </button>
       </div>
 
       {/* Card Footer: Price & Estimated Duration & Quick Book & Compare */}
@@ -1201,7 +1249,10 @@ const ServiceCardItem: React.FC<ServiceCardItemProps> = ({
         <div>
           <span className="text-[9px] uppercase tracking-wider text-neutral-400 block leading-none mb-0.5">Price & Duration</span>
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs sm:text-sm font-bold font-mono text-[#0F172A]">
+            <span
+              className="text-xs sm:text-sm font-bold font-mono text-[#0F172A]"
+              title={service.priceNote || 'Transparent, all-inclusive treatment price'}
+            >
               ₹{service.price.toLocaleString('en-IN')}
             </span>
             <span
@@ -1212,6 +1263,9 @@ const ServiceCardItem: React.FC<ServiceCardItemProps> = ({
               <span>{service.estimatedDuration || service.duration}</span>
             </span>
           </div>
+          <span className="mt-1 block text-[9px] font-semibold text-emerald-700">
+            All-inclusive · no hidden charges
+          </span>
         </div>
 
         <div className="flex items-center gap-1">
@@ -1254,6 +1308,7 @@ interface CategoryHorizontalRowProps {
   selectedCompareIds: Set<string>;
   onToggleCompare: (service: ServiceItem) => void;
   onSelectService: (service: ServiceItem) => void;
+  onOpenDetails: (service: ServiceItem) => void;
   onOpenReviewModal: (service: ServiceItem) => void;
   onImageError: (id: string) => void;
   onFilterCategory?: (id: ServiceFilterCategory) => void;
@@ -1268,6 +1323,7 @@ const CategoryHorizontalRow: React.FC<CategoryHorizontalRowProps> = ({
   selectedCompareIds,
   onToggleCompare,
   onSelectService,
+  onOpenDetails,
   onOpenReviewModal,
   onImageError,
   onFilterCategory,
@@ -1369,6 +1425,7 @@ const CategoryHorizontalRow: React.FC<CategoryHorizontalRowProps> = ({
               isCompared={selectedCompareIds.has(service.id)}
               onToggleCompare={onToggleCompare}
               onSelectService={onSelectService}
+              onOpenDetails={onOpenDetails}
               onImageError={onImageError}
               layout="carousel"
               actions={actionsForService?.(service)}

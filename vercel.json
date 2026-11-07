@@ -13,6 +13,42 @@
       "destination": "/index.html"
     },
     {
+      "source": "/login",
+      "destination": "/spa.html"
+    },
+    {
+      "source": "/register",
+      "destination": "/spa.html"
+    },
+    {
+      "source": "/forgot-password",
+      "destination": "/spa.html"
+    },
+    {
+      "source": "/reset-password",
+      "destination": "/spa.html"
+    },
+    {
+      "source": "/verify-email",
+      "destination": "/spa.html"
+    },
+    {
+      "source": "/dashboard",
+      "destination": "/spa.html"
+    },
+    {
+      "source": "/my-appointments",
+      "destination": "/spa.html"
+    },
+    {
+      "source": "/salons",
+      "destination": "/spa.html"
+    },
+    {
+      "source": "/admin",
+      "destination": "/spa.html"
+    },
+    {
       "source": "/((?!api/|assets/)[^.]*)",
       "destination": "/spa.html"
     }
@@ -37,6 +73,24 @@
         {
           "key": "Cache-Control",
           "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/spa.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
         }
       ]
     }

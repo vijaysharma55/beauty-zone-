@@ -16,6 +16,7 @@
  * without touching the UI.
  */
 import { supabase } from './supabase';
+import { withSchemaFallback } from './postgrestFallback.js';
 
 export type AppointmentStatus = 'upcoming' | 'completed' | 'cancelled' | 'no_show';
 /** 'past' = a still-active booking whose date has gone by without a final status. */
@@ -81,6 +82,9 @@ const CANCELLED_STATUSES = ['cancelled', 'declined', 'expired', 'payment_failed'
 
 const SELECT_COLUMNS =
   'id,reference,customer_id,service_id,service,stylist,estimated_total,amount_paise,advance_paise,payment_status,booking_date,booking_time,status,created_at,salons(name,slug)';
+
+const REDUCED_SELECT_COLUMNS =
+  'id,reference,service_id,service,stylist,estimated_total,amount_paise,advance_paise,payment_status,booking_date,booking_time,status,created_at';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -188,6 +192,37 @@ export function buildHistoryQuery(opts: {
   ].join('&');
 }
 
+/**
+ * Schema-resilient query variants. Older deployments may lack `customer_id`
+ * or the `salons` foreign-key embed; RLS still limits rows to the caller, so
+ * dropping the redundant customer_id filter is safe.
+ */
+export function buildHistoryQueryVariants(opts: {
+  customerId: string;
+  filter: AppointmentFilter;
+  offset: number;
+  pageSize: number;
+  today?: string;
+}): string[] {
+  const full = buildHistoryQuery(opts);
+  const today = opts.today ?? localISODate();
+  const ascending = opts.filter === 'upcoming';
+  const order = ascending
+    ? 'order=booking_date.asc,created_at.asc'
+    : 'order=booking_date.desc,created_at.desc';
+  const tail = [
+    ...filterParams(opts.filter, today),
+    order,
+    `limit=${opts.pageSize + 1}`,
+    `offset=${Math.max(0, Math.floor(opts.offset))}`,
+  ];
+  return [
+    full,
+    [`select=${REDUCED_SELECT_COLUMNS}`, `customer_id=eq.${opts.customerId}`, ...tail].join('&'),
+    [`select=${REDUCED_SELECT_COLUMNS}`, ...tail].join('&'),
+  ];
+}
+
 export async function fetchAppointmentHistory(opts: {
   customerId: string;
   filter: AppointmentFilter;
@@ -196,14 +231,17 @@ export async function fetchAppointmentHistory(opts: {
 }): Promise<AppointmentPage> {
   const pageSize = opts.pageSize ?? 10;
   const today = localISODate();
-  const query = buildHistoryQuery({
+  const variants = buildHistoryQueryVariants({
     customerId: opts.customerId,
     filter: opts.filter,
     offset: opts.offset ?? 0,
     pageSize,
     today,
   });
-  const rows = await supabase.db.select<BookingRow>('bookings', query);
+  const result = await withSchemaFallback(variants, (query) =>
+    supabase.db.select<BookingRow>('bookings', query)
+  );
+  const rows = result.value ?? [];
   const hasMore = rows.length > pageSize;
   const items = rows
     .slice(0, pageSize)

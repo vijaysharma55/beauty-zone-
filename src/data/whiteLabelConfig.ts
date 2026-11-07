@@ -171,13 +171,14 @@ export const DEFAULT_WHITE_LABEL_CONFIG: WhiteLabelConfig = {
 
   bridalBadgeText: 'Wedding & Destination Bridal Specialists',
   bridalHeadline: 'Flawless 16-Hour Waterproof Bridal Artistry',
-  bridalSubheadline: 'From intimate ceremonies to grand palace weddings, our senior bridal team travels to your venue or welcomes you in our private bridal suites.',
+  bridalSubheadline:
+    'Every bridal journey begins with a private skin, undertone and outfit consultation, followed by a MAC Prep + Prime skin ritual and layered HD or Temptu airbrush artistry with Huda Beauty and Charlotte Tilbury. From intimate ceremonies to grand palace weddings, our senior team travels to your venue or welcomes you in our private bridal suites — with Kundan jewellery setting, couture draping, a Dyson finish and a sealed 16-hour touch-up kit. Suitable for every Indian skin tone, including oily, dry, combination and sensitive skin.',
   bridalImage: '/images/jaipur_royal_bride_1792647664582.jpg',
   bridalFeatures: [
-    'HD & Silicone Airbrush Makeup with MAC, Charlotte Tilbury & Huda Beauty',
-    'Complete Fine Jewelry Setting, Veil Fixing & Couture Outfit Draping',
-    'Dedicated On-Venue Team for Bride, Bridesmaids & Family Guests',
-    'Personalized Pre-Wedding Skin & Hair Glow Regimen',
+    'Step 1 – Private shade matching & skin prep: Forest Essentials cleanse, collagen mask and MAC Prep + Prime hydration for all skin types',
+    'Step 2 – HD & silicone Temptu airbrush base: MAC, Huda Beauty, Charlotte Tilbury and NARS in thin, flash-safe layers',
+    'Step 3 – Couture finishing: bespoke eye artistry, Ardell lashes, Kundan jewellery setting, veil fixing and lehenga/dupatta draping',
+    'Step 4 – 16-hour seal: Dyson-styled hair, MAC Fix+ setting, flash-photo check and a personalised take-home touch-up kit',
   ],
 
   founderName: 'Aaradhya Singhania',
