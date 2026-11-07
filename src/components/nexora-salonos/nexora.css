@@ -1,0 +1,35 @@
+/*
+ * Scoped styles for the Nexora SalonOS landing page (/nexora-salonos).
+ *
+ * Everything hangs off `.nexora-root` so nothing leaks into the rest of the
+ * BeautyZone app. Un-layered CSS beats the repo's `@layer base` rules, which is
+ * how the page keeps its own typeface instead of the site's serif headings.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
+
+.nexora-root,
+.nexora-root h1,
+.nexora-root h2,
+.nexora-root h3,
+.nexora-root h4,
+.nexora-root button,
+.nexora-root input,
+.nexora-root select {
+  font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
+}
+
+/* Logo marquee: the track holds the list twice, so -50% loops seamlessly */
+@keyframes nx-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.nexora-root .nx-marquee {
+  animation: nx-marquee 30s linear infinite;
+}
+.nexora-root .nx-marquee:hover {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nexora-root .nx-marquee { animation: none; }
+}

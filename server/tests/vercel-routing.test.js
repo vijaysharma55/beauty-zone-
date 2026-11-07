@@ -18,6 +18,7 @@ const DEEP_LINKS = [
   '/verify-email',
   '/salons',
   '/salon/lumina-luxe',
+  '/nexora-salonos',
   '/my-appointments',
   '/dashboard',
   '/dashboard/onboarding',
