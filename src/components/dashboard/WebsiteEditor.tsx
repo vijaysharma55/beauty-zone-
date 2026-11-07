@@ -225,7 +225,7 @@ export const WebsiteEditor: React.FC = () => {
       <PageHeader
         eyebrow="Website builder"
         title="My website"
-        description="Update your brand, contact details, gallery and colours. Changes go live instantly once published."
+        description="Update your brand, contact details, gallery and colours. Changes go live only after a super admin approves your next submission."
         actions={
           <>
             <Link to="/dashboard/preview">
@@ -252,8 +252,8 @@ export const WebsiteEditor: React.FC = () => {
               <StatusBadge status={workflow?.status || salon.status} suspended={workflow?.suspended || salon.suspended} />
             </div>
             <p className="mt-1 max-w-xl text-sm text-slate-500">
-              Save your work as a draft any time. Only an approved version can be published, and the live site always
-              shows the last approved content.
+              Save your work as a draft any time. You submit for review; a platform super admin approves and
+              publishes it. The live site always shows the last approved content.
             </p>
             <code className="mt-2 inline-block rounded-lg bg-slate-100 px-2.5 py-1 text-xs text-slate-700">
               {liveUrl}

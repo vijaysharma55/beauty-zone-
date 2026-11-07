@@ -17,6 +17,10 @@
       "destination": "/spa.html"
     },
     {
+      "source": "/admin/login",
+      "destination": "/spa.html"
+    },
+    {
       "source": "/register",
       "destination": "/spa.html"
     },

@@ -16,6 +16,7 @@ import {
   MapPin,
 } from 'lucide-react';
 import { api, errorMessage } from '../../lib/api';
+import { useAuth } from '../../context/AuthContext';
 import { StatusBadge } from '../dashboard/WorkflowStatus';
 import type { Salon, SalonService, SalonStaff } from '../../types/auth';
 import {
@@ -65,6 +66,7 @@ const toDraft = (salon: Salon): EditDraft => ({
 });
 
 export const AdminSalons: React.FC = () => {
+  const { user } = useAuth();
   const [salons, setSalons] = useState<Salon[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -147,7 +149,17 @@ export const AdminSalons: React.FC = () => {
     );
   };
 
+  /**
+   * Publish / unpublish is a super-admin-only transition. Operational admins
+   * still see the state, but the buttons are disabled and the API answers 403.
+   */
+  const canPublish = user?.role === 'super_admin';
+
   const togglePublished = async (salon: Salon) => {
+    if (!canPublish) {
+      setError('Only a platform super admin can publish or unpublish a salon website.');
+      return;
+    }
     setBusyId(salon.id);
     setError('');
     setDetailError('');
@@ -166,6 +178,10 @@ export const AdminSalons: React.FC = () => {
 
   const toggleSuspension = async () => {
     if (!detail) return;
+    if (!canPublish) {
+      setDetailError('Only a platform super admin can suspend or reinstate a salon.');
+      return;
+    }
     const suspending = !detail.salon.suspended;
     if (suspending && !suspendReason.trim()) {
       setDetailError('Please give a reason for suspending this salon — the owner will see it.');
@@ -427,6 +443,12 @@ export const AdminSalons: React.FC = () => {
                           variant={salon.published ? 'secondary' : 'primary'}
                           size="sm"
                           loading={busyId === salon.id}
+                          disabled={!canPublish}
+                          title={
+                            canPublish
+                              ? 'Publish or unpublish this website'
+                              : 'Only a super admin can publish websites'
+                          }
                           onClick={() => togglePublished(salon)}
                         >
                           {salon.published ? (
@@ -474,6 +496,8 @@ export const AdminSalons: React.FC = () => {
                   <Button
                     variant={detail.salon.published ? 'danger' : 'primary'}
                     loading={busyId === detail.salon.id}
+                    disabled={!canPublish}
+                    title={canPublish ? undefined : 'Only a super admin can publish websites'}
                     onClick={() => togglePublished(detail.salon)}
                   >
                     {detail.salon.published ? 'Force unpublish' : 'Publish salon'}
@@ -648,6 +672,8 @@ export const AdminSalons: React.FC = () => {
                   variant={detail.salon.suspended ? 'secondary' : 'danger'}
                   size="sm"
                   loading={suspendBusy}
+                  disabled={!canPublish}
+                  title={canPublish ? undefined : 'Only a super admin can suspend a salon'}
                   onClick={toggleSuspension}
                 >
                   {detail.salon.suspended ? 'Reinstate salon' : 'Suspend salon'}

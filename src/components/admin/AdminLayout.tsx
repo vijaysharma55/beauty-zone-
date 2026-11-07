@@ -32,9 +32,12 @@ export const AdminLayout: React.FC = () => {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const isSuperAdmin = user?.role === 'super_admin';
+
   const handleLogout = async () => {
     await logout();
-    navigate('/login', { replace: true });
+    // Stay inside the operator surface: the console has its own front door.
+    navigate('/admin/login', { replace: true });
   };
 
   const sidebar = (
@@ -53,10 +56,12 @@ export const AdminLayout: React.FC = () => {
 
       <div className="mx-3 mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
         <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-800">
-          <ShieldCheck className="h-3.5 w-3.5" /> Super admin access
+          <ShieldCheck className="h-3.5 w-3.5" /> {isSuperAdmin ? 'Super admin access' : 'Read-only console access'}
         </p>
         <p className="mt-1 text-[11px] leading-relaxed text-amber-700">
-          You can manage every user, salon, subscription and platform setting.
+          {isSuperAdmin
+            ? 'You can review submissions, approve and publish websites, and manage every user and setting.'
+            : 'You can inspect users, salons and payments. Only a super admin can approve, publish or change platform settings.'}
         </p>
       </div>
 
@@ -94,7 +99,7 @@ export const AdminLayout: React.FC = () => {
           <p className="truncate text-sm font-semibold text-slate-800">{user?.name}</p>
           <p className="truncate text-xs text-slate-500">{user?.email}</p>
           <span className="mt-1 inline-block rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#D09A40]">
-            Super admin
+            {isSuperAdmin ? 'Super admin' : 'Operations admin'}
           </span>
         </div>
         <Button variant="ghost" size="sm" className="w-full justify-start" onClick={handleLogout}>

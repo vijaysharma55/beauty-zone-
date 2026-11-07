@@ -43,7 +43,7 @@ export const AuthLayout: React.FC<{
         <ul className="mt-8 space-y-3 text-sm text-[#FAF5E5]/80">
           {[
             'One dashboard, one salon — your data stays yours',
-            'Instant publish / unpublish of your live website',
+            'Submit for review, then track your approval status',
             'Secure accounts with email or Google sign-in',
           ].map((item) => (
             <li key={item} className="flex items-start gap-2.5">

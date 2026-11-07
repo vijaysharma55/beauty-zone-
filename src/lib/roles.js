@@ -16,8 +16,22 @@ export const CUSTOMER = 'customer';
 /** Every role the platform recognizes. Order is used for UI selectors. */
 export const APPLICATION_ROLES = Object.freeze([SUPER_ADMIN, ADMIN, SALON_OWNER, CUSTOMER]);
 
-/** Roles allowed to open the /admin console. */
+/**
+ * Roles allowed to open the /admin console.
+ *
+ * `super_admin` owns the console. `admin` is an operational support role with
+ * read-only console access. Neither role may ever own a salon.
+ */
 export const ADMIN_ROLES = Object.freeze([SUPER_ADMIN, ADMIN]);
+
+/**
+ * Roles that may review, approve, reject or publish a salon website.
+ *
+ * This is deliberately narrower than ADMIN_ROLES: publishing a salon website is
+ * a super-admin-only action, so an operational admin can never approve a
+ * submission (and a salon owner can never approve their own).
+ */
+export const APPROVAL_ROLES = Object.freeze([SUPER_ADMIN]);
 
 /** Roles allowed to open the /dashboard owner workspace. */
 export const OWNER_ROLES = Object.freeze([SALON_OWNER]);
@@ -73,6 +87,16 @@ export function isStaffRole(role) { return STAFF_ROLES.includes(normalizeRole(ro
 
 /** @param {unknown} role @returns {boolean} */
 export function canAccessAdminConsole(role) { return isAdminRole(role); }
+
+/**
+ * Only a super admin may review submissions and publish salon websites.
+ * Kept separate from `canAccessAdminConsole` so an operational admin cannot
+ * inherit approval powers through a shared capability check.
+ *
+ * @param {unknown} role
+ * @returns {boolean}
+ */
+export function canReviewSalonWebsites(role) { return APPROVAL_ROLES.includes(normalizeRole(role)); }
 /** @param {unknown} role @returns {boolean} */
 export function canAccessOwnerDashboard(role) { return isAdminRole(role) || isOwnerRole(role); }
 /** @param {unknown} role @returns {boolean} */

@@ -53,6 +53,7 @@ const LoginPage = React.lazy(() => import('./components/auth/LoginPage').then((m
 const RegisterPage = React.lazy(() => import('./components/auth/RegisterPage').then((module) => ({ default: module.RegisterPage })));
 const ForgotPasswordPage = React.lazy(() => import('./components/auth/ForgotPasswordPage').then((module) => ({ default: module.ForgotPasswordPage })));
 const ResetPasswordPage = React.lazy(() => import('./components/auth/ResetPasswordPage').then((module) => ({ default: module.ResetPasswordPage })));
+const AdminLoginPage = React.lazy(() => import('./components/auth/AdminLoginPage').then((module) => ({ default: module.AdminLoginPage })));
 const ProtectedRoute = React.lazy(() => import('./components/auth/ProtectedRoute').then((module) => ({ default: module.ProtectedRoute })));
 
 const DashboardLayout = React.lazy(() => import('./components/dashboard/DashboardLayout').then((module) => ({ default: module.DashboardLayout })));
@@ -521,6 +522,7 @@ function RouteIndexingPolicy() {
   useEffect(() => {
     const privatePaths = new Set([
       PUBLIC_PATHS.login,
+      '/admin/login',
       PUBLIC_PATHS.register,
       PUBLIC_PATHS.forgotPassword,
       PUBLIC_PATHS.resetPassword,
@@ -624,8 +626,12 @@ export function App() {
       {/* Public marketing site — subdomain-aware: tenant subdomains render the salon site */}
       <Route path={PUBLIC_PATHS.home} element={<SubdomainAwareHome><MarketingSite /></SubdomainAwareHome>} />
 
-      {/* Authentication */}
+      {/* Authentication — two isolated front doors */}
       <Route path={PUBLIC_PATHS.login} element={<LoginPage />} />
+      {/* Super admin portal: a separate, unlinked sign-in surface that only
+          accepts administrator profiles. Must come before /admin so the nested
+          console layout does not intercept it. */}
+      <Route path="/admin/login" element={<AdminLoginPage />} />
       <Route path={PUBLIC_PATHS.register} element={<RegisterPage />} />
       <Route path={PUBLIC_PATHS.forgotPassword} element={<ForgotPasswordPage />} />
       <Route path={PUBLIC_PATHS.resetPassword} element={<ResetPasswordPage />} />

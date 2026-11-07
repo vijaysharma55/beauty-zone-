@@ -31,6 +31,8 @@ import { APPLICATION_ROLES, SUPER_ADMIN, ADMIN, SALON_OWNER, CUSTOMER } from '..
 import {
   workflowInfo,
   reviewSubmission,
+  publishSalon,
+  unpublishSalon,
   serializeVersion,
   getPendingVersion,
   getApprovedVersion,
@@ -43,8 +45,9 @@ export const adminRouter = Router();
 
 // Hard RBAC gate for the entire admin surface. The role was resolved from the
 // trusted Supabase profile by loadSession (cookie or verified bearer token).
-// Operational admins may view the console; only a super admin may grant
-// roles or change platform-wide settings.
+// Operational admins may view the console; only a super admin may grant roles,
+// change platform-wide settings, review submissions, or publish/unpublish a
+// salon website. A salon_owner can never reach any route in this router.
 adminRouter.use(requireRole(SUPER_ADMIN, ADMIN));
 
 const PLANS = new Set(['trial', 'starter', 'pro', 'elite']);
@@ -303,22 +306,36 @@ adminRouter.get('/salons/:salonId', (req, res) => {
 adminRouter.patch('/salons/:salonId', (req, res) => {
   const salon = db.prepare('SELECT * FROM salons WHERE id = ?').get(req.params.salonId);
   if (!salon) return res.status(404).json({ error: 'Salon not found' });
-  const updates = {};
+
+  // Publishing a website is a super-admin-only decision. The dedicated
+  // POST /salons/:salonId/publish endpoint is the supported path; keep this
+  // alias so existing console screens keep working, but never let an
+  // operational admin (or anything else) publish.
   if (req.body?.published !== undefined) {
+    if (req.user.role !== SUPER_ADMIN) {
+      return res.status(403).json({
+        error: 'Only a platform super admin can publish or unpublish a salon website.',
+        code: 'FORBIDDEN_ROLE',
+      });
+    }
     const publish = bool(req.body.published);
     if (publish) {
-      if (salon.suspended) {
-        throw new ValidationError('Unsuspend this salon before publishing its website.');
-      }
-      const publishable = salon.status === 'approved' || salon.status === 'pending';
-      if (!getApprovedVersion(salon.id) || !publishable) {
-        throw new ValidationError('Approve a submitted version before publishing this website.');
-      }
+      publishSalon({ salonId: salon.id, reviewer: req.user });
+      audit(req, 'admin.salon_published', 'salon', salon.id);
+    } else {
+      unpublishSalon({ salonId: salon.id, reviewer: req.user });
+      audit(req, 'admin.salon_unpublished', 'salon', salon.id);
     }
-    updates.website_published = publish ? 1 : 0;
-    if (publish) updates.published_at = salon.published_at || nowIso();
   }
+
+  const updates = {};
   if (req.body?.suspended !== undefined) {
+    if (req.user.role !== SUPER_ADMIN) {
+      return res.status(403).json({
+        error: 'Only a platform super admin can suspend or reinstate a salon.',
+        code: 'FORBIDDEN_ROLE',
+      });
+    }
     const suspend = bool(req.body.suspended);
     updates.suspended = suspend ? 1 : 0;
     if (suspend) {
@@ -357,7 +374,11 @@ adminRouter.patch('/salons/:salonId', (req, res) => {
     if (logo && !isSafeImageUrl(logo)) throw new ValidationError('Logo must be a valid image URL');
     updates.logo_url = logo;
   }
-  if (Object.keys(updates).length === 0) return res.json({ salon: serializeSalon(salon) });
+  if (Object.keys(updates).length === 0) {
+    return res.json({
+      salon: serializeSalon(db.prepare('SELECT * FROM salons WHERE id = ?').get(salon.id)),
+    });
+  }
   updates.updated_at = nowIso();
   const cols = Object.keys(updates);
   db.prepare(`UPDATE salons SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`).run(
@@ -366,6 +387,29 @@ adminRouter.patch('/salons/:salonId', (req, res) => {
   );
   audit(req, 'admin.salon_updated', 'salon', salon.id, { fields: cols });
   res.json({ salon: serializeSalon(db.prepare('SELECT * FROM salons WHERE id = ?').get(salon.id)) });
+});
+
+/* ------------------------------------------------------------------ */
+/* Publish / unpublish (super admin only)                              */
+/* ------------------------------------------------------------------ */
+
+adminRouter.post('/salons/:salonId/publish', requireSuperAdmin, (req, res) => {
+  const updated = publishSalon({ salonId: req.params.salonId, reviewer: req.user });
+  audit(req, 'admin.salon_published', 'salon', updated.id, { slug: updated.slug });
+  res.json({
+    salon: serializeSalon(updated),
+    workflow: workflowInfo(updated, db.prepare('SELECT * FROM users WHERE id = ?').get(updated.owner_id)).workflow,
+    url: `/salon/${updated.slug}`,
+  });
+});
+
+adminRouter.post('/salons/:salonId/unpublish', requireSuperAdmin, (req, res) => {
+  const updated = unpublishSalon({ salonId: req.params.salonId, reviewer: req.user });
+  audit(req, 'admin.salon_unpublished', 'salon', updated.id, { slug: updated.slug });
+  res.json({
+    salon: serializeSalon(updated),
+    workflow: workflowInfo(updated, db.prepare('SELECT * FROM users WHERE id = ?').get(updated.owner_id)).workflow,
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -437,7 +481,7 @@ adminRouter.patch('/subscriptions/:subscriptionId', (req, res) => {
 /* Website approvals                                                   */
 /* ------------------------------------------------------------------ */
 
-adminRouter.get('/approvals', (req, res) => {
+adminRouter.get('/approvals', requireSuperAdmin, (req, res) => {
   const status = str(req.query.status, { max: 30, field: 'Status' }) || 'pending';
   const allowed = ['pending', 'approved', 'rejected', 'changes_requested', 'superseded', 'all'];
   if (!allowed.includes(status)) throw new ValidationError('Invalid approval status filter');
@@ -484,7 +528,7 @@ adminRouter.get('/approvals', (req, res) => {
   });
 });
 
-adminRouter.get('/approvals/:versionId', (req, res) => {
+adminRouter.get('/approvals/:versionId', requireSuperAdmin, (req, res) => {
   const version = db.prepare('SELECT * FROM salon_versions WHERE id = ?').get(req.params.versionId);
   if (!version) return res.status(404).json({ error: 'Submission not found' });
   const salon = db.prepare('SELECT * FROM salons WHERE id = ?').get(version.salon_id);
@@ -504,8 +548,16 @@ adminRouter.get('/approvals/:versionId', (req, res) => {
   });
 });
 
+/**
+ * Approve / reject / request changes.
+ *
+ * requireSuperAdmin is the route gate; reviewSubmission() independently verifies
+ * `reviewer.role` and that the reviewer does not own the salon, so an owner can
+ * never approve their own website even if a future route is wired incorrectly.
+ */
 adminRouter.post(
   '/approvals/:versionId/review',
+  requireSuperAdmin,
   asyncHandler(async (req, res) => {
     const action = String(req.body?.action || '');
     if (!['approve', 'reject', 'request_changes'].includes(action)) {
@@ -518,10 +570,12 @@ adminRouter.post(
       action,
       note,
       adminId: req.user.id,
+      reviewer: req.user,
     });
     audit(req, `admin.submission_${action}`, 'salon', result.salon.id, {
       version: result.version.version,
       note: note || null,
+      reviewerRole: req.user.role,
     });
 
     const owner = db.prepare('SELECT * FROM users WHERE id = ?').get(result.salon.owner_id);

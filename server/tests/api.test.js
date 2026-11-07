@@ -118,6 +118,17 @@ async function loginAs(email, password) {
   return client;
 }
 
+/**
+ * Administrator sign-in goes through the isolated super admin portal.
+ * The owner portal deliberately refuses administrator accounts.
+ */
+async function loginAsAdmin(email, password) {
+  const client = makeClient();
+  const res = await client.post('/api/auth/admin/login', { email, password });
+  assert.equal(res.status, 200, `admin login failed for ${email}: ${JSON.stringify(res.data)}`);
+  return client;
+}
+
 let ownerClient;
 let bookingForVoucherLifecycleId = null;
 let ownerSalon;
@@ -159,7 +170,7 @@ test('salon owner cannot access super admin APIs', async () => {
 });
 
 test('super admin cannot use salon-owner-only endpoints', async () => {
-  const admin = await loginAs('admin@test.local', 'Admin@12345');
+  const admin = await loginAsAdmin('admin@test.local', 'Admin@12345');
   assert.equal((await admin.get('/api/salon')).status, 403);
   assert.equal((await admin.get('/api/admin/overview')).status, 200);
 });
@@ -292,13 +303,35 @@ test('invalid service payloads are rejected', async () => {
   assert.equal(huge.status, 400);
 });
 
-test('publish/unpublish controls public visibility', async () => {
+test('salon owners cannot publish their own website (no self-approval)', async () => {
   // The second owner's salon is still a private draft.
   const draft = await fetch(`${BASE}/api/public/salons/second-studio`);
   assert.equal(draft.status, 404);
 
-  const published = await ownerClient.post('/api/salon/publish');
-  assert.equal(published.status, 200);
+  // The owner publish/unpublish endpoints were removed: they fail closed.
+  const before = (await ownerClient.get('/api/salon')).data.salon;
+  assert.equal(before.published, true, 'the seeded salon starts live');
+
+  for (const path of ['/api/salon/publish', '/api/salon/unpublish']) {
+    const blocked = await ownerClient.post(path);
+    assert.equal(blocked.status, 403, path);
+    assert.equal(blocked.data.code, 'SELF_APPROVAL_FORBIDDEN', path);
+  }
+  const after = (await ownerClient.get('/api/salon')).data.salon;
+  assert.equal(
+    after.published,
+    before.published,
+    'a rejected publish/unpublish attempt must not change the website state'
+  );
+  assert.equal(after.status, before.status, 'a rejected publish attempt must not change the review status');
+
+  // A super admin publishes the seeded, already-approved salon.
+  const admin = await loginAsAdmin('admin@test.local', 'Admin@12345');
+  const salons = await admin.get('/api/admin/salons');
+  const seeded = salons.data.salons.find((s) => s.slug === ownerSalon.slug);
+  assert.ok(seeded, 'seeded salon is visible to the console');
+  const published = await admin.post(`/api/admin/salons/${seeded.id}/publish`);
+  assert.equal(published.status, 200, JSON.stringify(published.data));
   assert.equal(published.data.salon.published, true);
 
   const live = await fetch(`${BASE}/api/public/salons/${ownerSalon.slug}`);
@@ -309,11 +342,11 @@ test('publish/unpublish controls public visibility', async () => {
   assert.ok(body.services.every((s) => s.active), 'inactive services must not leak publicly');
   assert.equal(body.salon.ownerId, undefined, 'internal owner id must not leak publicly');
 
-  const unpublish = await ownerClient.post('/api/salon/unpublish');
-  assert.equal(unpublish.status, 200);
+  const unpublished = await admin.post(`/api/admin/salons/${seeded.id}/unpublish`);
+  assert.equal(unpublished.status, 200);
   assert.equal((await fetch(`${BASE}/api/public/salons/${ownerSalon.slug}`)).status, 404);
 
-  await ownerClient.post('/api/salon/publish');
+  await admin.post(`/api/admin/salons/${seeded.id}/publish`);
 });
 
 test('public routes never expose other salons or private data', async () => {
@@ -328,13 +361,13 @@ test('public routes never expose other salons or private data', async () => {
 /* ------------------------------------------------------------------ */
 
 test('cross-origin state-changing requests are blocked', async () => {
-  const res = await fetch(`${BASE}/api/salon/unpublish`, {
+  const res = await fetch(`${BASE}/api/salon/submit`, {
     method: 'POST',
     headers: { Origin: 'https://evil.example', Cookie: ownerClient.getCookie() },
   });
   assert.equal(res.status, 403);
 
-  const noOrigin = await fetch(`${BASE}/api/salon/unpublish`, {
+  const noOrigin = await fetch(`${BASE}/api/salon/submit`, {
     method: 'POST',
     headers: { Cookie: ownerClient.getCookie() },
   });
@@ -342,7 +375,7 @@ test('cross-origin state-changing requests are blocked', async () => {
 });
 
 test('super admin can manage users, salons and settings', async () => {
-  const admin = await loginAs('admin@test.local', 'Admin@12345');
+  const admin = await loginAsAdmin('admin@test.local', 'Admin@12345');
 
   const users = await admin.get('/api/admin/users');
   assert.equal(users.status, 200);
@@ -441,9 +474,10 @@ test('new owners must verify their email before submitting', async () => {
   assert.equal(early.status, 400);
   assert.equal(early.data.code, 'EMAIL_UNVERIFIED');
 
+  // The owner has no publish endpoint at all — publishing is a platform action.
   const publishEarly = await flow.client.post('/api/salon/publish');
   assert.equal(publishEarly.status, 403);
-  assert.equal(publishEarly.data.code, 'EMAIL_UNVERIFIED');
+  assert.equal(publishEarly.data.code, 'SELF_APPROVAL_FORBIDDEN');
 });
 
 test('invalid opening hours and templates are rejected', async () => {
@@ -477,8 +511,8 @@ test('owner submits a draft and cannot publish until approved', async () => {
   assert.equal(duplicate.status, 409);
 
   const publish = await flow.client.post('/api/salon/publish');
-  assert.equal(publish.status, 409);
-  assert.equal(publish.data.code, 'APPROVAL_REQUIRED');
+  assert.equal(publish.status, 403);
+  assert.equal(publish.data.code, 'SELF_APPROVAL_FORBIDDEN');
 
   assert.equal((await fetch(`${BASE}/api/public/salons/flow-studio`)).status, 404);
 
@@ -496,7 +530,7 @@ test('owner cannot see another salon’s submission', async () => {
 });
 
 test('admin review requires a note when rejecting or requesting changes', async () => {
-  flow.admin = await loginAs('admin@test.local', 'Admin@12345');
+  flow.admin = await loginAsAdmin('admin@test.local', 'Admin@12345');
   const pending = await flow.admin.get('/api/admin/approvals?status=pending');
   assert.equal(pending.status, 200);
   assert.equal(pending.data.pendingCount, 1);
@@ -546,7 +580,8 @@ test('requesting changes keeps the site offline and lets the owner resubmit', as
   flow.versionId = resubmit.data.version.id;
 });
 
-test('approval unlocks publishing with the approved snapshot', async () => {
+test('only a super admin can approve and publish the approved snapshot', async () => {
+  // Approval alone must NOT make the website live.
   const approve = await flow.admin.post(`/api/admin/approvals/${flow.versionId}/review`, {
     action: 'approve',
     note: 'Looks great — approved.',
@@ -554,9 +589,21 @@ test('approval unlocks publishing with the approved snapshot', async () => {
   assert.equal(approve.status, 200);
   assert.equal(approve.data.version.status, 'approved');
   assert.equal(approve.data.salon.status, 'approved');
+  assert.equal(approve.data.salon.published, false, 'approval grants permission, not publication');
+  assert.equal(
+    (await fetch(`${BASE}/api/public/salons/flow-studio`)).status,
+    404,
+    'an approved but unpublished website is not public'
+  );
 
-  const publish = await flow.client.post('/api/salon/publish');
-  assert.equal(publish.status, 200);
+  // The owner still cannot publish it.
+  const ownerPublish = await flow.client.post('/api/salon/publish');
+  assert.equal(ownerPublish.status, 403);
+  assert.equal(ownerPublish.data.code, 'SELF_APPROVAL_FORBIDDEN');
+
+  // The super admin publishes it.
+  const publish = await flow.admin.post(`/api/admin/salons/${flow.salon.id}/publish`);
+  assert.equal(publish.status, 200, JSON.stringify(publish.data));
   assert.equal(publish.data.salon.published, true);
 
   const publicRes = await fetch(`${BASE}/api/public/salons/flow-studio`);
@@ -642,9 +689,9 @@ test('suspension blocks publishing and public access until reinstated', async ()
   assert.equal(suspended.data.salon.published, false);
   assert.equal((await fetch(`${BASE}/api/public/salons/flow-studio`)).status, 404);
 
-  const ownerPublish = await flow.client.post('/api/salon/publish');
-  assert.equal(ownerPublish.status, 403);
-  assert.equal(ownerPublish.data.code, 'SUSPENDED');
+  const adminPublishWhileSuspended = await flow.admin.post(`/api/admin/salons/${salon.id}/publish`);
+  assert.equal(adminPublishWhileSuspended.status, 400);
+  assert.match(adminPublishWhileSuspended.data.error, /unsuspend/i);
 
   const ownerSubmit = await flow.client.post('/api/salon/submit');
   assert.equal(ownerSubmit.status, 400);
@@ -666,7 +713,7 @@ test('admin approval decisions are recorded in the audit log', async () => {
 });
 
 test('admin can inspect and edit any published website', async () => {
-  const admin = await loginAs('admin@test.local', 'Admin@12345');
+  const admin = await loginAsAdmin('admin@test.local', 'Admin@12345');
   const salons = await admin.get('/api/admin/salons');
   const target = salons.data.salons.find((s) => s.slug === 'lumina-luxe') || salons.data.salons[0];
 
@@ -692,7 +739,7 @@ test('admin can inspect and edit any published website', async () => {
 });
 
 test('admin cannot disable or demote themselves', async () => {
-  const admin = await loginAs('admin@test.local', 'Admin@12345');
+  const admin = await loginAsAdmin('admin@test.local', 'Admin@12345');
   const me = (await admin.get('/api/auth/me')).data.user;
   assert.equal((await admin.patch(`/api/admin/users/${me.id}`, { status: 'disabled' })).status, 400);
   assert.equal((await admin.patch(`/api/admin/users/${me.id}`, { role: 'salon_owner' })).status, 400);
@@ -1217,7 +1264,7 @@ test('demo staff profiles can never be saved or booked', async () => {
 
 test('unpublished salon websites block booking API calls and automatically activate booking on publish', async () => {
   const anon = makeClient();
-  const admin = await loginAs('admin@test.local', 'Admin@12345');
+  const admin = await loginAsAdmin('admin@test.local', 'Admin@12345');
 
   // Register a brand-new salon owner whose website starts unpublished.
   const studioOwner = makeClient();
@@ -1352,9 +1399,9 @@ test('unpublished salon websites block booking API calls and automatically activ
   assert.equal(stillUnpublished.status, 403);
   assert.equal(stillUnpublished.data.code, 'WEBSITE_NOT_PUBLISHED');
 
-  // Publish website -> booking activates automatically with real salon staff!
-  const pub = await studioOwner.post('/api/salon/publish');
-  assert.equal(pub.status, 200);
+  // Super admin publishes website -> booking activates automatically with real salon staff!
+  const pub = await admin.post(`/api/admin/salons/${newSalonId}/publish`);
+  assert.equal(pub.status, 200, JSON.stringify(pub.data));
   assert.equal(pub.data.salon.published, true);
 
   const liveSite = await anon.get(`/api/public/salons/${newSalonSlug}`);
@@ -1426,8 +1473,8 @@ test('unpublished salon websites block booking API calls and automatically activ
   // Restore the state the rest of this flow expects (switch off, status available).
   await studioOwner.patch(`/api/salon/staff/${realStaffId}`, { bookingEnabled: false, availabilityStatus: 'available' });
 
-  // Unpublishing immediately disables booking API again.
-  await studioOwner.post('/api/salon/unpublish');
+  // Unpublishing (super admin) immediately disables the booking API again.
+  await admin.post(`/api/admin/salons/${newSalonId}/unpublish`);
   const afterUnpublish = await anon.post('/api/public/bookings', {
     slug: newSalonSlug,
     fullName: 'Client Three',

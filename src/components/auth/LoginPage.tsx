@@ -42,6 +42,10 @@ export const LoginPage: React.FC = () => {
   }
 
   if (user) {
+    // An administrator session on the owner portal belongs in the console.
+    if (user.role === 'super_admin' || user.role === 'admin') {
+      return <Navigate to="/admin" replace />;
+    }
     const target = postLoginDestination(from, user.role, Boolean(salon)) || homeForAuthUser(user, Boolean(salon));
     return <Navigate to={target} replace />;
   }
@@ -52,6 +56,12 @@ export const LoginPage: React.FC = () => {
     setLoadingSubmit(true);
     try {
       const data = await login(email.trim(), password);
+      // Portal isolation: this page is the salon owner front door. An
+      // administrator is sent to its own portal rather than into /dashboard.
+      if (data.user.role === 'super_admin' || data.user.role === 'admin') {
+        navigate('/admin/login', { replace: true });
+        return;
+      }
       // Wait for the trusted server role, then navigate with replace so the
       // browser Back button cannot return to a half-authenticated login page.
       navigate(destinationFor(data, from), { replace: true });
@@ -77,14 +87,22 @@ export const LoginPage: React.FC = () => {
 
   return (
     <AuthLayout
-      title="Welcome back"
-      subtitle="Sign in to manage your salon website, services and team."
+      title="Salon owner sign in"
+      subtitle="Manage your salon website, services, team and bookings."
       footer={
-        <span>
-          New to BeautyZone?{' '}
-          <Link to="/register" className="font-semibold text-[#8a641f] hover:underline">
-            Create a salon owner account
-          </Link>
+        <span className="space-y-2 block">
+          <span className="block">
+            New to BeautyZone?{' '}
+            <Link to="/register" className="font-semibold text-[#8a641f] hover:underline">
+              Create a salon owner account
+            </Link>
+          </span>
+          <span className="block text-xs text-slate-500">
+            Platform administrator?{' '}
+            <Link to="/admin/login" className="font-semibold text-slate-700 hover:underline">
+              Super admin portal
+            </Link>
+          </span>
         </span>
       }
     >

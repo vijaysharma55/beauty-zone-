@@ -343,9 +343,19 @@ export async function getWorkflow(ctx, salon) {
   if (!services.some((s) => s.active)) missing.push('at least one active service');
   if (missing.length) blockers.push({ code: 'INCOMPLETE', message: 'Complete your profile first: add ' + missing.join(', ') + '.', missing });
   const hasUnpublishedChanges = Boolean(approved && approved.contentHash !== currentHash);
-  const canPublish = ['approved','pending'].includes(salon.status) && Boolean(approved) && !salon.suspended && ctx.emailVerified && salon.onboarding_completed;
+  // Mirrors server/workflow.js: a salon owner may only submit for review.
+  // Approving and publishing are super-admin-only transitions, so `canPublish`
+  // is always false on the owner surface.
+  const isApproved = salon.status === 'approved';
+  const isLive = isApproved && Boolean(salon.website_published) && !salon.suspended;
   return {
     status: salon.status,
+    reviewStatus: salon.status,
+    websiteStatus: isApproved ? 'approved' : salon.status === 'pending' ? 'pending_approval' : 'draft',
+    isLive,
+    published: Boolean(salon.website_published),
+    canBePublished: isApproved && !salon.suspended,
+    awaitingReview: salon.status === 'pending',
     suspended: Boolean(salon.suspended),
     suspendedReason: salon.suspended_reason || '',
     reviewNote: salon.review_note || '',
@@ -357,7 +367,7 @@ export async function getWorkflow(ctx, salon) {
     approvedVersion: approved,
     hasUnpublishedChanges,
     canSubmit: !pending && !salon.suspended && blockers.length === 0,
-    canPublish,
+    canPublish: false,
     blockers,
   };
 }
@@ -416,7 +426,9 @@ export async function writeAudit(ctx, action, targetType = null, targetId = null
 export async function getLiveSalon(ctx, slug) {
   const rows = await rest(ctx, 'salons', 'slug=eq.' + encodeURIComponent(slug) + '&select=*&limit=1');
   const salon = rows[0] || null;
-  if (!salon || !salon.website_published || salon.status !== 'approved' && salon.status !== 'pending' || salon.suspended) return null;
+  // A public website requires publication AND super-admin approval. Pending
+  // submissions never serve traffic.
+  if (!salon || !salon.website_published || salon.status !== 'approved' || salon.suspended) return null;
   const versions = await rest(ctx, 'salon_versions', 'salon_id=eq.' + encodeURIComponent(salon.id) + '&status=eq.approved&select=*&order=version.desc&limit=1');
   const version = versions[0] || null;
   if (!version || !version.snapshot) return null;

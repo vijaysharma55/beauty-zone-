@@ -10,6 +10,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { api, errorMessage } from '../../lib/api';
+import { useAuth } from '../../context/AuthContext';
 import type { AdminApproval, ApprovalSnapshot, ReviewAction } from '../../types/auth';
 import {
   Alert,
@@ -35,7 +36,17 @@ const FILTER_LABELS: Record<Filter, string> = {
   all: 'All submissions',
 };
 
+/**
+ * Super-admin moderation queue.
+ *
+ * This is the ONLY place a salon website can be approved or published.
+ * Operational admins (`role = 'admin'`) may read the console but are shown a
+ * read-only notice: the review endpoints are guarded with requireSuperAdmin, and
+ * reviewSubmission() independently re-checks the reviewer role.
+ */
 export const AdminApprovals: React.FC = () => {
+  const { user } = useAuth();
+  const canReview = user?.role === 'super_admin';
   const [filter, setFilter] = useState<Filter>('pending');
   const [approvals, setApprovals] = useState<AdminApproval[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
@@ -86,8 +97,12 @@ export const AdminApprovals: React.FC = () => {
     }
   };
 
-  const submitReview = async (action: ReviewAction) => {
+  const submitReview = async (action: ReviewAction, { publish = false } = {}) => {
     if (!selected) return;
+    if (!canReview) {
+      setReviewError('Only a platform super admin can review submissions.');
+      return;
+    }
     if ((action === 'reject' || action === 'request_changes') && !note.trim()) {
       setReviewError(
         action === 'reject' ? 'Please provide a reason for rejection.' : 'Please describe the changes required.'
@@ -98,13 +113,41 @@ export const AdminApprovals: React.FC = () => {
     setReviewError('');
     try {
       await api.post(`/admin/approvals/${selected.id}/review`, { action, note: note.trim() });
+      if (action === 'approve' && publish) {
+        await api.post(`/admin/salons/${selected.salon.id}/publish`);
+      }
       setNotice(
         action === 'approve'
-          ? `${selected.salon.name} approved. The owner can publish it now.`
+          ? publish
+            ? `${selected.salon.name} approved and published live.`
+            : `${selected.salon.name} approved. Publish it from Salons & websites when ready.`
           : action === 'reject'
             ? `${selected.salon.name} rejected and kept offline.`
             : `Changes requested for ${selected.salon.name}.`
       );
+      setTimeout(() => setNotice(''), 5000);
+      setSelected(null);
+      setSnapshot(null);
+      await load();
+    } catch (err) {
+      setReviewError(errorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /** Publish an already-approved version (super admin only). */
+  const publishApproved = async () => {
+    if (!selected) return;
+    if (!canReview) {
+      setReviewError('Only a platform super admin can publish a salon website.');
+      return;
+    }
+    setBusy('approve');
+    setReviewError('');
+    try {
+      await api.post(`/admin/salons/${selected.salon.id}/publish`);
+      setNotice(`${selected.salon.name} is now live at /salon/${selected.salon.slug}.`);
       setTimeout(() => setNotice(''), 5000);
       setSelected(null);
       setSnapshot(null);
@@ -130,7 +173,7 @@ export const AdminApprovals: React.FC = () => {
       <PageHeader
         eyebrow="Moderation"
         title="Website approvals"
-        description="Review submitted salon websites. Only approved versions can be published by their owners."
+        description="Review submitted salon websites. Only a super admin can approve a submission or publish a website live."
         actions={
           <div className="flex items-center gap-2">
             <Badge tone="blue">
@@ -247,7 +290,14 @@ export const AdminApprovals: React.FC = () => {
                   </div>
                 ) : null}
 
-                {selected.status === 'pending' ? (
+                {!canReview && (
+                  <Alert tone="info">
+                    Your role has read-only console access. Only a platform super admin can approve, reject or
+                    publish a salon website.
+                  </Alert>
+                )}
+
+                {selected.status === 'pending' && canReview ? (
                   <>
                     <Field
                       label="Reviewer note"
@@ -266,8 +316,19 @@ export const AdminApprovals: React.FC = () => {
                     {reviewError && <Alert tone="error">{reviewError}</Alert>}
 
                     <div className="flex flex-wrap gap-2">
-                      <Button variant="primary" loading={busy === 'approve'} onClick={() => submitReview('approve')}>
-                        <CheckCircle2 className="h-4 w-4" /> Approve
+                      <Button
+                        variant="primary"
+                        loading={busy === 'approve'}
+                        onClick={() => submitReview('approve', { publish: true })}
+                      >
+                        <CheckCircle2 className="h-4 w-4" /> Approve &amp; publish
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        loading={busy === 'approve'}
+                        onClick={() => submitReview('approve')}
+                      >
+                        Approve only
                       </Button>
                       <Button
                         variant="secondary"
@@ -281,10 +342,25 @@ export const AdminApprovals: React.FC = () => {
                       </Button>
                     </div>
                     <p className="text-[11px] leading-relaxed text-slate-500">
-                      Approving unlocks publishing for the owner. Rejecting or requesting changes keeps the website
-                      offline until a new version is approved.
+                      Approving alone records the decision; “Approve &amp; publish” additionally makes the website
+                      live at <span className="font-mono">/salon/{selected.salon.slug}</span>. Rejecting or requesting
+                      changes keeps the website offline until a new version is approved.
                     </p>
                   </>
+                ) : selected.status === 'approved' && !selected.salon.published && canReview ? (
+                  <div className="space-y-3">
+                    <Alert tone="success">
+                      This version is approved but not live yet. Publishing makes it visible at{' '}
+                      <span className="font-mono">/salon/{selected.salon.slug}</span>.
+                    </Alert>
+                    <Button
+                      variant="primary"
+                      loading={busy === 'approve'}
+                      onClick={publishApproved}
+                    >
+                      <ExternalLink className="h-4 w-4" /> Publish this approved website
+                    </Button>
+                  </div>
                 ) : (
                   <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
                     This submission was already reviewed

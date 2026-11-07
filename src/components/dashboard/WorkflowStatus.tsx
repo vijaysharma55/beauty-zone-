@@ -8,7 +8,6 @@ import {
   FileEdit,
   Globe,
   Info,
-  Rocket,
   Send,
   ShieldAlert,
   XCircle,
@@ -33,25 +32,25 @@ export const STATUS_META: Record<
   pending: {
     label: 'Pending approval',
     tone: 'blue',
-    description: 'A platform admin is reviewing your submission. You can keep editing; changes will not go live until approved.',
+    description: 'Your submission is queued for a platform super admin. You can keep editing; nothing goes live until it is approved.',
     icon: <Clock className="h-3.5 w-3.5" />,
   },
   approved: {
     label: 'Approved',
     tone: 'green',
-    description: 'Your website passed review. Publish it to make it live.',
+    description: 'A super admin approved your website. It is published to your public URL by the platform — no further action is needed.',
     icon: <CheckCircle2 className="h-3.5 w-3.5" />,
   },
   rejected: {
     label: 'Rejected',
     tone: 'red',
-    description: 'A platform admin rejected this submission. Fix the points below and resubmit.',
+    description: 'A super admin rejected this submission. Fix the points below and resubmit.',
     icon: <XCircle className="h-3.5 w-3.5" />,
   },
   changes_requested: {
     label: 'Changes requested',
     tone: 'amber',
-    description: 'A platform admin asked for changes. Update your website and resubmit.',
+    description: 'A super admin asked for changes. Update your website and resubmit.',
     icon: <AlertCircle className="h-3.5 w-3.5" />,
   },
 };
@@ -82,7 +81,11 @@ const STEPS = [
   { key: 'published', label: 'Published' },
 ] as const;
 
-/** Registered → Onboarding → Draft → Pending → Approved → Published */
+/**
+ * Registered → Onboarding → Draft → Pending approval → Approved → Published.
+ * The owner advances the first four; "Approved" and "Published" are advanced
+ * only by a platform super admin.
+ */
 export function WorkflowStepper({ salon, workflow }: { salon: Salon; workflow: SalonWorkflow | null }) {
   const status = workflow?.status || salon.status || 'draft';
   let current = 2; // draft by default once a salon exists
@@ -159,7 +162,17 @@ export function ReviewNoteCard({ workflow }: { workflow: SalonWorkflow | null })
   );
 }
 
-/** Submit / resubmit / publish controls with server-enforced gating. */
+/**
+ * Salon-owner workflow controls.
+ *
+ * SECURITY CONTRACT: the only action rendered here is "Submit for Review", which
+ * moves Draft → Pending Approval. There is intentionally NO approve, publish or
+ * unpublish control: those transitions belong to the platform super admin
+ * (see /admin/approvals). The corresponding owner API endpoints
+ * (POST /api/salon/publish, /api/salon/unpublish) were removed and now answer
+ * 403 SELF_APPROVAL_FORBIDDEN, so this UI cannot be bypassed by calling the API
+ * directly either.
+ */
 export const WorkflowActions: React.FC<{
   salon: Salon;
   size?: 'sm' | 'md' | 'lg';
@@ -167,25 +180,17 @@ export const WorkflowActions: React.FC<{
   onDone?: () => void;
 }> = ({ salon, size = 'md', className, onDone }) => {
   const { workflow, refresh } = useAuth();
-  const [busy, setBusy] = useState<'submit' | 'publish' | 'unpublish' | null>(null);
+  const [busy, setBusy] = useState<'submit' | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  const run = async (kind: 'submit' | 'publish' | 'unpublish') => {
-    setBusy(kind);
+  const run = async () => {
+    setBusy('submit');
     setError('');
     setNotice('');
     try {
-      if (kind === 'submit') {
-        await api.post('/salon/submit');
-        setNotice('Submitted for approval. You will see the decision here once reviewed.');
-      } else if (kind === 'publish') {
-        await api.post('/salon/publish');
-        setNotice('Your website is live.');
-      } else {
-        await api.post('/salon/unpublish');
-        setNotice('Your website is offline.');
-      }
+      await api.post('/salon/submit');
+      setNotice('Submitted for review. A platform super admin will review it — you will see the decision here.');
       await refresh();
       onDone?.();
     } catch (err) {
@@ -198,6 +203,7 @@ export const WorkflowActions: React.FC<{
   const status = workflow?.status || salon.status;
   const blockers = workflow?.blockers || [];
   const isSuspended = workflow?.suspended || salon.suspended;
+  const isLive = Boolean(workflow?.isLive ?? (salon.published && status === 'approved'));
 
   return (
     <div className={className}>
@@ -208,41 +214,39 @@ export const WorkflowActions: React.FC<{
             size={size}
             loading={busy === 'submit'}
             disabled={!workflow?.canSubmit}
-            onClick={() => run('submit')}
+            onClick={run}
             title={workflow?.canSubmit ? undefined : blockers[0]?.message || 'Complete your website first'}
           >
-            <Send className="h-4 w-4" /> {status === 'draft' ? 'Submit for approval' : 'Resubmit for approval'}
+            <Send className="h-4 w-4" /> {status === 'draft' ? 'Submit for review' : 'Resubmit for review'}
           </Button>
         )}
 
         {status === 'pending' && (
           <Badge tone="blue">
-            <Clock className="h-3.5 w-3.5" /> Awaiting review
+            <Clock className="h-3.5 w-3.5" /> Pending approval — awaiting super admin
           </Badge>
         )}
 
-        {status === 'approved' &&
-          (salon.published ? (
-            <>
-              <Badge tone="green">
-                <Globe className="h-3.5 w-3.5" /> Live
-              </Badge>
-              <Button variant="secondary" size={size} loading={busy === 'unpublish'} onClick={() => run('unpublish')}>
-                Unpublish
-              </Button>
-            </>
-          ) : (
-            <Button
-              variant="primary"
-              size={size}
-              loading={busy === 'publish'}
-              disabled={!workflow?.canPublish}
-              onClick={() => run('publish')}
-              title={workflow?.canPublish ? undefined : 'Publishing requires approval and a verified email'}
-            >
-              <Rocket className="h-4 w-4" /> Publish website
-            </Button>
-          ))}
+        {status === 'approved' && (
+          <>
+            <Badge tone={isLive ? 'green' : 'gold'}>
+              {isLive ? (
+                <>
+                  <Globe className="h-3.5 w-3.5" /> Published
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Approved
+                </>
+              )}
+            </Badge>
+            {!isLive && (
+              <span className="text-xs text-slate-500">
+                A super admin will publish it to your public URL.
+              </span>
+            )}
+          </>
+        )}
 
         <Link to="/dashboard/approval" className="text-xs font-semibold text-[#8a641f] hover:underline">
           Submission history

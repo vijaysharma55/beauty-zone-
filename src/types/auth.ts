@@ -39,8 +39,22 @@ export interface WorkflowBlocker {
   missing?: string[];
 }
 
+/**
+ * Public website state. Only a super admin can move a salon into
+ * 'approved'; a salon owner can only reach 'pending_approval'.
+ */
+export type WebsiteStatus = 'draft' | 'pending_approval' | 'approved';
+
 export interface SalonWorkflow {
+  /** Internal review status (superset of WebsiteStatus). */
   status: SalonStatus;
+  /** 3-state public website state exposed to the owner dashboard. */
+  websiteStatus?: WebsiteStatus;
+  /** Live = approved AND published AND not suspended. */
+  isLive?: boolean;
+  published?: boolean;
+  canBePublished?: boolean;
+  awaitingReview?: boolean;
   suspended: boolean;
   suspendedReason: string;
   reviewNote: string;
@@ -51,7 +65,9 @@ export interface SalonWorkflow {
   pendingVersion: SalonVersion | null;
   approvedVersion: SalonVersion | null;
   hasUnpublishedChanges: boolean;
+  /** True when the owner may submit/resubmit for review. */
   canSubmit: boolean;
+  /** Always false for owners — publishing is a super-admin action. */
   canPublish: boolean;
   blockers: WorkflowBlocker[];
 }
