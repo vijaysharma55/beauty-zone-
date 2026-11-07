@@ -173,3 +173,22 @@ test('disabled and unverified Supabase identities cannot create application sess
   const unverified = await request('POST', '/api/auth/supabase-session', { accessToken: 'unverified-test-access-token' });
   assert.equal(unverified.status, 403);
 });
+
+test('ALLOW_UNVERIFIED_EMAIL_LOGIN lets an unverified owner sign in, and stays off by default', async () => {
+  mockProfile = { ...mockProfile, role: 'salon_owner', status: 'active' };
+  mockIdentity = { ...mockIdentity, email_confirmed_at: null, confirmed_at: null };
+  const previous = process.env.ALLOW_UNVERIFIED_EMAIL_LOGIN;
+  try {
+    delete process.env.ALLOW_UNVERIFIED_EMAIL_LOGIN;
+    const blocked = await request('POST', '/api/auth/supabase-session', { accessToken: 'unverified-test-access-token' });
+    assert.equal(blocked.status, 403);
+
+    process.env.ALLOW_UNVERIFIED_EMAIL_LOGIN = 'true';
+    const allowed = await request('POST', '/api/auth/supabase-session', { accessToken: 'unverified-test-access-token' });
+    assert.equal(allowed.status, 200);
+    assert.equal(allowed.data.user.role, 'salon_owner');
+  } finally {
+    if (previous === undefined) delete process.env.ALLOW_UNVERIFIED_EMAIL_LOGIN;
+    else process.env.ALLOW_UNVERIFIED_EMAIL_LOGIN = previous;
+  }
+});

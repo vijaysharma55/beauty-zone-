@@ -42,6 +42,11 @@ export const authRouter = Router();
 const EMAIL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const isProduction = () => process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
+// TEMPORARY escape hatch: lets owners open the dashboard before confirming their email.
+// Off unless ALLOW_UNVERIFIED_EMAIL_LOGIN is set. Read per request so it can be flipped
+// without a code change. The local account stays marked unverified, so submitting for
+// approval and publishing a salon still require a confirmed email.
+const allowUnverifiedEmailLogin = () => /^(1|true|yes)$/i.test(process.env.ALLOW_UNVERIFIED_EMAIL_LOGIN || '');
 
 // Seed/demo identities are for disposable local development only. They must
 // never authenticate in a production or Vercel deployment.
@@ -180,7 +185,7 @@ authRouter.post(
       throw new HttpError(401, 'Supabase did not return a verified account identity.');
     }
 
-    if (!identity.email_confirmed_at && !identity.confirmed_at) {
+    if (!identity.email_confirmed_at && !identity.confirmed_at && !allowUnverifiedEmailLogin()) {
       throw new HttpError(403, 'Verify your email address before opening the salon dashboard.');
     }
 
