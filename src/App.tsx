@@ -290,6 +290,7 @@ function MarketingSite() {
           onExplorePackages={() => scrollToSection('packages')}
         />
 
+        {/* Trending Reels & Transformations is intentionally placed immediately after Hero. */}
         {/* 1.5 Quick Trust & Value Bar */}
         {brand.sections.showTrustBar && <TrustHighlightsBar />}
 
