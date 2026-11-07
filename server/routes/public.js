@@ -6,12 +6,27 @@ import { tenantInfoFromReq } from '../subdomain.js';
 import { listLiveSalonSlugs } from '../sitemap.js';
 import {
   generateSlots,
+  weekdayForDate,
   FALLBACK_TIMINGS,
   DEFAULT_SLOT_MINUTES,
   DEFAULT_LEAD_MINUTES,
 } from '../availability.js';
+import { parseWeeklySchedule, scheduleWindowForDay } from '../../src/lib/staffRoles.js';
 
 export const publicRouter = Router();
+
+/**
+ * Weekly roster stored on the staff row, normalised to the shared shape.
+ * Existing rows default to an empty list → the platform default week applies.
+ */
+function safeStaffSchedule(staffRow) {
+  try {
+    const raw = JSON.parse(staffRow?.weekly_schedule_json || '[]');
+    return Array.isArray(raw) && raw.length > 0 ? raw : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 const slugLimiter = rateLimit({ windowMs: 60_000, max: 60, key: 'slug-check' });
 
@@ -219,6 +234,7 @@ publicRouter.get(
     res.set('Cache-Control', 'no-store');
     const date = String(req.query.date || '').trim();
     const slug = typeof req.query.slug === 'string' ? req.query.slug.trim() : '';
+    const staffId = typeof req.query.staffId === 'string' ? req.query.staffId.trim() : '';
     const durationRaw = Number(req.query.duration);
     const slotRaw = Number(req.query.slot);
     const offsetRaw = Number(req.query.tzOffset);
@@ -253,6 +269,45 @@ publicRouter.get(
       }
     }
 
+    /* A preferred specialist narrows the window to their own weekly roster,
+       intersected with the salon's opening hours. The roster is authoritative:
+       if either side is closed, the day has no bookable slots. */
+    let rosterNote = null;
+    if (candidateSlug && staffId) {
+      try {
+        const salon = findLiveSalon(candidateSlug);
+        const staffRow = salon
+          ? db.prepare('SELECT * FROM staff WHERE id = ? AND salon_id = ?').get(staffId, salon.id)
+          : null;
+        if (staffRow) {
+          const schedule = parseWeeklySchedule(safeStaffSchedule(staffRow));
+          const dayId = weekdayForDate(date);
+          if (dayId) {
+            const window = scheduleWindowForDay(schedule, dayId);
+            if (!window) {
+              timings = timings.map((entry) =>
+                String(entry.day).toLowerCase() === dayId ? { ...entry, closed: true } : entry
+              );
+              rosterNote = 'staff_closed';
+            } else {
+              const salonEntry = timings.find((entry) => String(entry.day).toLowerCase() === dayId) || null;
+              const salonOpen = salonEntry && !salonEntry.closed ? salonEntry : null;
+              const open = salonOpen && salonOpen.open > window.startTime ? salonOpen.open : window.startTime;
+              const close = salonOpen && salonOpen.close < window.endTime ? salonOpen.close : window.endTime;
+              timings = timings.map((entry) =>
+                String(entry.day).toLowerCase() === dayId
+                  ? { ...entry, closed: false, open, close }
+                  : entry
+              );
+              rosterNote = 'staff_schedule';
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[availability] staff roster lookup failed, using salon hours', err.message);
+      }
+    }
+
     let result;
     try {
       result = generateSlots({
@@ -275,10 +330,11 @@ publicRouter.get(
       close: result.close ?? null,
       closed: Boolean(result.closed),
       slots: result.slots || [],
-      reason: result.reason || null,
+      reason: rosterNote === 'staff_closed' ? 'staff_closed' : result.reason || null,
       source,
       salonName,
       degraded: source === 'default',
+      staffScheduleApplied: rosterNote,
     });
   }
 );

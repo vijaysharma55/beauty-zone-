@@ -3,6 +3,13 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  DEFAULT_COMMISSION_PERCENT,
+  DEFAULT_STAFF_APP_ACCESS_ROLE,
+  isStaffAppAccessRole,
+  isStaffPrimaryRole,
+  parseWeeklySchedule,
+} from '../src/lib/staffRoles.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -158,6 +165,14 @@ db.exec(`
     experience TEXT NOT NULL DEFAULT '',
     active INTEGER NOT NULL DEFAULT 1,
     booking_enabled INTEGER NOT NULL DEFAULT 1,
+    availability_status TEXT NOT NULL DEFAULT 'available',
+    primary_role TEXT NOT NULL DEFAULT '',
+    app_access_role TEXT NOT NULL DEFAULT 'service_provider',
+    commission_percent REAL NOT NULL DEFAULT 15,
+    mobile_number TEXT NOT NULL DEFAULT '',
+    hide_mobile_number INTEGER NOT NULL DEFAULT 0,
+    service_ids_json TEXT NOT NULL DEFAULT '[]',
+    weekly_schedule_json TEXT NOT NULL DEFAULT '[]',
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -547,17 +562,34 @@ export function serializeStaff(row, options = {}) {
   const workPhotosConsent = Boolean(row.work_photos_consent);
   const parsedRating = row.rating !== null && row.rating !== undefined && row.rating !== '' ? Number(row.rating) : null;
   const genuineRating = parsedRating !== null && Number.isFinite(parsedRating) && parsedRating > 0 ? parsedRating : null;
-  const availabilityStatus = ['available', 'busy', 'on_leave'].includes(row.availability_status)
+  const availabilityStatus = ['available', 'busy', 'on_leave', 'off_duty'].includes(row.availability_status)
     ? row.availability_status
     : 'available';
   const bookingSwitchOn =
     row.booking_enabled === undefined || row.booking_enabled === null ? true : !!row.booking_enabled;
 
-  return {
+  /* ---- Staff onboarding fields ---- */
+  const rawServiceIds = safeJson(row.service_ids_json, []);
+  const serviceIds = Array.isArray(rawServiceIds) ? rawServiceIds.filter((id) => typeof id === 'string' && id) : [];
+  const rawSchedule = safeJson(row.weekly_schedule_json, []);
+  const weeklySchedule = parseWeeklySchedule(
+    Array.isArray(rawSchedule) && rawSchedule.length > 0 ? rawSchedule : undefined
+  );
+  const mobileNumber = typeof row.mobile_number === 'string' ? row.mobile_number : '';
+  const hideMobileNumber = Boolean(row.hide_mobile_number);
+  const commissionValue = Number(row.commission_percent);
+  const commissionPercent = Number.isFinite(commissionValue)
+    ? Math.round(Math.min(100, Math.max(0, commissionValue)) * 10) / 10
+    : DEFAULT_COMMISSION_PERCENT;
+
+  const appAccess = isStaffAppAccessRole(row.app_access_role) ? row.app_access_role : DEFAULT_STAFF_APP_ACCESS_ROLE;
+
+  const out = {
     id: row.id,
     salonId: row.salon_id,
     name: row.name,
     roleTitle: row.role_title,
+    primaryRole: isStaffPrimaryRole(row.primary_role) ? row.primary_role : '',
     bio: row.bio,
     photoUrl: row.photo_url,
     specialties: Array.isArray(specialties) ? specialties.filter(Boolean) : [],
@@ -573,10 +605,22 @@ export function serializeStaff(row, options = {}) {
     // template stops offering busy / on-leave staff without template changes.
     bookingEnabled: publicView ? bookingSwitchOn && availabilityStatus === 'available' : bookingSwitchOn,
     availabilityStatus,
+    weeklySchedule,
     sortOrder: row.sort_order,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    /* Contact details are private: a public payload never carries the number.
+       The owner dashboard always receives the real value so it can be edited;
+       the "hide from public/staff list" flag is applied when rendering lists. */
+    mobileNumber: publicView ? '' : mobileNumber,
+    hideMobileNumber,
+    /* App access, commission and the service mapping are dashboard-only
+       operational data, so public payloads omit them entirely. */
+    ...(publicView
+      ? {}
+      : { appAccessRole: appAccess, commissionPercent, serviceIds }),
   };
+  return out;
 }
 
 export function serializeSalon(row, { includeOwner = false, publicView = false } = {}) {

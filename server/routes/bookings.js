@@ -190,15 +190,47 @@ function resolveBookableStaff(salonId, staffId) {
   }
   // Owner-managed availability: only 'available' specialists can be booked online.
   if (anyStaffRow.availability_status && anyStaffRow.availability_status !== 'available') {
-    throw new HttpError(
-      409,
+    const message =
       anyStaffRow.availability_status === 'on_leave'
         ? 'This specialist is currently on leave.'
-        : 'This specialist is currently busy and not taking online bookings.',
-      'STAFF_NOT_BOOKABLE'
-    );
+        : anyStaffRow.availability_status === 'off_duty'
+          ? 'This specialist is off duty right now.'
+          : 'This specialist is currently busy and not taking online bookings.';
+    throw new HttpError(409, message, 'STAFF_NOT_BOOKABLE');
   }
   return anyStaffRow;
+}
+
+/** Service ids a staff member is assigned to deliver (empty = whole catalogue). */
+function assignedServiceIds(staffRow) {
+  try {
+    const parsed = JSON.parse(staffRow?.service_ids_json || '[]');
+    return Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string' && id) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Ensures a preferred specialist is mapped to the requested service.
+ *
+ * The owner dashboard assigns specific catalogue services to each staff member.
+ * An empty mapping means “no restriction” (all salon services), so existing
+ * rosters keep working. When a mapping exists a mismatched booking is rejected
+ * rather than silently assigned to the wrong specialist.
+ */
+function assertStaffMappedToService(salon, staffRow, serviceName) {
+  const ids = assignedServiceIds(staffRow);
+  if (ids.length === 0) return;
+  const publishedService = resolveLiveService(salon, serviceName);
+  if (!publishedService?.id) return;
+  if (!ids.includes(publishedService.id)) {
+    throw new HttpError(
+      409,
+      `${staffRow.name} is not mapped to "${serviceName}". Please choose another specialist or select “Any available”.`,
+      'STAFF_SERVICE_MISMATCH'
+    );
+  }
 }
 
 /**
@@ -475,6 +507,7 @@ bookingsRouter.post(
     if (data.stylistId) {
       const staffRow = resolveBookableStaff(salon ? salon.id : null, data.stylistId);
       if (staffRow) {
+        assertStaffMappedToService(salon, staffRow, data.service);
         if (!data.stylist) data.stylist = staffRow.name;
         data.stylistId = staffRow.id;
       } else if (salon) {

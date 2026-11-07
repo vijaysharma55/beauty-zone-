@@ -38,6 +38,26 @@ import { ownerBookingsRouter } from './bookings.js';
 import { salonPaymentsRouter } from './salon-payments.js';
 import { serviceAdvanceFields } from '../payments/salon-settings.js';
 import { detectImage } from '../payments/proofs.js';
+import {
+  DEFAULT_COMMISSION_PERCENT,
+  DEFAULT_STAFF_APP_ACCESS_ROLE,
+  MAX_STAFF_SKILLS,
+  MAX_STAFF_SKILL_LENGTH,
+  STAFF_APP_ACCESS_ROLE_VALUES,
+  STAFF_AVAILABILITY_STATUSES,
+  STAFF_PRIMARY_ROLE_VALUES,
+  defaultWeeklySchedule,
+  getPrimaryRoleLabel,
+  isStaffAppAccessRole,
+  isStaffAvailabilityStatus,
+  isStaffPrimaryRole,
+  normalizeCommissionPercent,
+  normalizeIndianMobile,
+  normalizeServiceIdList,
+  normalizeSkillList,
+  normalizeWeeklySchedule,
+  suggestedAppAccessRole,
+} from '../../src/lib/staffRoles.js';
 
 export const salonRouter = Router();
 
@@ -505,25 +525,138 @@ function serializeStaffWorkPhotos(workPhotos) {
   );
 }
 
-const STAFF_AVAILABILITY_STATUSES = ['available', 'busy', 'on_leave'];
+/**
+ * Resolve the salon ids a staff member is assigned to deliver.
+ * Every id must belong to this salon, so a cross-tenant id is rejected before
+ * it can ever reach the booking flow.
+ */
+function resolveStaffServiceIds(salonId, rawList) {
+  if (!Array.isArray(rawList)) throw new ValidationError('Assigned services must be a list of service ids');
+  const ids = normalizeServiceIdList(rawList);
+  if (ids.length > 200) throw new ValidationError('A staff member can be assigned at most 200 services');
+  if (ids.length === 0) return [];
+  const ownServices = new Set(getServicesForSalon(salonId).map((row) => row.id));
+  const unknown = ids.filter((id) => !ownServices.has(id));
+  if (unknown.length > 0) {
+    throw new ValidationError('Assigned services must belong to your salon catalogue');
+  }
+  return ids;
+}
 
-function staffPayload(body, { partial = false } = {}) {
+/**
+ * Build the `staff` column payload for POST/PATCH.
+ *
+ * New onboarding fields:
+ *  - primaryRole        → professional title slug (see STAFF_PRIMARY_ROLES)
+ *  - appAccessRole      → system permission level (see STAFF_APP_ACCESS_ROLES)
+ *  - commissionPercent  → 0–100, defaults to 15
+ *  - mobileNumber       → normalized "+91XXXXXXXXXX"
+ *  - hideMobileNumber   → keeps the number out of public/staff lists
+ *  - serviceIds         → salon-owned service mapping
+ *  - weeklySchedule     → Monday→Sunday start/end times + closed flag
+ */
+function staffPayload(body, { partial = false, salonId = null } = {}) {
   if (body?.isDemo === true || (typeof body?.id === 'string' && /^demo[-_:]/i.test(body.id.trim()))) {
     throw new ValidationError('Demo staff profiles are for preview only and cannot be saved as salon employees.');
   }
   const out = {};
   if (!partial || body.name !== undefined) out.name = str(body.name, { min: 1, max: 120, field: 'Staff name', required: true });
-  if (!partial || body.roleTitle !== undefined || body.designation !== undefined) {
-    out.role_title = str(body.roleTitle ?? body.designation, { max: 120, field: 'Designation' });
+
+  /* ---- Primary role + free-text title ---- */
+  if (body.primaryRole !== undefined) {
+    if (body.primaryRole === '' || body.primaryRole === null) {
+      out.primary_role = '';
+    } else if (!isStaffPrimaryRole(body.primaryRole)) {
+      throw new ValidationError(
+        `Primary role must be one of: ${STAFF_PRIMARY_ROLE_VALUES.join(', ')}`
+      );
+    } else {
+      out.primary_role = body.primaryRole;
+    }
+  } else if (!partial) {
+    out.primary_role = '';
   }
+
+  const rawRoleTitle = body.roleTitle ?? body.designation;
+  if (!partial || rawRoleTitle !== undefined) {
+    // When only a slug is supplied, store the canonical label as the title so
+    // public templates always render "Senior Stylist", never "senior_stylist".
+    const supplied = str(rawRoleTitle, { max: 120, field: 'Designation' });
+    const fallbackLabel = getPrimaryRoleLabel(out.primary_role);
+    out.role_title = supplied || fallbackLabel;
+  } else if (out.primary_role) {
+    out.role_title = getPrimaryRoleLabel(out.primary_role);
+  }
+
+  /* ---- App access role ---- */
+  if (body.appAccessRole !== undefined) {
+    if (!isStaffAppAccessRole(body.appAccessRole)) {
+      throw new ValidationError(
+        `App access role must be one of: ${STAFF_APP_ACCESS_ROLE_VALUES.join(', ')}`
+      );
+    }
+    out.app_access_role = body.appAccessRole;
+  } else if (!partial) {
+    out.app_access_role = suggestedAppAccessRole(out.primary_role);
+  }
+
+  /* ---- Commission ---- */
+  if (body.commissionPercent !== undefined || body.commission !== undefined) {
+    const commission = normalizeCommissionPercent(body.commissionPercent ?? body.commission);
+    if (!commission.ok) throw new ValidationError(commission.error);
+    out.commission_percent = commission.value;
+  } else if (!partial) {
+    out.commission_percent = DEFAULT_COMMISSION_PERCENT;
+  }
+
+  /* ---- Mobile number + privacy flag ---- */
+  if (body.mobileNumber !== undefined || body.mobile !== undefined || body.phone !== undefined) {
+    const mobile = normalizeIndianMobile(body.mobileNumber ?? body.mobile ?? body.phone);
+    if (!mobile.ok) throw new ValidationError(mobile.error);
+    out.mobile_number = mobile.value;
+  } else if (!partial) {
+    out.mobile_number = '';
+  }
+  if (body.hideMobileNumber !== undefined || body.hideMobile !== undefined) {
+    out.hide_mobile_number = bool(body.hideMobileNumber ?? body.hideMobile, false) ? 1 : 0;
+  } else if (!partial) {
+    out.hide_mobile_number = 0;
+  }
+
+  /* ---- Service assignment ---- */
+  if (body.serviceIds !== undefined || body.assignedServiceIds !== undefined || body.services !== undefined) {
+    if (!salonId) throw new ValidationError('Assigned services require a salon context');
+    out.service_ids_json = JSON.stringify(
+      resolveStaffServiceIds(salonId, body.serviceIds ?? body.assignedServiceIds ?? body.services)
+    );
+  } else if (!partial) {
+    out.service_ids_json = '[]';
+  }
+
+  /* ---- Weekly schedule ---- */
+  if (body.weeklySchedule !== undefined || body.schedule !== undefined) {
+    const { schedule, errors } = normalizeWeeklySchedule(body.weeklySchedule ?? body.schedule);
+    if (errors.length > 0) throw new ValidationError(errors[0]);
+    out.weekly_schedule_json = JSON.stringify(schedule);
+  } else if (!partial) {
+    out.weekly_schedule_json = JSON.stringify(defaultWeeklySchedule());
+  }
+
   if (!partial || body.bio !== undefined) out.bio = sanitizeText(str(body.bio, { max: 2000, field: 'Bio' }), 2000);
   if (!partial || body.photoUrl !== undefined) out.photo_url = imageField('Photo')(body.photoUrl);
   if (!partial || body.specialties !== undefined) {
-    const list = Array.isArray(body.specialties) ? body.specialties : [];
-    if (list.length > 25) throw new ValidationError('A staff member can have at most 25 specialties');
-    out.specialties_json = JSON.stringify(
-      list.map((s) => str(s, { max: 80, field: 'Specialty' })).filter(Boolean)
-    );
+    const raw = body.specialties;
+    const rawList = Array.isArray(raw) ? raw : typeof raw === 'string' ? raw.split(',') : [];
+    if (rawList.length > MAX_STAFF_SKILLS) {
+      throw new ValidationError(`A staff member can have at most ${MAX_STAFF_SKILLS} skills`);
+    }
+    const list = normalizeSkillList(rawList);
+    for (const skill of list) {
+      if (skill.length > MAX_STAFF_SKILL_LENGTH) {
+        throw new ValidationError(`Each skill must be at most ${MAX_STAFF_SKILL_LENGTH} characters`);
+      }
+    }
+    out.specialties_json = JSON.stringify(list);
   }
   const rawQualifications = body.qualifications !== undefined ? body.qualifications : body.certifications;
   if (!partial || rawQualifications !== undefined) {
@@ -564,8 +697,10 @@ function staffPayload(body, { partial = false } = {}) {
   if (body.bookingEnabled !== undefined) out.booking_enabled = bool(body.bookingEnabled, true) ? 1 : 0;
   // Availability status — only 'available' staff are offered for online booking.
   if (body.availabilityStatus !== undefined) {
-    if (!STAFF_AVAILABILITY_STATUSES.includes(body.availabilityStatus)) {
-      throw new ValidationError('Availability must be one of: available, busy, on_leave');
+    if (!isStaffAvailabilityStatus(body.availabilityStatus)) {
+      throw new ValidationError(
+        `Availability must be one of: ${STAFF_AVAILABILITY_STATUSES.join(', ')}`
+      );
     }
     out.availability_status = body.availabilityStatus;
   }
@@ -589,37 +724,38 @@ salonRouter.post('/staff', (req, res) => {
       code: 'DEMO_STAFF_NOT_SAVEABLE',
     });
   }
-  const data = staffPayload(req.body || {});
+  const data = staffPayload(req.body || {}, { salonId: salon.id });
   const id = newId();
   const ts = nowIso();
+  const fullPayload = {
+    role_title: '',
+    bio: '',
+    photo_url: '',
+    specialties_json: '[]',
+    qualifications_json: '[]',
+    work_photos_json: '[]',
+    work_photos_consent: 0,
+    rating: null,
+    review_count: 0,
+    experience: '',
+    active: 1,
+    booking_enabled: 1,
+    availability_status: 'available',
+    primary_role: '',
+    app_access_role: DEFAULT_STAFF_APP_ACCESS_ROLE,
+    commission_percent: DEFAULT_COMMISSION_PERCENT,
+    mobile_number: '',
+    hide_mobile_number: 0,
+    service_ids_json: '[]',
+    weekly_schedule_json: JSON.stringify(defaultWeeklySchedule()),
+    sort_order: getStaffForSalon(salon.id).length,
+    ...data,
+  };
+  const columns = Object.keys(fullPayload);
   db.prepare(
-    `INSERT INTO staff (
-       id, salon_id, name, role_title, bio, photo_url,
-       specialties_json, qualifications_json, work_photos_json, work_photos_consent,
-       rating, review_count, experience, active, booking_enabled, availability_status, sort_order, created_at, updated_at
-     )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    id,
-    salon.id,
-    data.name,
-    data.role_title,
-    data.bio,
-    data.photo_url,
-    data.specialties_json,
-    data.qualifications_json ?? '[]',
-    data.work_photos_json ?? '[]',
-    data.work_photos_consent ?? 0,
-    data.rating ?? null,
-    data.review_count ?? 0,
-    data.experience ?? '',
-    data.active ?? 1,
-    data.booking_enabled ?? 1,
-    data.availability_status ?? 'available',
-    data.sort_order ?? getStaffForSalon(salon.id).length,
-    ts,
-    ts
-  );
+    `INSERT INTO staff (id, salon_id, ${columns.join(', ')}, created_at, updated_at)
+     VALUES (?, ?, ${columns.map(() => '?').join(', ')}, ?, ?)`
+  ).run(id, salon.id, ...columns.map((column) => fullPayload[column]), ts, ts);
   audit(req, 'staff.created', 'staff', id);
   const row = db.prepare('SELECT * FROM staff WHERE id = ? AND salon_id = ?').get(id, salon.id);
   res.status(201).json({ staff: serializeStaff(row) });
@@ -631,7 +767,7 @@ salonRouter.patch('/staff/:staffId', (req, res) => {
     .prepare('SELECT * FROM staff WHERE id = ? AND salon_id = ?')
     .get(req.params.staffId, salon.id);
   if (!existing) return res.status(404).json({ error: 'Staff member not found' });
-  const data = staffPayload(req.body || {}, { partial: true });
+  const data = staffPayload(req.body || {}, { partial: true, salonId: salon.id });
   if (Object.keys(data).length === 0) return res.json({ staff: serializeStaff(existing) });
   data.updated_at = nowIso();
   const cols = Object.keys(data);

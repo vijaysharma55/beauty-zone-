@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import type { SalonStaff, StaffWorkPhoto, TemplateId } from '../types/auth';
+import { describeWeeklySchedule } from '../lib/staffRoles.js';
 
 /** Complete staff profile data displayed in the full profile modal. */
 export interface StylistProfile {
@@ -35,6 +36,8 @@ export interface StylistProfile {
   bookingEnabled?: boolean;
   isDemo?: boolean;
   joinedAt?: string | null;
+  /** Recurring weekly roster, summarised in the profile (null = not set). */
+  weeklySchedule?: { day: string; startTime: string; endTime: string; closed: boolean }[] | null;
 }
 
 /** Canonical mapper from a database `SalonStaff` record to `StylistProfile`. */
@@ -63,6 +66,7 @@ export function staffToProfile(
     bookingEnabled: member.bookingEnabled !== false && !member.isDemo,
     isDemo: Boolean(member.isDemo),
     joinedAt: member.createdAt || null,
+    weeklySchedule: Array.isArray(member.weeklySchedule) ? member.weeklySchedule : null,
   };
 }
 
@@ -157,10 +161,18 @@ export const StylistProfileModal: React.FC<StylistProfileModalProps> = ({
     profile.workPhotosConsent === true
       ? (profile.workPhotos || []).filter((photo) => Boolean(photo && photo.url?.trim()))
       : [];
+  // Weekly roster summary ("Mon–Sat 10:00 – 20:00 · Sun closed").
+  const scheduleSummary = Array.isArray(profile.weeklySchedule) && profile.weeklySchedule.length > 0
+    ? describeWeeklySchedule(profile.weeklySchedule)
+    : '';
 
   const hasMetricsStrip = hasGenuineRating || Boolean(experience) || selected;
   const hasBodySections =
-    Boolean(bio) || specialties.length > 0 || qualifications.length > 0 || consentedWorkPhotos.length > 0;
+    Boolean(bio) ||
+    Boolean(scheduleSummary) ||
+    specialties.length > 0 ||
+    qualifications.length > 0 ||
+    consentedWorkPhotos.length > 0;
 
   const canBook =
     Boolean(onSelect) &&
@@ -334,6 +346,23 @@ export const StylistProfileModal: React.FC<StylistProfileModalProps> = ({
                 </h3>
                 <p className="text-sm leading-relaxed" style={{ color: `${primary}DD` }}>
                   {bio}
+                </p>
+              </section>
+            )}
+
+            {scheduleSummary && (
+              <section>
+                <h3
+                  className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.16em]"
+                  style={{ color: `${primary}80` }}
+                >
+                  <Calendar className="h-3.5 w-3.5" style={{ color: accent }} /> Weekly availability
+                </h3>
+                <p
+                  className="rounded-xl px-3 py-2 text-sm font-medium"
+                  style={{ backgroundColor: `${accent}12`, color: primary, border: `1px solid ${accent}26` }}
+                >
+                  {scheduleSummary}
                 </p>
               </section>
             )}

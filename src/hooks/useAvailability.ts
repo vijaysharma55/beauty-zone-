@@ -45,6 +45,8 @@ interface Options {
   slug?: string | null;
   durationMinutes?: number;
   enabled?: boolean;
+  /** Preferred specialist — narrows slots to their weekly roster when set. */
+  staffId?: string | null;
 }
 
 /**
@@ -56,7 +58,13 @@ interface Options {
  *    `usingFallback: true` so the UI can show a recovery notice and a Retry button.
  *  - The booking form therefore never becomes unusable because of a dead API.
  */
-export function useAvailability({ date, slug, durationMinutes = 60, enabled = true }: Options): AvailabilityState {
+export function useAvailability({
+  date,
+  slug,
+  durationMinutes = 60,
+  enabled = true,
+  staffId = null,
+}: Options): AvailabilityState {
   const [state, setState] = useState<Omit<AvailabilityState, 'reload'>>({
     status: 'idle',
     slots: [],
@@ -108,6 +116,7 @@ export function useAvailability({ date, slug, durationMinutes = 60, enabled = tr
       const params = new URLSearchParams({ date });
       if (slug) params.set('slug', slug);
       if (durationMinutes) params.set('duration', String(durationMinutes));
+      if (staffId) params.set('staffId', staffId);
       // Help the server hide slots that have already passed today.
       params.set('tzOffset', String(-new Date().getTimezoneOffset()));
 
@@ -167,7 +176,7 @@ export function useAvailability({ date, slug, durationMinutes = 60, enabled = tr
       if (timerRef.current) clearTimeout(timerRef.current);
       abortRef.current?.abort();
     };
-  }, [date, slug, durationMinutes, enabled, nonce]);
+  }, [date, slug, durationMinutes, enabled, staffId, nonce]);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
 

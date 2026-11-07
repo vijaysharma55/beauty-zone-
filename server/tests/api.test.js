@@ -1487,3 +1487,228 @@ test('unpublished salon websites block booking API calls and automatically activ
   assert.equal(afterUnpublish.data.code, 'WEBSITE_NOT_PUBLISHED');
 });
 
+
+/* ------------------------------------------------------------------ */
+/* Staff onboarding: roles, app access, commission, roster & skills    */
+/* ------------------------------------------------------------------ */
+
+test('staff onboarding persists roles, app access, commission, mobile privacy, services and weekly schedule', async () => {
+  // Reuse the owner session established earlier so this test does not consume
+  // additional login attempts from the shared rate limiter.
+  const owner = ownerClient;
+  const anon = makeClient();
+
+  const servicesRes = await owner.get('/api/salon/services');
+  assert.equal(servicesRes.status, 200);
+  const salonServices = servicesRes.data.services;
+  assert.ok(salonServices.length >= 2, 'seeded salon exposes services for assignment');
+  const assignedIds = [salonServices[0].id, salonServices[1].id];
+
+  const created = await owner.post('/api/salon/staff', {
+    name: 'Rahul Sharma',
+    primaryRole: 'senior_stylist',
+    appAccessRole: 'manager',
+    commissionPercent: 18.5,
+    mobileNumber: '+91 98765 43210',
+    hideMobileNumber: true,
+    serviceIds: assignedIds,
+    specialties: ['Hair Coloring', 'Balayage', 'Keratin Treatment', 'Hair Coloring'],
+    weeklySchedule: [
+      { day: 'mon', startTime: '10:00', endTime: '20:00', closed: false },
+      { day: 'tue', startTime: '10:00', endTime: '20:00', closed: false },
+      { day: 'wed', startTime: '10:00', endTime: '21:00', closed: false },
+      { day: 'thu', startTime: '10:00', endTime: '21:00', closed: false },
+      { day: 'fri', startTime: '10:00', endTime: '21:00', closed: false },
+      { day: 'sat', startTime: '09:00', endTime: '21:00', closed: false },
+      { day: 'sun', closed: true },
+    ],
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const member = created.data.staff;
+  const staffId = member.id;
+
+  // Role title is derived from the primary role slug, never a raw slug.
+  assert.equal(member.primaryRole, 'senior_stylist');
+  assert.equal(member.roleTitle, 'Senior Stylist');
+  assert.equal(member.appAccessRole, 'manager');
+  assert.equal(member.commissionPercent, 18.5);
+  assert.equal(member.mobileNumber, '+919876543210');
+  assert.equal(member.hideMobileNumber, true);
+  assert.deepEqual(member.serviceIds, assignedIds);
+  // Skills are trimmed, case-insensitively de-duplicated and keep order.
+  assert.deepEqual(member.specialties, ['Hair Coloring', 'Balayage', 'Keratin Treatment']);
+  // Seven days always come back, with Sunday closed and empty times.
+  assert.equal(member.weeklySchedule.length, 7);
+  const sunday = member.weeklySchedule.find((d) => d.day === 'sun');
+  assert.deepEqual(sunday, { day: 'sun', startTime: '', endTime: '', closed: true });
+  const saturday = member.weeklySchedule.find((d) => d.day === 'sat');
+  assert.deepEqual(saturday, { day: 'sat', startTime: '09:00', endTime: '21:00', closed: false });
+
+  // Owner list keeps the real number available for editing, flagged as hidden.
+  const list = await owner.get('/api/salon/staff');
+  const fromList = list.data.staff.find((s) => s.id === staffId);
+  assert.equal(fromList.mobileNumber, '+919876543210');
+  assert.equal(fromList.hideMobileNumber, true);
+
+  // Hidden numbers and every staff-only field stay out of the public payload.
+  const pubMember = (await anon.get('/api/public/salons/lumina-luxe')).data.staff.find((s) => s.id === staffId);
+  assert.ok(pubMember, 'new staff member appears on the live website');
+  assert.equal(pubMember.mobileNumber, '', 'hidden mobile must never reach the public website');
+  assert.equal(pubMember.appAccessRole, undefined, 'app access is internal to the owner dashboard');
+  assert.equal(pubMember.commissionPercent, undefined, 'commission is internal to the owner dashboard');
+  assert.equal(pubMember.serviceIds, undefined, 'service mapping is dashboard-only');
+
+  // Edit round-trip: partial patch of one onboarding field leaves the rest intact.
+  const patched = await owner.patch(`/api/salon/staff/${staffId}`, { commissionPercent: 22 });
+  assert.equal(patched.status, 200);
+  assert.equal(patched.data.staff.commissionPercent, 22);
+  assert.equal(patched.data.staff.appAccessRole, 'manager');
+  assert.deepEqual(patched.data.staff.serviceIds, assignedIds);
+
+  // Validation guards.
+  const badRole = await owner.post('/api/salon/staff', { name: 'Bad Role', primaryRole: 'chief_vibes_officer' });
+  assert.equal(badRole.status, 400);
+  const badAccess = await owner.post('/api/salon/staff', { name: 'Bad Access', appAccessRole: 'super_admin' });
+  assert.equal(badAccess.status, 400);
+  const badCommission = await owner.post('/api/salon/staff', { name: 'Bad Commission', commissionPercent: 140 });
+  assert.equal(badCommission.status, 400);
+  const badMobile = await owner.post('/api/salon/staff', { name: 'Bad Mobile', mobileNumber: '12345' });
+  assert.equal(badMobile.status, 400);
+  const badSchedule = await owner.post('/api/salon/staff', {
+    name: 'Bad Schedule',
+    weeklySchedule: [{ day: 'mon', startTime: '20:00', endTime: '10:00', closed: false }],
+  });
+  assert.equal(badSchedule.status, 400);
+  const badDay = await owner.post('/api/salon/staff', {
+    name: 'Bad Day',
+    weeklySchedule: [{ day: 'funday', startTime: '10:00', endTime: '18:00', closed: false }],
+  });
+  assert.equal(badDay.status, 400);
+  // Service assignment is scoped to this salon's own catalogue: ids that do
+  // not belong to the salon (another tenant's, or invented) are rejected.
+  const foreignAssignment = await owner.post('/api/salon/staff', {
+    name: 'Foreign Service',
+    serviceIds: ['11111111-2222-4333-8444-555555555555'],
+  });
+  assert.equal(foreignAssignment.status, 400);
+  assert.match(foreignAssignment.data.error, /belong to your salon catalogue/);
+
+  // Defaults for a minimal create: 15% commission, service provider access,
+  // default week with Sunday closed and no mobile number.
+  const minimal = await owner.post('/api/salon/staff', { name: 'Minimal Onboarding' });
+  assert.equal(minimal.status, 201, JSON.stringify(minimal.data));
+  const minimalStaff = minimal.data.staff;
+  assert.equal(minimalStaff.commissionPercent, 15);
+  assert.equal(minimalStaff.appAccessRole, 'service_provider');
+  assert.equal(minimalStaff.mobileNumber, '');
+  assert.deepEqual(minimalStaff.serviceIds, []);
+  assert.equal(minimalStaff.weeklySchedule.length, 7);
+  assert.equal(minimalStaff.weeklySchedule.find((d) => d.day === 'sun').closed, true);
+  assert.equal(minimalStaff.weeklySchedule.find((d) => d.day === 'mon').startTime, '10:00');
+  assert.equal(minimalStaff.primaryRole, '');
+  assert.equal(minimalStaff.roleTitle, '');
+
+  // Availability accepts the new 'off_duty' status used by the onboarding form.
+  const offDuty = await owner.patch(`/api/salon/staff/${staffId}`, { availabilityStatus: 'off_duty' });
+  assert.equal(offDuty.status, 200);
+  assert.equal(offDuty.data.staff.availabilityStatus, 'off_duty');
+  const publicOffDuty = (await anon.get('/api/public/salons/lumina-luxe')).data.staff.find((s) => s.id === staffId);
+  assert.equal(publicOffDuty.bookingEnabled, false, 'off-duty staff cannot be booked online');
+
+  // Service mapping is enforced on the public booking flow: assigning a
+  // specialist only one service must reject a booking for a different service
+  // instead of silently assigning the wrong artist.
+  const liveServices = (await anon.get('/api/public/salons/lumina-luxe')).data.services;
+  assert.ok(liveServices.length >= 2, 'seeded live salon exposes at least two services');
+  const mappedService = liveServices[0];
+  const otherService = liveServices[1];
+  await owner.patch(`/api/salon/staff/${staffId}`, {
+    availabilityStatus: 'available',
+    bookingEnabled: true,
+    serviceIds: [mappedService.id],
+  });
+  const mismatched = await anon.post('/api/public/bookings', {
+    slug: 'lumina-luxe',
+    fullName: 'Mapping Mismatch',
+    phone: '9800011122',
+    service: otherService.name,
+    stylistId: staffId,
+    date: nextMondayDate(),
+    time: '03:00 PM',
+  });
+  assert.equal(mismatched.status, 409);
+  assert.equal(mismatched.data.code, 'STAFF_SERVICE_MISMATCH');
+
+  // The mapped service books normally.
+  const matched = await anon.post('/api/public/bookings', {
+    slug: 'lumina-luxe',
+    fullName: 'Mapping Match',
+    phone: '9800011133',
+    service: mappedService.name,
+    stylistId: staffId,
+    date: nextMondayDate(),
+    time: '04:00 PM',
+  });
+  assert.equal(matched.status, 201, JSON.stringify(matched.data));
+  assert.equal(matched.data.booking.stylistId, staffId);
+
+  // Cleanup so later tests keep a stable roster.
+  await owner.del(`/api/salon/staff/${staffId}`);
+  await owner.del(`/api/salon/staff/${minimalStaff.id}`);
+});
+
+test('staff weekly roster narrows public availability for a preferred specialist', async () => {
+  const owner = ownerClient;
+  const anon = makeClient();
+
+  const created = await owner.post('/api/salon/staff', {
+    name: 'Roster Tester',
+    primaryRole: 'hair_dresser',
+    weeklySchedule: [
+      { day: 'mon', startTime: '12:00', endTime: '16:00', closed: false },
+      { day: 'tue', startTime: '12:00', endTime: '16:00', closed: false },
+      { day: 'wed', startTime: '12:00', endTime: '16:00', closed: false },
+      { day: 'thu', startTime: '12:00', endTime: '16:00', closed: false },
+      { day: 'fri', startTime: '12:00', endTime: '16:00', closed: false },
+      { day: 'sat', startTime: '12:00', endTime: '16:00', closed: false },
+      { day: 'sun', closed: true },
+    ],
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const staffId = created.data.staff.id;
+
+  // Monday: the roster window (12:00–16:00) is narrower than the salon's hours.
+  const monday = nextMondayDate();
+  const withStaff = await anon.get(
+    `/api/public/availability?date=${monday}&slug=lumina-luxe&staffId=${staffId}&duration=60&tzOffset=330`
+  );
+  assert.equal(withStaff.status, 200);
+  assert.equal(withStaff.data.staffScheduleApplied, 'staff_schedule');
+  assert.ok(withStaff.data.slots.length > 0);
+  for (const slot of withStaff.data.slots) {
+    assert.ok(slot.start >= '12:00', `slot ${slot.start} must start inside the roster`);
+    assert.ok(slot.end <= '16:00', `slot ${slot.end} must finish inside the roster`);
+  }
+
+  // The upcoming Sunday is closed for this specialist only.
+  const date = new Date();
+  const daysUntilSunday = (7 - date.getDay()) % 7 || 7;
+  date.setDate(date.getDate() + daysUntilSunday);
+  const pad = (n) => String(n).padStart(2, '0');
+  const sunday = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  const sundayWithStaff = await anon.get(
+    `/api/public/availability?date=${sunday}&slug=lumina-luxe&staffId=${staffId}&duration=60&tzOffset=330`
+  );
+  assert.equal(sundayWithStaff.status, 200);
+  assert.equal(sundayWithStaff.data.staffScheduleApplied, 'staff_closed');
+  assert.deepEqual(sundayWithStaff.data.slots, []);
+  assert.equal(sundayWithStaff.data.reason, 'staff_closed');
+
+  // Without a specialist the salon's own hours still apply (no roster leak).
+  const anyStaff = await anon.get(`/api/public/availability?date=${monday}&slug=lumina-luxe&duration=60&tzOffset=330`);
+  assert.equal(anyStaff.status, 200);
+  assert.equal(anyStaff.data.staffScheduleApplied, null);
+  assert.ok(anyStaff.data.slots.length > withStaff.data.slots.length);
+
+  await owner.del(`/api/salon/staff/${staffId}`);
+});

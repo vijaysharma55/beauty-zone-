@@ -195,9 +195,12 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
     slug: salon.slug,
     durationMinutes: duration,
     enabled: Boolean(date && isWebsiteLive),
+    // A preferred specialist narrows the bookable window to their own roster.
+    staffId: selectedStaff ? selectedStaff.id : null,
   });
 
   const slots: Slot[] = availability.slots;
+  const closedByStaffRoster = availability.reason === 'staff_closed';
 
   // Keep the chosen time valid as the generated grid changes.
   useEffect(() => {
@@ -278,7 +281,11 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
     if (fullName.trim().length < 2) next.fullName = 'Please enter your name.';
     if (phone.replace(/\D/g, '').length < 8) next.phone = 'Enter a valid phone number.';
     if (!date) next.date = 'Please choose a date.';
-    if (availability.closed) next.date = 'We are closed on this day.';
+    if (availability.closed) {
+      next.date = closedByStaffRoster
+        ? 'The selected specialist is off on this day. Please pick another date or choose “Any available”.'
+        : 'We are closed on this day.';
+    }
     if (!time) next.time = 'Please choose a time.';
     setErrors(next);
     if (Object.keys(next).length > 0) return;
@@ -754,7 +761,9 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
                   ) : availability.status === 'loading' ? (
                     <option value={time}>{availability.retrying ? 'Retrying…' : 'Checking availability…'}</option>
                   ) : availability.closed ? (
-                    <option value="">Closed on this day</option>
+                    <option value="">
+                      {closedByStaffRoster ? 'This specialist is off on this day' : 'Closed on this day'}
+                    </option>
                   ) : slots.length === 0 ? (
                     <option value="">No slots available</option>
                   ) : (
