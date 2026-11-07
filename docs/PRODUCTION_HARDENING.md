@@ -43,10 +43,14 @@ Non-schema errors (401/403/network) are propagated unchanged — never swallowed
 ## 3. Vercel SPA deep links
 
 `vercel.json` puts `/api/(.*)` first, then the prerendered `/` → `/index.html`,
-then explicit SPA routes (`/login`, `/admin`, `/admin/*`, `/dashboard`,
-`/dashboard/*`, `/salon/*`, `/my-appointments`, `/receipt/*`) and finally a
-`/(.*)` catch-all. All SPA routes resolve to the real **`/spa.html`** shell
-(`cleanUrls: false`).
+then explicit literals for the auth-critical entry points (`/login`,
+`/register`, `/forgot-password`, `/reset-password`, `/verify-email`,
+`/dashboard`, `/my-appointments`, `/salons`, `/admin`) and finally the
+asset-safe catch-all `/((?!api/|assets/)[^.]*)`. All SPA routes resolve to the
+real **`/spa.html`** shell (`cleanUrls: false`). The catch-all deliberately
+excludes `/api`, `/assets` and any path containing a file extension, so a
+stale hashed chunk from a previous deployment returns a genuine 404 instead of
+HTML being delivered as JavaScript.
 
 > In this repository `dist/index.html` is the *prerendered marketing homepage*
 > with injected SEO/structured-data HTML, while `dist/spa.html` is the plain
@@ -112,7 +116,10 @@ chunk hashes.
 3. Confirm the admin's email in Supabase Auth (`email_confirmed_at`).
 4. Set `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` (the API also accepts
    `VITE_SUPABASE_*` / `SUPABASE_ANON_KEY` fallbacks), `APP_URL`, and redeploy.
-5. Sign in at `/login`; a `super_admin` or `admin` must land on `/admin`, an
+5. Optional temporary escape hatch inherited from `main`:
+   `ALLOW_UNVERIFIED_EMAIL_LOGIN=true` lets an owner open the dashboard before
+   confirming their email (approval/publishing still require confirmation).
+6. Sign in at `/login`; a `super_admin` or `admin` must land on `/admin`, an
    owner on `/dashboard` (or `/dashboard/onboarding`), a customer on
    `/my-appointments`.
 

@@ -68,6 +68,17 @@ export function adminAllowlist() {
   return emailAllowlist(process.env.ADMIN_EMAILS);
 }
 
+/**
+ * TEMPORARY escape hatch from main (PR #35): lets an owner open the dashboard
+ * before confirming their email. Off unless ALLOW_UNVERIFIED_EMAIL_LOGIN is
+ * set. Read per request so it can be flipped without a code change. The local
+ * account stays marked unverified, so approval/publishing still require a
+ * confirmed email.
+ */
+export function allowUnverifiedEmailLogin() {
+  return /^(1|true|yes)$/i.test(process.env.ALLOW_UNVERIFIED_EMAIL_LOGIN || '');
+}
+
 async function requestJson(url, { method = 'GET', headers = {}, body } = {}) {
   let response;
   try {
@@ -233,7 +244,8 @@ export async function verifySupabaseAccessToken(accessToken, { fresh = false } =
   if (!identity.id || !EMAIL_RE.test(email)) {
     throw new HttpError(401, 'Supabase did not return a verified account identity.');
   }
-  if (!identity.email_confirmed_at && !identity.confirmed_at) {
+  const emailConfirmed = Boolean(identity.email_confirmed_at || identity.confirmed_at);
+  if (!emailConfirmed && !allowUnverifiedEmailLogin()) {
     throw new HttpError(403, 'Verify your email address before opening the salon dashboard.');
   }
 
@@ -306,7 +318,7 @@ export async function verifySupabaseAccessToken(accessToken, { fresh = false } =
     status: profileStatus,
     provider,
     providerId,
-    emailVerified: Boolean(identity.email_confirmed_at || identity.confirmed_at),
+    emailVerified: emailConfirmed,
     dob: normalizeDob(profile.date_of_birth || identity.user_metadata?.date_of_birth || null),
   };
   if (!fresh) verifyCache.set(cacheKey, { value, expiresAt: Date.now() + VERIFY_CACHE_TTL_MS });

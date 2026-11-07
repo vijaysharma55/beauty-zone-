@@ -103,6 +103,19 @@ before(async () => {
     mockSupabase.listen(mockPort, '127.0.0.1', resolve);
   });
 
+  await startApi();
+});
+
+/**
+ * Environment variables are read by the API child process at startup, so a
+ * test that changes a flag must restart the child rather than mutating the
+ * parent's process.env.
+ */
+async function startApi(extraEnv = {}) {
+  if (apiServer && apiServer.exitCode === null) {
+    apiServer.kill('SIGTERM');
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
   apiServer = spawn(process.execPath, ['server/index.js'], {
     cwd: ROOT,
     env: {
@@ -119,11 +132,12 @@ before(async () => {
       SEED_OWNER_EMAIL: 'owner@luminaluxe.in',
       SEED_OWNER_PASSWORD: 'Owner@12345',
       ALLOW_DEMO_AUTH: 'true',
+      ...extraEnv,
     },
     stdio: 'ignore',
   });
   await waitForApi();
-});
+}
 
 after(async () => {
   if (apiServer && apiServer.exitCode === null) {
@@ -172,4 +186,19 @@ test('disabled and unverified Supabase identities cannot create application sess
   mockIdentity = { ...mockIdentity, email_confirmed_at: null, confirmed_at: null };
   const unverified = await request('POST', '/api/auth/supabase-session', { accessToken: 'unverified-test-access-token' });
   assert.equal(unverified.status, 403);
+});
+
+test('ALLOW_UNVERIFIED_EMAIL_LOGIN lets an unverified owner sign in, and stays off by default', async () => {
+  mockProfile = { ...mockProfile, role: 'salon_owner', status: 'active' };
+  mockIdentity = { ...mockIdentity, email_confirmed_at: null, confirmed_at: null };
+
+  const blocked = await request('POST', '/api/auth/supabase-session', { accessToken: 'unverified-test-access-token' });
+  assert.equal(blocked.status, 403);
+
+  // Restart the API child with the flag enabled (env is read at boot, not per
+  // request from the parent process).
+  await startApi({ ALLOW_UNVERIFIED_EMAIL_LOGIN: 'true' });
+  const allowed = await request('POST', '/api/auth/supabase-session', { accessToken: 'unverified-test-access-token' });
+  assert.equal(allowed.status, 200, JSON.stringify(allowed.data));
+  assert.equal(allowed.data.user.role, 'salon_owner');
 });

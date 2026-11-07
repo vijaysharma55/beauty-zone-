@@ -21,6 +21,18 @@
       "destination": "/spa.html"
     },
     {
+      "source": "/forgot-password",
+      "destination": "/spa.html"
+    },
+    {
+      "source": "/reset-password",
+      "destination": "/spa.html"
+    },
+    {
+      "source": "/verify-email",
+      "destination": "/spa.html"
+    },
+    {
       "source": "/dashboard",
       "destination": "/spa.html"
     },
@@ -33,27 +45,11 @@
       "destination": "/spa.html"
     },
     {
-      "source": "/salon/(.*)",
-      "destination": "/spa.html"
-    },
-    {
-      "source": "/receipt/(.*)",
-      "destination": "/spa.html"
-    },
-    {
       "source": "/admin",
       "destination": "/spa.html"
     },
     {
-      "source": "/admin/(.*)",
-      "destination": "/spa.html"
-    },
-    {
-      "source": "/dashboard/(.*)",
-      "destination": "/spa.html"
-    },
-    {
-      "source": "/(.*)",
+      "source": "/((?!api/|assets/)[^.]*)",
       "destination": "/spa.html"
     }
   ],

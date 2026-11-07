@@ -1,9 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { VideoItem } from '../types';
 import { RevealOnScroll } from './RevealOnScroll';
 import { InstagramIcon, FacebookIcon, YouTubeIcon } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
-import { SmartImage } from './crud/SmartImage';
 import { ItemActions } from './crud/ItemActions';
 import { CardEditorModal } from './crud/CardEditorModal';
 import { CrudToast, ManageControls, ManageHint } from './crud/ManageControls';
@@ -15,17 +14,18 @@ import {
   videoEditorFields,
   videoToEditorValues,
 } from './crud/videoEditorConfig';
-import { 
-  Film, 
-  Play, 
-  ArrowRight, 
-  Star, 
-  Eye, 
-  CalendarCheck, 
-  X, 
+import {
+  Film,
+  Play,
+  ArrowRight,
+  Star,
+  Eye,
+  CalendarCheck,
+  X,
   ExternalLink,
   SlidersHorizontal,
-  Flame
+  Flame,
+  Sparkles,
 } from 'lucide-react';
 
 interface FeaturedReelsShowcaseProps {
@@ -36,6 +36,50 @@ interface FeaturedReelsShowcaseProps {
   /** Persists the full video catalog after an inline create / edit / delete. */
   onUpdateVideos?: (videos: VideoItem[]) => void;
 }
+
+type LuxuryFeature = {
+  id: string;
+  title: string;
+  description: string;
+  serviceName: string;
+  category: string;
+  thumbnail: string;
+  video?: VideoItem;
+};
+
+const LUXURY_FEATURES: Omit<LuxuryFeature, 'video'>[] = [
+  {
+    id: 'bridal',
+    title: 'Signature Bridal Makeup',
+    description: 'A refined bridal finish with camera-ready skin, softly defined eyes and every detail styled for your big day.',
+    serviceName: 'Signature Bridal Makeup',
+    category: 'BRIDAL TRANSFORMATION',
+    thumbnail: '/images/bridal_makeup_jaipur_1790672008691.jpg',
+  },
+  {
+    id: 'nanoplastia',
+    title: 'Moroccan Nanoplastia Hair Botox',
+    description: 'A sleek, glossy hair transformation focused on smoother texture, frizz control and a polished finish.',
+    serviceName: 'Moroccan Nanoplastia Hair Botox',
+    category: 'HAIR TRANSFORMATION',
+    thumbnail: '/images/luxury_hair_nanoplastia_1792647835332.jpg',
+  },
+  {
+    id: 'hydra',
+    title: 'Hydra-Facial Glow',
+    description: 'A refreshing facial ritual designed to leave skin looking hydrated, luminous and beautifully renewed.',
+    serviceName: 'Hydra-Facial Glow',
+    category: 'SKIN & FACIAL GLOW',
+    thumbnail: '/images/skin_spa_treatment_1790672037475.jpg',
+  },
+];
+
+const getPlatform = (video?: VideoItem) => {
+  if (!video) return { label: 'Video coming soon', icon: Film, className: 'bg-white/10 text-white/75' };
+  if (video.platform === 'youtube') return { label: 'YouTube', icon: YouTubeIcon, className: 'bg-red-600 text-white' };
+  if (video.platform === 'instagram') return { label: 'Instagram Reel', icon: InstagramIcon, className: 'bg-gradient-to-r from-purple-600 to-pink-600 text-white' };
+  return { label: 'Facebook Video', icon: FacebookIcon, className: 'bg-blue-600 text-white' };
+};
 
 export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
   videos,
@@ -53,39 +97,61 @@ export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
     manager.removeItem(id);
   };
 
-  // Show every active reel (featured first) so newly added or edited cards are
-  // always visible without hunting through carousels.
-  const featuredVideos = useMemo(() => {
-    return videos
-      // Hidden items stay visible while editing so they can be switched back on.
-      .filter((video) => video.active || manager.isManaging)
-      .sort((a, b) => Number(b.featured) - Number(a.featured));
-  }, [videos, manager.isManaging]);
+  const featuredVideos = useMemo(
+    () => videos.filter((video) => video.active || manager.isManaging)
+      .sort((a, b) => Number(b.featured) - Number(a.featured)),
+    [videos, manager.isManaging],
+  );
+
+  // Match only by reliable category/title hints. Unrelated reels are not
+  // silently presented as bridal, hair or facial treatment footage.
+  const featureCards = useMemo<LuxuryFeature[]>(() => {
+    const hints: Record<string, RegExp> = {
+      bridal: /bridal|bride|makeup/i,
+      nanoplastia: /nano|botox|hair|smooth/i,
+      hydra: /hydra|facial|skin|glow/i,
+    };
+    return LUXURY_FEATURES.map((feature) => ({
+      ...feature,
+      video: featuredVideos.find((video) =>
+        hints[feature.id].test(`${video.title} ${video.category} ${video.description}`),
+      ),
+    }));
+  }, [featuredVideos]);
+
+  const closePlayer = () => setActivePlayVideo(null);
 
   return (
-    <section id="featured-reels" className="py-8 sm:py-16 md:py-20 bg-white border-t border-[#0F172A]/10 overflow-hidden w-full max-w-full">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-        
-        {/* Section Header */}
+    <section
+      id="featured-reels"
+      aria-labelledby="featured-reels-title"
+      className="relative w-full max-w-full overflow-hidden border-y border-amber-300/10 bg-neutral-950 py-12 text-white sm:py-16 lg:py-20"
+    >
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <div className="absolute -left-40 top-0 h-96 w-96 rounded-full bg-amber-500/10 blur-3xl" />
+        <div className="absolute -right-40 bottom-0 h-96 w-96 rounded-full bg-yellow-700/10 blur-3xl" />
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-300/40 to-transparent" />
+      </div>
+
+      <div className="relative mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
         <RevealOnScroll duration={0.6}>
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-6 border-b border-[#0F172A]/10">
-            <div>
-              <div className="flex items-center gap-2 text-xs font-semibold text-[#D09A40] tracking-wider uppercase mb-1.5">
-                <Flame className="w-3.5 h-3.5 text-[#D09A40]" />
-                <span>{t('reelsOverline')}</span>
+          <div className="mb-7 flex flex-col gap-5 border-b border-white/10 pb-6 md:mb-9 md:flex-row md:items-end md:justify-between">
+            <div className="max-w-2xl">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-300 sm:text-xs">
+                <Flame className="h-3.5 w-3.5" />
+                <span>Trending at the salon</span>
               </div>
               <h2
-                className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#0F172A] tracking-tight"
-                style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+                id="featured-reels-title"
+                className="font-serif text-3xl font-semibold tracking-tight text-white sm:text-4xl lg:text-5xl"
               >
-                {t('reelsTitle')}
+                Trending Reels <span className="text-amber-300">&amp;</span> Transformations
               </h2>
-              <p className="mt-1.5 text-xs sm:text-sm text-[#4A4A4A] max-w-2xl font-light leading-relaxed">
-                {t('reelsSubtitle')}
+              <p className="mt-3 max-w-xl text-sm leading-6 text-white/60 sm:text-base">
+                Explore signature beauty looks, real treatment inspiration and the details behind every transformation.
               </p>
             </div>
 
-            {/* Actions: manage, view-all & dashboard shortcut */}
             <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
               {onUpdateVideos && (
                 <ManageControls
@@ -95,26 +161,26 @@ export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
                   addLabel="Add Reel"
                 />
               )}
-
               {onExploreAllVideos && (
                 <button
                   type="button"
                   onClick={onExploreAllVideos}
-                  className="px-4 py-2 bg-[#0F172A] hover:bg-[#D09A40] text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                  className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white/80 transition-colors hover:border-amber-300/50 hover:bg-amber-300/10 hover:text-amber-200"
                 >
-                  <Film className="w-3.5 h-3.5" />
-                  <span>View All Reels ({videos.filter(v => v.active).length})</span>
+                  <Film className="h-3.5 w-3.5" />
+                  View all videos
+                  <ArrowRight className="h-3.5 w-3.5" />
                 </button>
               )}
-
               {onOpenManagement && (
                 <button
                   type="button"
                   onClick={onOpenManagement}
-                  className="p-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-600 hover:text-[#0F172A] border border-neutral-200 transition-colors cursor-pointer"
-                  title="Admin dashboard: manage videos & reels"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 transition-colors hover:border-amber-300/50 hover:text-amber-200"
+                  title="Manage videos"
+                  aria-label="Manage videos"
                 >
-                  <SlidersHorizontal className="w-4 h-4" />
+                  <SlidersHorizontal className="h-4 w-4" />
                 </button>
               )}
             </div>
@@ -123,151 +189,174 @@ export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
 
         <ManageHint isManaging={manager.isManaging} noun="reel" />
 
-        {featuredVideos.length === 0 ? (
-          <div className="mt-6 flex flex-col items-center justify-center rounded-2xl border border-dashed border-[#0F172A]/20 bg-[#FAF5E5]/40 px-6 py-14 text-center">
-            <Film className="h-10 w-10 text-neutral-300" />
-            <h3 className="mt-3 font-serif text-lg font-bold text-[#0F172A]">
-              No reels in the showcase yet
-            </h3>
-            <p className="mt-1 max-w-md text-xs text-[#4A4A4A]">
-              Add a YouTube, Instagram or Facebook reel to feature it on the homepage. Every card
-              uses a fixed media frame, so any thumbnail stays perfectly cropped.
-            </p>
-            {manager.canManage && (
-              <button
-                type="button"
-                onClick={manager.openCreate}
-                className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-[#0F172A] px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-[#D09A40] hover:text-[#0F172A] cursor-pointer"
-              >
-                Add your first reel
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
-            {featuredVideos.map((video) => {
-              const platformBadge =
-                video.platform === 'youtube'
-                  ? { label: 'YouTube', color: 'bg-red-600 text-white', icon: YouTubeIcon }
-                  : video.platform === 'instagram'
-                  ? { label: 'Instagram Reel', color: 'bg-gradient-to-r from-purple-600 to-pink-600 text-white', icon: InstagramIcon }
-                  : { label: 'Facebook Video', color: 'bg-[#1877F2] text-white', icon: FacebookIcon };
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6">
+          {featureCards.map((feature, index) => {
+            const platform = getPlatform(feature.video);
+            const PlatformIcon = platform.icon;
+            return (
+              <RevealOnScroll key={feature.id} duration={0.55 + index * 0.08}>
+                <article className="group relative mx-auto flex w-full max-w-[390px] flex-col overflow-hidden rounded-[1.6rem] border border-white/10 bg-neutral-900/80 shadow-[0_18px_55px_rgba(0,0,0,0.3)] transition-all duration-300 hover:-translate-y-1 hover:border-amber-300/40 hover:shadow-[0_24px_65px_rgba(0,0,0,0.45)] sm:max-w-none">
+                  {feature.video && manager.canManage && (
+                    <ItemActions
+                      itemLabel="reel"
+                      alwaysVisible={manager.isManaging}
+                      onEdit={() => manager.openEdit(feature.video!)}
+                      onReplace={() => manager.openReplace(feature.video!)}
+                      onDelete={() => removeReel(feature.video!.id)}
+                    />
+                  )}
 
-              return (
-                <FeaturedReelCard
-                  key={video.id}
-                  video={video}
-                  platformBadge={platformBadge}
-                  onPlay={(v) => setActivePlayVideo(v)}
-                  onBook={onBookService}
-                  actions={
-                    manager.canManage ? (
-                      <ItemActions
-                        itemLabel="reel"
-                        alwaysVisible={manager.isManaging}
-                        onEdit={() => manager.openEdit(video)}
-                        onReplace={() => manager.openReplace(video)}
-                        onDelete={() => removeReel(video.id)}
-                      />
-                    ) : null
-                  }
-                />
-              );
-            })}
-          </div>
-        )}
+                  <div className="relative aspect-[9/16] w-full overflow-hidden bg-neutral-900">
+                    <img
+                      src={feature.video?.thumbnail || feature.thumbnail}
+                      alt={feature.title}
+                      loading="lazy"
+                      className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/10 to-black/35" />
+                    <div className="absolute left-3 right-3 top-3 flex items-center justify-between gap-2">
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold shadow-lg ${platform.className}`}>
+                        <PlatformIcon className="h-3 w-3" />
+                        {platform.label}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-200/35 bg-black/45 px-2.5 py-1 text-[10px] font-bold text-amber-200 backdrop-blur-sm">
+                        <Sparkles className="h-3 w-3" />
+                        Featured look
+                      </span>
+                    </div>
 
-        {/* Video Lightbox Player Modal */}
+                    {feature.video ? (
+                      <button
+                        type="button"
+                        onClick={() => setActivePlayVideo(feature.video!)}
+                        className="absolute inset-0 flex items-center justify-center"
+                        aria-label={`Play ${feature.title}`}
+                      >
+                        <span className="flex h-14 w-14 items-center justify-center rounded-full border border-white/60 bg-black/45 text-white shadow-xl backdrop-blur-sm transition-all group-hover:scale-110 group-hover:border-amber-200 group-hover:bg-amber-400 group-hover:text-neutral-950">
+                          <Play className="ml-0.5 h-5 w-5 fill-current" />
+                        </span>
+                      </button>
+                    ) : (
+                      <div className="absolute inset-x-3 bottom-24 rounded-xl border border-white/15 bg-black/55 px-3 py-2 text-center text-[11px] font-medium text-white/75 backdrop-blur-sm">
+                        Video coming soon — add the official reel in Manage Videos.
+                      </div>
+                    )}
+
+                    <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-5">
+                      <p className="mb-2 text-[9px] font-bold tracking-[0.2em] text-amber-200 sm:text-[10px]">{feature.category}</p>
+                      <h3 className="font-serif text-xl font-semibold leading-tight text-white sm:text-2xl">{feature.title}</h3>
+                      {feature.video?.viewsCount && (
+                        <p className="mt-2 flex items-center gap-1.5 text-[10px] text-white/65">
+                          <Eye className="h-3 w-3" /> {feature.video.viewsCount}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-1 flex-col p-4 sm:p-5">
+                    <p className="min-h-[4.5rem] text-xs leading-6 text-white/60 sm:text-sm">{feature.description}</p>
+                    <button
+                      type="button"
+                      onClick={() => onBookService(feature.serviceName)}
+                      className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-300 to-yellow-500 px-4 py-3 text-xs font-extrabold text-neutral-950 shadow-lg shadow-amber-950/20 transition-all hover:from-yellow-200 hover:to-amber-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900 sm:text-sm"
+                    >
+                      <CalendarCheck className="h-4 w-4" />
+                      Book This Look
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </article>
+              </RevealOnScroll>
+            );
+          })}
+        </div>
+
         {activePlayVideo && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-6 bg-black/85 animate-fade-in">
-            <div className="w-full max-w-4xl bg-[#0F172A] rounded-3xl shadow-2xl border border-white/20 overflow-hidden text-white flex flex-col max-h-[92vh]">
-              {/* Header */}
-              <div className="px-6 py-3.5 bg-black/60 border-b border-white/10 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2">
-                  <Film className="w-4 h-4 text-[#D09A40]" />
-                  <span className="text-xs font-bold font-mono text-[#D09A40] uppercase">
-                    {activePlayVideo.platform} Reel Showcase
-                  </span>
-                  <span className="text-xs text-white/60">• {activePlayVideo.category}</span>
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-3 backdrop-blur-sm sm:p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-label={activePlayVideo.title}
+            onClick={closePlayer}
+          >
+            <div
+              className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-neutral-950 shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3 sm:px-6">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-300">Now playing</p>
+                  <h3 className="truncate font-serif text-base font-semibold text-white sm:text-lg">{activePlayVideo.title}</h3>
                 </div>
                 <button
-                  onClick={() => setActivePlayVideo(null)}
-                  className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center cursor-pointer"
+                  type="button"
+                  onClick={closePlayer}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+                  aria-label="Close video"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="h-4 w-4" />
                 </button>
               </div>
 
-              {/* Player Body */}
-              <div className="relative aspect-video w-full bg-black flex items-center justify-center">
-                {activePlayVideo.platform === 'youtube' ? (
-                  <iframe
-                    src={`${activePlayVideo.embedUrl}&autoplay=1`}
-                    title={activePlayVideo.title}
-                    className="w-full h-full border-0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
-                ) : activePlayVideo.platform === 'facebook' ? (
+              <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-black">
+                {activePlayVideo.platform === 'youtube' && activePlayVideo.embedUrl ? (
+                  <div className="aspect-[9/16] max-h-[72vh] w-full max-w-[405px]">
+                    <iframe
+                      src={`${activePlayVideo.embedUrl}${activePlayVideo.embedUrl.includes('?') ? '&' : '?'}autoplay=1`}
+                      title={activePlayVideo.title}
+                      className="h-full w-full border-0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      referrerPolicy="strict-origin-when-cross-origin"
+                      allowFullScreen
+                    />
+                  </div>
+                ) : activePlayVideo.platform === 'facebook' && activePlayVideo.embedUrl ? (
                   <iframe
                     src={activePlayVideo.embedUrl}
                     title={activePlayVideo.title}
-                    className="w-full h-full border-0"
-                    allow="encrypted-media"
+                    className="aspect-video max-h-[72vh] w-full border-0"
+                    allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
                     allowFullScreen
                   />
                 ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center bg-gradient-to-b from-neutral-900 to-black">
-                    <InstagramIcon className="w-12 h-12 text-pink-500 mb-3" />
-                    <h4 className="font-serif text-lg font-bold text-white max-w-md">
-                      {activePlayVideo.title}
-                    </h4>
-                    <p className="text-xs text-white/70 max-w-sm mt-1">
-                      {activePlayVideo.description}
+                  <div className="flex max-w-md flex-col items-center p-8 text-center">
+                    <InstagramIcon className="mb-4 h-12 w-12 text-pink-400" />
+                    <p className="text-sm leading-6 text-white/70">
+                      Instagram controls playback in its own embed. Open the reel to watch it on Instagram.
                     </p>
-                    <div className="mt-5 flex items-center gap-3">
-                      <a
-                        href={activePlayVideo.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-xs font-bold rounded-xl shadow-md hover:scale-105 transition-transform flex items-center gap-2"
-                      >
-                        <span>Watch on Instagram App</span>
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    </div>
+                    <a
+                      href={activePlayVideo.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-5 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-5 py-2.5 text-xs font-bold text-white"
+                    >
+                      Open Instagram Reel <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
                   </div>
                 )}
               </div>
 
-              {/* Footer */}
-              <div className="p-5 bg-[#0F172A] border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h4 className="font-serif text-base font-bold text-white">{activePlayVideo.title}</h4>
-                  <p className="text-xs text-white/70 mt-0.5 line-clamp-1">{activePlayVideo.description}</p>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
+              <div className="flex flex-col gap-3 border-t border-white/10 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                <p className="line-clamp-2 text-xs leading-5 text-white/60">{activePlayVideo.description}</p>
+                <div className="flex shrink-0 items-center gap-2">
                   <a
                     href={activePlayVideo.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5"
+                    className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-white/15 px-3 text-xs font-semibold text-white/80 hover:bg-white/10"
                   >
-                    <span>Open in App</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
+                    Open video <ExternalLink className="h-3.5 w-3.5" />
                   </a>
-
                   <button
+                    type="button"
                     onClick={() => {
                       const title = activePlayVideo.title;
-                      setActivePlayVideo(null);
+                      closePlayer();
                       onBookService(title);
                     }}
-                    className="px-4 py-2 bg-[#D09A40] hover:bg-[#b8832e] text-[#0F172A] font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer"
+                    className="inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-amber-400 px-4 text-xs font-bold text-neutral-950 hover:bg-amber-300"
                   >
-                    <CalendarCheck className="w-3.5 h-3.5" />
-                    <span>Book Featured Service</span>
+                    <CalendarCheck className="h-3.5 w-3.5" /> Book this look
                   </button>
                 </div>
               </div>
@@ -281,8 +370,8 @@ export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
             title={manager.editorState.mode === 'edit' ? 'Edit reel' : 'Add a new reel'}
             description={
               manager.editorState.mode === 'edit'
-                ? `Update “${manager.editorState.item?.title || 'this reel'}”. The cover is cropped to the card frame with object-fit: cover.`
-                : 'Paste a YouTube, Instagram or Facebook link. The platform, embed URL and cover image are detected automatically.'
+                ? `Update “${manager.editorState.item?.title || 'this reel'}”.`
+                : 'Paste an official YouTube, Instagram or Facebook video link. The platform, embed URL and cover image are detected automatically.'
             }
             fields={videoEditorFields}
             initialValues={
@@ -300,151 +389,5 @@ export const FeaturedReelsShowcase: React.FC<FeaturedReelsShowcaseProps> = ({
         <CrudToast message={manager.notice} />
       </div>
     </section>
-  );
-};
-
-interface FeaturedReelCardProps {
-  video: VideoItem;
-  platformBadge: { label: string; color: string; icon: React.ElementType };
-  onPlay: (video: VideoItem) => void;
-  onBook: (title: string) => void;
-  actions?: React.ReactNode;
-}
-
-const FeaturedReelCard: React.FC<FeaturedReelCardProps> = ({ video, platformBadge, onPlay, onBook, actions }) => {
-  const videoRef = React.useRef<HTMLVideoElement>(null);
-  const [isPlaying, setIsPlaying] = React.useState(false);
-
-  const handleMouseEnter = () => {
-    setIsPlaying(true);
-    if (videoRef.current) {
-      videoRef.current.currentTime = 0;
-      videoRef.current.play().catch((err) => {
-        console.log('Autoplay prevented or failed:', err);
-      });
-    }
-  };
-
-  const handleMouseLeave = () => {
-    setIsPlaying(false);
-    if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.currentTime = 0;
-    }
-  };
-
-  return (
-    <div
-      className="relative w-full h-full bg-white rounded-2xl border border-[#0F172A]/10 hover:border-[#D09A40] shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden group"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
-      {actions}
-      <div>
-        {/* Video Thumbnail / Hover Play Container — fixed height, object-cover */}
-        <div 
-          className="relative h-64 sm:h-72 w-full bg-neutral-900 overflow-hidden cursor-pointer"
-          onClick={() => onPlay(video)}
-        >
-          {/* Video element for hover playback */}
-          <video
-            ref={videoRef}
-            src={video.videoUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4'}
-            muted
-            playsInline
-            loop
-            preload="metadata"
-            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${isPlaying ? 'opacity-100 z-5' : 'opacity-0 z-0 pointer-events-none'}`}
-          />
-
-          <SmartImage
-            src={video.thumbnail || '/images/bridal_makeup_jaipur_1790672008691.jpg'}
-            alt={video.title}
-            className={`h-full w-full object-cover group-hover:scale-105 transition-transform duration-500 ${isPlaying ? 'opacity-0' : 'opacity-90'}`}
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/20 pointer-events-none" />
-
-          {/* Top Badges */}
-          <div className="absolute top-3 left-3 right-12 flex items-center justify-between z-10">
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold shadow-sm ${platformBadge.color}`}>
-              <platformBadge.icon className="w-3 h-3 text-white" />
-              <span>{platformBadge.label}</span>
-            </span>
-
-            {video.featured && (
-              <span className="px-2 py-0.5 rounded-full bg-[#D09A40] text-[#0F172A] text-[10px] font-bold flex items-center gap-1 shadow-sm">
-                <Star className="w-3 h-3 fill-[#0F172A]" />
-                <span>Trending</span>
-              </span>
-            )}
-          </div>
-
-          {/* Center Play Button (hidden when hovering/playing) */}
-          {!isPlaying && (
-            <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-              <div className="w-14 h-14 rounded-full bg-black/60 border border-white/50 group-hover:bg-[#D09A40] group-hover:scale-110 group-hover:border-[#D09A40] text-white flex items-center justify-center transition-all duration-300 shadow-xl">
-                <Play className="w-6 h-6 fill-white ml-0.5" />
-              </div>
-            </div>
-          )}
-
-          {/* Live Playing Indicator */}
-          {isPlaying && (
-            <div className="absolute top-12 left-3 z-10 bg-black/70 text-[#D09A40] border border-[#D09A40]/40 px-2 py-0.5 rounded-full text-[10px] font-mono flex items-center gap-1 animate-pulse">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#D09A40]" />
-              <span>Playing (Muted)</span>
-            </div>
-          )}
-
-          {/* Bottom Metadata in Scrim */}
-          <div className="absolute bottom-3 left-3 right-3 z-10 text-white space-y-1">
-            <div className="flex items-center justify-between text-[11px] font-mono">
-              <span className="text-[#FAF5E5] font-semibold bg-black/60 px-2 py-0.5 rounded text-[10px] uppercase">
-                {video.category}
-              </span>
-              <span className="bg-black/60 px-2 py-0.5 rounded text-[10px]">
-                {video.viewsCount || 'Trending'}
-              </span>
-            </div>
-            <h4 className="font-serif text-sm font-bold text-white line-clamp-2 leading-snug drop-shadow-sm group-hover:text-[#FAF5E5]">
-              {video.title}
-            </h4>
-          </div>
-        </div>
-
-        {/* Card Description */}
-        <div className="p-3.5 space-y-1.5">
-          <p className="text-xs text-[#4A4A4A] line-clamp-2 font-light leading-relaxed">
-            {video.description}
-          </p>
-          {video.author && (
-            <p className="text-[10px] text-neutral-400 font-mono truncate">
-              By {video.author}
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Footer Action Buttons */}
-      <div className="p-3.5 pt-2 border-t border-neutral-100 flex items-center justify-between gap-2 bg-[#FAF5E5]/40">
-        <button
-          type="button"
-          onClick={() => onPlay(video)}
-          className="text-[11px] font-bold text-[#0F172A] hover:text-[#D09A40] flex items-center gap-1 cursor-pointer"
-        >
-          <Eye className="w-3.5 h-3.5 text-[#D09A40]" />
-          <span>Watch Reel</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onBook(video.title)}
-          className="px-3 py-1.5 text-[11px] font-bold text-white bg-[#0F172A] hover:bg-[#D09A40] rounded-xl transition-colors shadow-2xs flex items-center gap-1 cursor-pointer shrink-0"
-        >
-          <span>Book Look</span>
-          <ArrowRight className="w-3 h-3" />
-        </button>
-      </div>
-    </div>
   );
 };

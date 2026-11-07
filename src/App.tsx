@@ -46,6 +46,7 @@ import { Button } from './components/ui';
 import { SubdomainAwareHome } from './components/site/SubdomainResolver';
 import { PUBLIC_PATHS } from './publicPaths';
 import { homeStructuredData, SITE_ORIGIN } from './homeMetadata';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
 
 
 const LoginPage = React.lazy(() => import('./components/auth/LoginPage').then((module) => ({ default: module.LoginPage })));
@@ -265,6 +266,8 @@ function MarketingSite() {
   };
 
   const handleSelectGalleryItemForBooking = (serviceName: string) => {
+    // Preserve the selected look in the booking form, then scroll to the live
+    // appointment section. The exact service name remains visible to the team.
     setPreselectedServiceTitle(serviceName);
     scrollToSection('booking');
   };
@@ -321,6 +324,7 @@ function MarketingSite() {
           onExplorePackages={() => scrollToSection('packages')}
         />
 
+        {/* Trending Reels & Transformations is intentionally placed immediately after Hero. */}
         {/* 1.5 Quick Trust & Value Bar */}
         {brand.sections.showTrustBar && <TrustHighlightsBar />}
 
@@ -597,9 +601,22 @@ function HomeMetadata() {
   return null;
 }
 
+/**
+ * Keeps a failing page or lazy-chunk load from unmounting the whole app. The boundary
+ * resets on navigation, so moving to another route recovers without a reload.
+ */
+function RoutedErrorBoundary({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation();
+  return (
+    <AppErrorBoundary name="routes" resetKey={pathname}>
+      {children}
+    </AppErrorBoundary>
+  );
+}
+
 export function App() {
   return (
-    <>
+    <RoutedErrorBoundary>
     <HomeMetadata />
     <RouteIndexingPolicy />
     <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#FAF5E5] text-sm text-slate-600">Loading page…</div>}>
@@ -670,7 +687,7 @@ export function App() {
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
     </React.Suspense>
-    </>
+    </RoutedErrorBoundary>
   );
 }
 

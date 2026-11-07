@@ -127,14 +127,13 @@ test('vercel.json routes every client path group to an HTML shell', () => {
   assert.ok(sources.includes('/api/(.*)'));
   assert.ok(sources.includes('/login'));
   assert.ok(sources.includes('/admin'));
-  assert.ok(sources.includes('/admin/(.*)'));
   assert.ok(sources.includes('/dashboard'));
-  assert.ok(sources.includes('/dashboard/(.*)'));
-  assert.ok(sources.includes('/salon/(.*)'));
   assert.ok(sources.includes('/my-appointments'));
-  assert.ok(sources.indexOf('/api/(.*)') < sources.indexOf('/(.*)'));
   assert.equal(config.cleanUrls, false);
-  assert.ok(!sources.some((source) => source.includes('(?!')));
+  // The catch-all must exclude /api, /assets and any path with a file
+  // extension, so a missing hashed chunk returns a real 404 rather than HTML.
+  assert.equal(sources[0], '/api/(.*)');
+  assert.ok(sources[sources.length - 1].includes('[^.]*'));
 
   const matches = (source, requestPath) => new RegExp(`^${source}$`).test(requestPath);
   const rewriteFor = (requestPath) => config.rewrites.find((rule) => matches(rule.source, requestPath));

@@ -46,10 +46,9 @@ test('vercel.json explicitly rewrites login and admin deep links to the SPA', ()
   const sources = config.rewrites.map((rule) => rule.source);
   assert.ok(sources.includes('/login'));
   assert.ok(sources.includes('/admin'));
-  assert.ok(sources.includes('/admin/(.*)'));
   assert.ok(config.rewrites.find((rule) => rule.source === '/login').destination === '/spa.html');
-  // The old negative-lookahead catch-all was unreliable in Vercel's router;
-  // /api/(.*) must stay ahead of the generic SPA fallback.
-  assert.ok(sources.indexOf('/api/(.*)') < sources.indexOf('/(.*)'));
-  assert.ok(!sources.some((source) => source.includes('(?!')));
+  // /api/(.*) must stay ahead of the SPA fallback; the fallback excludes
+  // files with extensions so missing chunks 404 instead of returning HTML.
+  assert.equal(sources[0], '/api/(.*)');
+  assert.ok(sources[sources.length - 1].includes('[^.]*'));
 });
