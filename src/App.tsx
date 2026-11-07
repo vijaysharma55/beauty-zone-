@@ -292,23 +292,22 @@ function MarketingSite() {
           onExplorePackages={() => scrollToSection('packages')}
         />
 
-        {/* Trending Reels & Transformations is intentionally placed immediately after Hero. */}
+        {/* Trending Reels & Transformations — always visible directly below the hero.
+            This is a required homepage section, so legacy saved section toggles must
+            not hide it on an already-configured salon website. */}
+        <FeaturedReelsShowcase
+          videos={videos}
+          onBookService={handleSelectGalleryItemForBooking}
+          onExploreAllVideos={() => {
+            setGalleryView('videos');
+            scrollToSection('gallery');
+          }}
+          onOpenManagement={() => handleOpenManagement('videos')}
+          onUpdateVideos={handleUpdateVideos}
+        />
+
         {/* 1.5 Quick Trust & Value Bar */}
         {brand.sections.showTrustBar && <TrustHighlightsBar />}
-
-        {/* 1.8 Featured Video Reels & Watch Showcase */}
-        {brand.sections.showReels && (
-          <FeaturedReelsShowcase
-            videos={videos}
-            onBookService={handleSelectGalleryItemForBooking}
-            onExploreAllVideos={() => {
-              setGalleryView('videos');
-              scrollToSection('gallery');
-            }}
-            onOpenManagement={() => handleOpenManagement('videos')}
-            onUpdateVideos={handleUpdateVideos}
-          />
-        )}
 
         {/* 2. Curated Value Packages & Bundles */}
         {brand.sections.showPackages && (
