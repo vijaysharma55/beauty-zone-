@@ -150,12 +150,65 @@ db.prepare("UPDATE staff SET qualifications_json = '[]' WHERE qualifications_jso
 db.prepare("UPDATE staff SET work_photos_json = '[]' WHERE work_photos_json IS NULL OR work_photos_json = ''").run();
 db.prepare('UPDATE staff SET work_photos_consent = 0 WHERE work_photos_consent IS NULL').run();
 
-/* Staff: owner-managed availability status (available | busy | on_leave).
+/* Staff: owner-managed availability status (available | busy | on_leave | off_duty).
    Only 'available' staff can be booked online; existing rows default to it. */
 addColumn('staff', 'availability_status', "TEXT NOT NULL DEFAULT 'available'");
 db.prepare(
-  "UPDATE staff SET availability_status = 'available' WHERE availability_status IS NULL OR availability_status NOT IN ('available','busy','on_leave')"
+  "UPDATE staff SET availability_status = 'available' WHERE availability_status IS NULL OR availability_status NOT IN ('available','busy','on_leave','off_duty')"
 ).run();
+
+/* ---------------------------------------------------------------------------
+ * Staff onboarding ("Add New Staff Member").
+ *
+ * Adds the identity / role / service-mapping / roster columns required by the
+ * owner dashboard. Every column is additive and defaults are backfilled so
+ * existing rosters keep working without a data migration step:
+ *   - app_access_role defaults to 'service_provider' (least privilege)
+ *   - commission_percent defaults to 15%
+ *   - weekly_schedule_json defaults to an empty list, which the API resolves to
+ *     the platform default week (Mon–Sat 10:00–20:00, Sunday closed)
+ * ------------------------------------------------------------------------- */
+addColumn('staff', 'primary_role', "TEXT NOT NULL DEFAULT ''");
+addColumn('staff', 'app_access_role', "TEXT NOT NULL DEFAULT 'service_provider'");
+addColumn('staff', 'commission_percent', 'REAL NOT NULL DEFAULT 15');
+addColumn('staff', 'mobile_number', "TEXT NOT NULL DEFAULT ''");
+addColumn('staff', 'hide_mobile_number', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('staff', 'service_ids_json', "TEXT NOT NULL DEFAULT '[]'");
+addColumn('staff', 'weekly_schedule_json', "TEXT NOT NULL DEFAULT '[]'");
+db.prepare(
+  "UPDATE staff SET app_access_role = 'service_provider' WHERE app_access_role IS NULL OR app_access_role NOT IN ('manager','service_provider','receptionist')"
+).run();
+db.prepare("UPDATE staff SET primary_role = '' WHERE primary_role IS NULL").run();
+db.prepare('UPDATE staff SET commission_percent = 15 WHERE commission_percent IS NULL').run();
+db.prepare('UPDATE staff SET mobile_number = \'\' WHERE mobile_number IS NULL').run();
+db.prepare('UPDATE staff SET hide_mobile_number = 0 WHERE hide_mobile_number IS NULL').run();
+db.prepare("UPDATE staff SET service_ids_json = '[]' WHERE service_ids_json IS NULL OR service_ids_json = ''").run();
+db.prepare("UPDATE staff SET weekly_schedule_json = '[]' WHERE weekly_schedule_json IS NULL OR weekly_schedule_json = ''").run();
+
+/* Backfill a primary role for legacy rows that only stored a free-text title,
+   so the "Primary role" dropdown never opens empty on an existing employee. */
+const legacyRoleRows = db
+  .prepare("SELECT id, role_title FROM staff WHERE primary_role = '' OR primary_role IS NULL")
+  .all();
+if (legacyRoleRows.length > 0) {
+  const inferPrimaryRole = (title) => {
+    const t = String(title || '').toLowerCase();
+    if (t.includes('manager')) return 'salon_manager';
+    if (t.includes('reception') || t.includes('front desk')) return 'receptionist';
+    if (t.includes('nail')) return 'nail_artist';
+    if (t.includes('spa') || t.includes('massage') || t.includes('therapist')) return 'spa_therapist';
+    if (t.includes('makeup') || t.includes('make-up') || t.includes('bridal artist')) return 'makeup_artist';
+    if (t.includes('junior')) return 'junior_stylist';
+    if (t.includes('hairdress') || t.includes('hair dresser') || t.includes('barber')) return 'hair_dresser';
+    if (t.includes('stylist') || t.includes('hair')) return 'senior_stylist';
+    return '';
+  };
+  const updatePrimaryRole = db.prepare('UPDATE staff SET primary_role = ? WHERE id = ?');
+  for (const row of legacyRoleRows) {
+    const inferred = inferPrimaryRole(row.role_title);
+    if (inferred) updatePrimaryRole.run(inferred, row.id);
+  }
+}
 
 /* Submitted / reviewed website versions (snapshot of the working content) */
 db.exec(`

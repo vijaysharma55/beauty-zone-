@@ -169,8 +169,35 @@ export interface StaffWorkPhoto {
   caption?: string;
 }
 
-/** Owner-managed availability. Only 'available' staff can be booked online. */
-export type StaffAvailability = 'available' | 'busy' | 'on_leave';
+/**
+ * Owner-managed availability. Only 'available' staff can be booked online.
+ * Values mirror `src/lib/staffRoles.js` (shared with the API).
+ */
+export type StaffAvailability = 'available' | 'busy' | 'on_leave' | 'off_duty';
+
+/** Professional title shown to clients (mirrors STAFF_PRIMARY_ROLES). */
+export type StaffPrimaryRole =
+  | 'senior_stylist'
+  | 'junior_stylist'
+  | 'hair_dresser'
+  | 'makeup_artist'
+  | 'nail_artist'
+  | 'spa_therapist'
+  | 'salon_manager'
+  | 'receptionist';
+
+/** System permission level (mirrors STAFF_APP_ACCESS_ROLES). */
+export type StaffAppAccessRole = 'manager' | 'service_provider' | 'receptionist';
+
+/** One day of a staff member's recurring weekly roster. */
+export interface StaffWeeklyScheduleDay {
+  day: 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+  /** 24h "HH:MM" — empty when the day is closed. */
+  startTime: string;
+  /** 24h "HH:MM" — empty when the day is closed. */
+  endTime: string;
+  closed: boolean;
+}
 
 export interface SalonStaff {
   id: string;
@@ -192,6 +219,21 @@ export interface SalonStaff {
   rating?: number | null;
   reviewCount?: number | null;
   experience?: string;
+  /* ---- Staff onboarding (Add New Staff Member) ---- */
+  /** Primary role slug. `roleTitle` keeps the human label for display. */
+  primaryRole?: StaffPrimaryRole | '';
+  /** App access (system permission level). */
+  appAccessRole?: StaffAppAccessRole;
+  /** Commission share of service revenue, 0–100 (default 15). */
+  commissionPercent?: number;
+  /** E.164 Indian mobile number, e.g. "+919876543210". */
+  mobileNumber?: string;
+  /** When true the mobile number is never shown on public/staff lists. */
+  hideMobileNumber?: boolean;
+  /** Recurring Monday→Sunday roster. */
+  weeklySchedule?: StaffWeeklyScheduleDay[];
+  /** Salon service ids this staff member is allowed to deliver (empty = all). */
+  serviceIds?: string[];
   /** True only for client-side preview demo staff on unpublished websites (never persisted). */
   isDemo?: boolean;
   sortOrder: number;

@@ -1,6 +1,13 @@
 import crypto from 'node:crypto';
 import { selectWithFallback, withSelect } from './postgrest.js';
 import { APPLICATION_ROLES, normalizeRole, SALON_OWNER } from './roles.js';
+import {
+  DEFAULT_COMMISSION_PERCENT,
+  DEFAULT_STAFF_APP_ACCESS_ROLE,
+  isStaffAppAccessRole,
+  isStaffPrimaryRole,
+  parseWeeklySchedule,
+} from '../src/lib/staffRoles.js';
 
 export const SUPABASE_URL = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://botkjeikjzhnbxnowdkl.supabase.co').replace(/\/+$/, '');
 export const SUPABASE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_f2nHVHcAdrlosQbZwAAxnQ_vnHQuuv0';
@@ -79,6 +86,11 @@ export const SERVICE_SELECT_VARIANTS = [
 ];
 
 export const STAFF_SELECT_VARIANTS = [
+  {
+    select:
+      'id,salon_id,name,role_title,bio,photo_url,specialties,active,booking_enabled,availability_status,sort_order,created_at,updated_at,' +
+      'primary_role,app_access_role,commission_percent,mobile_number,hide_mobile_number,service_ids,weekly_schedule',
+  },
   { select: 'id,salon_id,name,role_title,bio,photo_url,specialties,active,booking_enabled,availability_status,sort_order,created_at,updated_at' },
   { select: 'id,salon_id,name,role_title,bio,photo_url,specialties,active,sort_order,created_at,updated_at', defaults: { booking_enabled: true, availability_status: 'available' } },
   { select: '*', defaults: { booking_enabled: true, availability_status: 'available', sort_order: 0 } },
@@ -229,12 +241,20 @@ export function mapService(row) {
 
 export function mapStaff(row) {
   if (!row) return null;
+  const commission = Number(row.commission_percent);
   return {
     id: row.id, salonId: row.salon_id, name: row.name, roleTitle: row.role_title || '',
+    primaryRole: isStaffPrimaryRole(row.primary_role) ? row.primary_role : '',
+    appAccessRole: isStaffAppAccessRole(row.app_access_role) ? row.app_access_role : DEFAULT_STAFF_APP_ACCESS_ROLE,
+    commissionPercent: Number.isFinite(commission) ? Math.round(Math.min(100, Math.max(0, commission)) * 10) / 10 : DEFAULT_COMMISSION_PERCENT,
     bio: row.bio || '', photoUrl: row.photo_url || '',
     specialties: Array.isArray(row.specialties) ? row.specialties : [],
     active: Boolean(row.active), bookingEnabled: row.booking_enabled !== false,
-    availabilityStatus: ['available', 'busy', 'on_leave'].includes(row.availability_status) ? row.availability_status : 'available',
+    availabilityStatus: ['available', 'busy', 'on_leave', 'off_duty'].includes(row.availability_status) ? row.availability_status : 'available',
+    mobileNumber: row.mobile_number || '',
+    hideMobileNumber: Boolean(row.hide_mobile_number),
+    serviceIds: Array.isArray(row.service_ids) ? row.service_ids.filter((id) => typeof id === 'string' && id) : [],
+    weeklySchedule: parseWeeklySchedule(Array.isArray(row.weekly_schedule) ? row.weekly_schedule : undefined),
     sortOrder: Number(row.sort_order || 0), createdAt: row.created_at, updatedAt: row.updated_at,
   };
 }
