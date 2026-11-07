@@ -93,6 +93,12 @@ test('static assets are not shadowed by the SPA catch-all', () => {
     // rule below only applies to assets that are genuinely missing.
     assert.ok(rule === null || rule.destination.endsWith('.html'));
   }
+  // A missing hashed chunk (a tab still running a previous deployment) must be a real 404.
+  // If it fell back to the HTML shell, the browser would receive HTML as JavaScript, the
+  // lazy route import would fail, and the immutable asset cache header could pin that HTML.
+  for (const missing of ['/assets/index-gone123.js', '/assets/Login-gone123.js', '/images/missing.jpg', '/missing.js']) {
+    assert.equal(rewriteFor(missing), null, `${missing} must 404 instead of returning the SPA shell`);
+  }
   const assetHeaders = config.headers.find((entry) => entry.source === '/assets/(.*)');
   assert.ok(assetHeaders, 'hashed asset caching headers must survive the routing fix');
 });

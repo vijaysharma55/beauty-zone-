@@ -21,6 +21,32 @@
   </head>
   <body class="bg-[#FAF5E5] text-[#0F172A] antialiased selection:bg-[#D09A40] selection:text-white">
     <div id="root"></div>
+    <noscript>Beauty Zone needs JavaScript enabled to load this page.</noscript>
+    <script>
+      // Boot-failure guard: if the app bundle can't load or start, show a recoverable
+      // message instead of a blank page. React replaces this as soon as it mounts.
+      (function () {
+        var shown = false;
+        function show() {
+          var root = document.getElementById('root');
+          if (shown || !root || root.firstElementChild) return;
+          shown = true;
+          root.innerHTML =
+            '<div role="alert" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#FAF5E5;color:#0F172A;font-family:Inter,system-ui,sans-serif;text-align:center">' +
+            '<div style="max-width:420px"><h1 style="font-family:Georgia,serif;font-size:22px;margin:0 0 8px">We couldn’t load this page</h1>' +
+            '<p style="font-size:14px;line-height:1.5;color:#4A4A4A;margin:0 0 20px">Please check your connection and reload. If it keeps happening, try again in a minute.</p>' +
+            '<button type="button" onclick="location.reload()" style="padding:10px 18px;background:#0F172A;color:#fff;border:0;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer">Reload page</button> ' +
+            '<a href="/" style="display:inline-block;padding:10px 18px;border:1px solid rgba(15,23,42,.25);border-radius:10px;color:#0F172A;font-size:13px;font-weight:700;text-decoration:none">Go to homepage</a>' +
+            '</div></div>';
+        }
+        // Resource errors (a 404 or wrong MIME type for the app script) do not bubble, so listen in the capture phase.
+        window.addEventListener('error', function (event) {
+          var target = event && event.target;
+          if (target && target.tagName === 'SCRIPT') setTimeout(show, 0);
+        }, true);
+        setTimeout(show, 12000);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
