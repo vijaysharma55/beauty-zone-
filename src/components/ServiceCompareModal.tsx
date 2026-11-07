@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { ServiceItem } from '../types';
+import type { ServiceItem } from '../types';
+import { CATEGORY_EDITORIAL, displayServiceDescription } from '../data/treatmentCopy';
 import { 
   X, 
   Check, 
@@ -507,10 +508,48 @@ export const ServiceCompareModal: React.FC<ServiceCompareModalProps> = ({
                       {comparedServices.map((svc) => (
                         <td key={svc.id} className="p-3 align-top bg-white">
                           <p className="text-xs text-[#4A4A4A] leading-relaxed">
-                            {svc.description ?? ''}
+                            {displayServiceDescription(svc)}
                           </p>
                         </td>
                       ))}
+                    </tr>
+
+                    {/* Row 6b: Ideal skin / hair / client profile */}
+                    <tr className="border-b border-[#0F172A]/10">
+                      <td className="p-3 bg-neutral-50/70 text-xs font-bold text-[#0F172A] align-top">
+                        Ideal Skin &amp; Hair Type
+                      </td>
+                      {comparedServices.map((svc) => (
+                        <td key={svc.id} className="p-3 align-top bg-white">
+                          <p className="text-[11px] text-[#4A4A4A] leading-relaxed">
+                            {svc.idealFor || CATEGORY_EDITORIAL[svc.category]?.idealFor || 'Suitable for all skin and hair types after a personal consultation.'}
+                          </p>
+                        </td>
+                      ))}
+                    </tr>
+
+                    {/* Row 6c: Step-by-step protocol */}
+                    <tr className="border-b border-[#0F172A]/10">
+                      <td className="p-3 bg-neutral-50/70 text-xs font-bold text-[#0F172A] align-top">
+                        Step-by-Step Process
+                      </td>
+                      {comparedServices.map((svc) => {
+                        const steps = svc.processSteps?.length
+                          ? svc.processSteps
+                          : CATEGORY_EDITORIAL[svc.category]?.processSteps || [];
+                        return (
+                          <td key={svc.id} className="p-3 align-top bg-white">
+                            <ol className="space-y-1.5">
+                              {steps.map((step, idx) => (
+                                <li key={`${svc.id}-step-${idx}`} className="flex items-start gap-1.5 text-[11px] text-[#4A4A4A] leading-snug">
+                                  <span className="font-mono font-bold text-[#D09A40]">{idx + 1}.</span>
+                                  <span>{step}</span>
+                                </li>
+                              ))}
+                            </ol>
+                          </td>
+                        );
+                      })}
                     </tr>
 
                     {/* Row 7: Products & Tech Used */}
@@ -520,12 +559,14 @@ export const ServiceCompareModal: React.FC<ServiceCompareModalProps> = ({
                       </td>
                       {comparedServices.map((svc) => {
                         let formulationText = 'Dermatologist-tested premium salon products';
-                        if (svc.category === 'bridal') formulationText = 'Waterproof Temptu HD airbrush, Huda Beauty & MAC master kit';
-                        else if (svc.category === 'hair') formulationText = 'Formaldehyde-free Nanoplastia, Olaplex Bond Builder & Kerastase';
-                        else if (svc.category === 'skin') formulationText = '24K gold foil, clinical grade hyaluronic acid serums';
-                        else if (svc.category === 'nails') formulationText = 'Non-toxic, chip-resistant imported gel varnishes';
-                        else if (svc.category === 'spa') formulationText = 'Cold-pressed almond oil, organic rose extracts & essential oils';
-                        else if (svc.category === 'academy') formulationText = 'Professional vanity kit provided, ISO & Govt certified syllabus';
+                        if (svc.productsUsed?.length) {
+                          formulationText = svc.productsUsed.join(' · ');
+                        } else if (svc.category === 'bridal') formulationText = 'Waterproof Temptu HD airbrush, Huda Beauty, MAC & Charlotte Tilbury master kit';
+                        else if (svc.category === 'hair') formulationText = 'Formaldehyde-free GK Hair Nanoplastia, Olaplex Bond Builder, L’Oréal Professionnel & Kérastase';
+                        else if (svc.category === 'skin') formulationText = '24K gold leaf, genuine HydraFacial MD tips, clinical-grade hyaluronic acid serums';
+                        else if (svc.category === 'nails') formulationText = 'CND Shellac, OPI GelColor, Swarovski crystals & 24K gold foil';
+                        else if (svc.category === 'spa') formulationText = 'Forest Essentials, cold-pressed almond oil, Dead Sea salts & organic rose extracts';
+                        else if (svc.category === 'academy') formulationText = 'Professional MAC / Huda / Temptu / Dyson vanity kit with ISO & Govt certified syllabus';
 
                         return (
                           <td key={svc.id} className="p-3 align-top bg-white text-xs text-[#4A4A4A]">

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { SALON_SERVICES } from '../data/salonData';
-import { BookingFormState, ServiceItem } from '../types';
+import { serviceCardDescription } from '../data/servicesStore';
+import type { BookingFormState, ServiceItem } from '../types';
 import {
   Calendar,
   Clock,
@@ -138,7 +139,9 @@ const ServicePicker: React.FC<{
                   <h4 className="font-bold text-xs text-[#0F172A] leading-tight line-clamp-2">{srv.title}</h4>
                   <span className="font-bold text-xs text-[#D09A40] whitespace-nowrap">{formatPrice(srv.price)}</span>
                 </div>
-                <p className="text-[10px] text-slate-500 mt-1 line-clamp-2">{srv.description}</p>
+                <p className="text-[10px] text-slate-500 mt-1 line-clamp-2" title={serviceCardDescription(srv)}>
+                  {serviceCardDescription(srv)}
+                </p>
                 <div className="flex items-center gap-2 mt-1.5">
                   <span className="text-[9px] font-bold text-slate-400 flex items-center gap-1">
                     <Clock className="w-2.5 h-2.5" />

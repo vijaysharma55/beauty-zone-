@@ -1,5 +1,7 @@
 import { db, findUserById, findSalonByOwner, nowIso } from './db.js';
 import { parseCookies, hashToken, SESSION_COOKIE, HttpError } from './security.js';
+import { verifySupabaseAccessToken, syncLocalUser } from './supabase-auth.js';
+import { isAdminRole } from './roles.js';
 
 /* Security headers applied to every response. */
 export function securityHeaders(req, res, next) {
@@ -76,60 +78,116 @@ export function csrfProtection(req, res, next) {
   return next();
 }
 
-/* Attach req.user / req.session from the HttpOnly session cookie. */
+/**
+ * Attach req.user / req.session from the HttpOnly session cookie, with a
+ * stateless Supabase bearer-token fallback.
+ *
+ * Vercel serverless instances have an ephemeral /tmp filesystem, so the SQLite
+ * `sessions` row referenced by the cookie can disappear between requests. The
+ * browser always sends `Authorization: Bearer <supabase access token>` (see
+ * src/lib/api.ts); verifying it here keeps /api/admin/* and /api/auth/me
+ * working across cold starts. The role comes from the trusted Supabase profile,
+ * never from the client or a stale local row.
+ */
 export function loadSession(req, res, next) {
   req.user = null;
   req.session = null;
-  const token = parseCookies(req)[SESSION_COOKIE];
-  if (!token || token.length > 500) return next();
-  try {
-    const row = db
-      .prepare(
-        `SELECT s.id AS session_id, s.expires_at, u.*
-         FROM sessions s JOIN users u ON u.id = s.user_id
-         WHERE s.token_hash = ?`
-      )
-      .get(hashToken(token));
-    if (!row) return next();
-    if (new Date(row.expires_at).getTime() < Date.now()) {
-      db.prepare('DELETE FROM sessions WHERE id = ?').run(row.session_id);
-      return next();
+  req.authMethod = null;
+
+  // 1. Warm-instance fast path: HttpOnly cookie + SQLite session row.
+  let cookieUser = null;
+  const cookieToken = parseCookies(req)[SESSION_COOKIE];
+  if (cookieToken && cookieToken.length <= 500) {
+    try {
+      const row = db
+        .prepare(
+          `SELECT s.id AS session_id, s.expires_at, u.*
+           FROM sessions s JOIN users u ON u.id = s.user_id
+           WHERE s.token_hash = ?`
+        )
+        .get(hashToken(cookieToken));
+      if (row && new Date(row.expires_at).getTime() >= Date.now() && row.status === 'active') {
+        req.session = { id: row.session_id, expiresAt: row.expires_at };
+        cookieUser = row;
+        req.user = row;
+        req.authMethod = 'cookie';
+        // Sliding expiry refresh (at most once per hour to limit writes).
+        const remaining = new Date(row.expires_at).getTime() - Date.now();
+        if (remaining < 1000 * 60 * 60 * 24 * 6) {
+          const expires = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString();
+          db.prepare('UPDATE sessions SET expires_at = ? WHERE id = ?').run(expires, row.session_id);
+        }
+      } else if (row && new Date(row.expires_at).getTime() < Date.now()) {
+        db.prepare('DELETE FROM sessions WHERE id = ?').run(row.session_id);
+      }
+    } catch (err) {
+      console.error('[session] cookie lookup failed', err.message);
     }
-    if (row.status !== 'active') return next();
-    req.session = { id: row.session_id, expiresAt: row.expires_at };
-    req.user = row;
-    // Sliding expiry refresh (at most once per hour to limit writes).
-    const remaining = new Date(row.expires_at).getTime() - Date.now();
-    if (remaining < 1000 * 60 * 60 * 24 * 6) {
-      const next = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString();
-      db.prepare('UPDATE sessions SET expires_at = ? WHERE id = ?').run(next, row.session_id);
-    }
-  } catch (err) {
-    console.error('[session] lookup failed', err.message);
   }
-  return next();
+
+  // 2. Stateless, authoritative path: verify the Supabase access token.
+  // Runs even when a cookie exists, so a stale/demoted local role can never
+  // outlive the trusted public.profiles role. Cached for 30s per token.
+  const authHeader = req.get('authorization') || '';
+  const bearer = /^Bearer\s+(.+)$/i.exec(authHeader)?.[1]?.trim();
+  if (!bearer || bearer.length > 8192) return next();
+
+  void (async () => {
+    try {
+      const verified = await verifySupabaseAccessToken(bearer);
+      if (verified) {
+        const localUser = syncLocalUser(verified);
+        if (!localUser || localUser.status !== 'active') throw new HttpError(403, 'Account disabled.');
+        req.user = localUser;
+        req.authMethod = cookieUser ? 'cookie+bearer' : 'bearer';
+        req.supabaseIdentity = verified;
+      } else {
+        // Phone-only customer session: keep any existing cookie identity.
+        req.user = cookieUser;
+        req.authMethod = cookieUser ? 'cookie' : null;
+      }
+    } catch (err) {
+      // Keep a valid cookie session on a transient Supabase outage; a missing
+      // cookie means protected routes correctly answer 401 via requireAuth.
+      req.user = cookieUser;
+      req.authMethod = cookieUser ? 'cookie' : null;
+      if (!cookieUser && err?.status && err.status >= 500) {
+        console.error('[session] bearer verification failed', err.message);
+      }
+    } finally {
+      next();
+    }
+  })();
 }
 
 export function requireAuth(req, res, next) {
-  if (!req.user) return res.status(401).json({ error: 'Authentication required.' });
-  if (req.user.status !== 'active') return res.status(403).json({ error: 'Account disabled.' });
+  if (!req.user) return res.status(401).json({ error: 'Authentication required.', code: 'AUTH_REQUIRED' });
+  if (req.user.status !== 'active') return res.status(403).json({ error: 'Account disabled.', code: 'ACCOUNT_DISABLED' });
   return next();
 }
 
-export function requireRole(role) {
+/** Explicit role gate. Role is always the server-resolved profile role. */
+export function requireRole(...allowedRoles) {
+  const roles = allowedRoles.flat().filter(Boolean);
   return (req, res, next) => {
-    if (!req.user) return res.status(401).json({ error: 'Authentication required.' });
-    if (req.user.role !== role) return res.status(403).json({ error: 'You do not have permission to perform this action.' });
+    if (!req.user) return res.status(401).json({ error: 'Authentication required.', code: 'AUTH_REQUIRED' });
+    if (req.user.status !== 'active') return res.status(403).json({ error: 'Account disabled.', code: 'ACCOUNT_DISABLED' });
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ error: 'You do not have permission to perform this action.', code: 'FORBIDDEN_ROLE' });
+    }
     return next();
   };
 }
+
+/** Named convenience gate for the entire super-admin surface. */
+export const requireSuperAdmin = requireRole('super_admin');
 
 /* Salon owners may only ever touch the salon they own. req.salon is resolved
    server-side from the session user id — never from client-supplied input. */
 export function requireSalonOwner(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'Authentication required.' });
   if (req.user.role !== 'salon_owner') {
-    return res.status(403).json({ error: 'Only salon owners can access this resource.' });
+    return res.status(403).json({ error: 'Only salon owners can access this resource.', code: 'FORBIDDEN_ROLE' });
   }
   const salon = findSalonByOwner(req.user.id);
   if (!salon) {
@@ -146,7 +204,7 @@ export function requireSalonAccess(paramName = 'salonId') {
     if (!req.user) return res.status(401).json({ error: 'Authentication required.' });
     const salonId = req.params[paramName];
     if (!salonId) return res.status(400).json({ error: 'Missing salon id' });
-    if (req.user.role === 'super_admin') return next();
+    if (isAdminRole(req.user.role)) return next();
     if (req.user.role === 'salon_owner') {
       const salon = findSalonByOwner(req.user.id);
       if (!salon) return res.status(403).json({ error: 'No salon is linked to this account.' });

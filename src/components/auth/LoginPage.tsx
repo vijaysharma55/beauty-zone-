@@ -1,56 +1,77 @@
 import React, { useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AlertCircle, Eye, EyeOff, Lock, Mail, X } from 'lucide-react';
 import { AuthLayout } from './AuthLayout';
 import { GoogleSignInButton } from './GoogleSignInButton';
-import { Button, Field, Input } from '../ui';
+import { Button, Field, Input, Spinner } from '../ui';
 import { useAuth } from '../../context/AuthContext';
 import { errorMessage } from '../../lib/api';
+import { homeForUser, postLoginDestination, homeForAuthUser } from '../../lib/authRoutes';
 import type { AuthResponse } from '../../types/auth';
 
-export function homeForUser(data: AuthResponse): string {
-  if (data.user.role === 'super_admin') return '/admin';
-  if (!data.salon) return '/dashboard/onboarding';
-  return '/dashboard';
+// Kept as a re-export so any existing import of the login redirect helper
+// resolves to the shared, role-aware implementation.
+export { homeForUser } from '../../lib/authRoutes';
+
+/** Resolve where a successful sign-in must go, including a pre-login deep link. */
+function destinationFor(data: AuthResponse, from: unknown): string {
+  const fallback = homeForUser(data);
+  return postLoginDestination(from || fallback, data.user.role, Boolean(data.salon));
 }
 
 export const LoginPage: React.FC = () => {
-  const { login, loginWithGoogle, user } = useAuth();
+  const { login, loginWithGoogle, user, salon, loading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: unknown } | null)?.from;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loadingSubmit, setLoadingSubmit] = useState(false);
+
+  // Never redirect while the session is still being restored: doing so sent a
+  // just-signed-in super admin to /dashboard using a stale anonymous state.
+  if (loading) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#FAF5E5]">
+        <Spinner className="h-8 w-8 text-[#D09A40]" />
+        <p className="text-sm font-medium text-slate-600">Checking your session…</p>
+      </div>
+    );
+  }
 
   if (user) {
-    return <Navigate to={user.role === 'super_admin' ? '/admin' : '/dashboard'} replace />;
+    const target = postLoginDestination(from, user.role, Boolean(salon)) || homeForAuthUser(user, Boolean(salon));
+    return <Navigate to={target} replace />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
+    setLoadingSubmit(true);
     try {
       const data = await login(email.trim(), password);
-      navigate(homeForUser(data), { replace: true });
+      // Wait for the trusted server role, then navigate with replace so the
+      // browser Back button cannot return to a half-authenticated login page.
+      navigate(destinationFor(data, from), { replace: true });
     } catch (err) {
       setError(errorMessage(err));
     } finally {
-      setLoading(false);
+      setLoadingSubmit(false);
     }
   };
 
   const handleGoogle = async (credential: string) => {
     setError('');
-    setLoading(true);
+    setLoadingSubmit(true);
     try {
       const data = await loginWithGoogle(credential);
-      navigate(homeForUser(data), { replace: true });
+      navigate(destinationFor(data, from), { replace: true });
     } catch (err) {
       setError(errorMessage(err));
     } finally {
-      setLoading(false);
+      setLoadingSubmit(false);
     }
   };
 
@@ -139,7 +160,7 @@ export const LoginPage: React.FC = () => {
           </div>
         </div>
 
-        <Button type="submit" variant="gold" size="lg" loading={loading} className="w-full">
+        <Button type="submit" variant="gold" size="lg" loading={loadingSubmit} className="w-full">
           Sign in securely
         </Button>
       </form>
@@ -151,7 +172,6 @@ export const LoginPage: React.FC = () => {
       </div>
 
       <GoogleSignInButton onCredential={handleGoogle} />
-
     </AuthLayout>
   );
 };

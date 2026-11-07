@@ -34,7 +34,7 @@ db.exec(`
     auth_provider TEXT NOT NULL DEFAULT 'password' CHECK (auth_provider IN ('password', 'google')),
     google_sub TEXT UNIQUE,
     name TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'salon_owner' CHECK (role IN ('super_admin', 'salon_owner')),
+    role TEXT NOT NULL DEFAULT 'salon_owner' CHECK (role IN ('super_admin', 'admin', 'salon_owner', 'customer')),
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
     email_verified INTEGER NOT NULL DEFAULT 0,
     email_verified_at TEXT,
@@ -740,6 +740,63 @@ export function audit(req, action, targetType = null, targetId = null, meta = nu
 /* Seed                                                               */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Lumina Luxe public treatment catalog for the tenant salon site.
+ * Each entry carries a complete editorial description — step-by-step process,
+ * benefits, duration, ideal skin/hair type, genuine brands and clear pricing —
+ * so no card on /salon/lumina-luxe renders a blank or one-line summary.
+ */
+const LUMINA_LUXE_SERVICES = [
+  {
+    name: 'HD Airbrush Bridal Makeover',
+    category: 'bridal',
+    price: 24999,
+    durationMinutes: 180,
+    description:
+      'A 180-minute couture bridal makeover priced at ₹24,999, all-inclusive. Step 1: a private complexion, undertone and outfit consultation with a documented shade match. Step 2: Forest Essentials cleanse, hydrating collagen mask and MAC Prep + Prime skin preparation. Step 3: micro-fine Temptu HD airbrush pigment layered with MAC Studio Fix, Huda Beauty #FauxFilter and Charlotte Tilbury Flawless Filter for poreless, flash-safe coverage. Step 4: bespoke eye artistry, Ardell lashes, Kundan jewellery setting, veil fixing and couture lehenga/dupatta draping. Step 5: Dyson hair styling, MAC Fix+ sealing, a flash-photography check and a take-home touch-up kit. Benefit: 16+ hours of waterproof, tear-resistant, camera-ready wear for pheras and receptions. Ideal for all Indian skin tones and for normal, dry, oily, combination and sensitive skin, including pigmentation and texture concerns.',
+  },
+  {
+    name: 'Balayage & Gloss Couture',
+    category: 'hair',
+    price: 8999,
+    durationMinutes: 150,
+    description:
+      'A 150-minute hand-painted French balayage and gloss service priced at ₹8,999. Step 1: colour consultation, strand test and a personalised tone map for your complexion. Step 2: Olaplex No.1 Bond Builder blended into L’Oréal Professionnel Blond Studio lightener. Step 3: freehand ribbons painted with graduated saturation for a soft root shadow and no regrowth line. Step 4: a bespoke anti-brass gloss toner followed by Kérastase Chroma Absolu masque. Step 5: Olaplex No.7, a Dyson Supersonic blow-dry and a written colour-maintenance plan. Benefit: sun-kissed caramel, honey or ash dimension for 3–4 months with measurably less breakage. Ideal for virgin, previously coloured, fine, thick, straight and wavy hair, and for sensitive scalps after patch testing. Length supplements are quoted before work begins.',
+  },
+  {
+    name: 'HydraFacial Glow Ritual',
+    category: 'skin',
+    price: 4999,
+    durationMinutes: 75,
+    description:
+      'A 75-minute genuine 7-step HydraFacial MD protocol priced at ₹4,999. Step 1: magnified skin analysis and a gentle double cleanse. Step 2: vortex cleanse plus a mild glycolic/salicylic resurfacing pass. Step 3: painless vacuum blackhead and sebum extraction with single-use tips opened in front of you. Step 4: oxygen jet and clinical hyaluronic acid serum infusion. Step 5: red or blue LED therapy, cooling ice globes, an antioxidant vitamin-C mask and SPF 50. Benefit: visibly decongested pores, refined texture, balanced oil and deep glass-like hydration with zero downtime. Ideal for oily, combination, congested, blackhead-prone, dull and mildly pigmented skin; acid strength is customised for sensitive and rosacea-prone complexions. Optional boosters are pre-quoted before the treatment.',
+  },
+  {
+    name: 'Russian Gel Nail Extensions',
+    category: 'nails',
+    price: 3499,
+    durationMinutes: 90,
+    description:
+      'A 90-minute couture nail service priced at ₹3,499. Step 1: nail-health assessment, design consultation and UV-sterilised tool setup. Step 2: waterless Russian dry e-file cuticle work with diamond bits, shaping, buffing and dehydration. Step 3: lightweight tips or sculpting forms with apex-balanced CND Brisa / OPI builder gel, LED-cured in thin layers. Step 4: bespoke French ombré, chrome, genuine Swarovski crystals or 24K gold foil art. Step 5: high-gloss non-yellowing top coat, cuticle oil, a symmetry check and a written 4-week after-care and safe-removal guide. Benefit: flawless, chip-proof, photo-ready nails for 4 weeks through mehndi and travel. Ideal for short, bitten, brittle, peeling or uneven nails, dry cuticles and all nail types, with an allergy screen before application.',
+  },
+  {
+    name: 'Aroma Spa De-Stress Massage',
+    category: 'spa',
+    price: 3999,
+    durationMinutes: 60,
+    description:
+      'A 60-minute private-suite aromatherapy ritual priced at ₹3,999. Step 1: a wellness consultation to record pressure preference, fatigue points and your choice of therapeutic-grade essential oil blend. Step 2: lymph-direction dry brushing and a warm towel ritual. Step 3: a 40-minute full-body Swedish and lymphatic drainage massage using warm Forest Essentials rose oil and cold-pressed almond oil. Step 4: 10 minutes of aromatic steam followed by a hydrating shea moisture seal. Step 5: foot reflexology, cooling rose lotion, herbal tea and a quiet rest period. Benefit: released muscle tension, reduced puffiness, satin-soft hydrated skin and deeper, more restful sleep. Ideal for all skin types, especially dry, tired and sensitive skin, and for pre-wedding stress or travel fatigue. Oils and pressure are customised on request.',
+  },
+  {
+    name: 'Professional Bridal Makeup Course',
+    category: 'academy',
+    price: 45000,
+    durationMinutes: 480,
+    description:
+      'A 30-day, 120-hour certified bridal artistry diploma priced at ₹45,000, all-inclusive. Step 1: skin science, hygiene, colour theory, undertone mapping and product literacy with a professional MAC, Huda Beauty, Charlotte Tilbury and Temptu vanity kit. Step 2: core technique — HD and airbrush base, colour correction, cut-crease and smokey eyes, brows, contour and long-wear lips. Step 3: regional bridal looks, Kundan jewellery setting, dupatta draping and Dyson hair styling on live models. Step 4: client consultation, pricing, kit investment, Instagram portfolio building and freelancing. Step 5: practical assessment, viva, ISO/Government-recognised certification and a professional portfolio shoot with placement support. Benefit: job-ready bridal skills with genuine products and a portfolio. Ideal for beginners, beauticians, salon professionals and aspiring freelance artists; no prior experience required.',
+  },
+];
+
 function seedService(salonId, service, index) {
   db.prepare(
     `INSERT INTO services (id, salon_id, name, category, description, price_paise, duration_minutes, active, sort_order, created_at, updated_at)
@@ -829,15 +886,7 @@ export function seedIfEmpty(hashPassword) {
     ts
   );
 
-  const services = [
-    { name: 'HD Airbrush Bridal Makeover', category: 'bridal', price: 24999, durationMinutes: 180, description: 'Long-wear HD airbrush bridal look with premium products, lashes and draping.' },
-    { name: 'Balayage & Gloss Couture', category: 'hair', price: 8999, durationMinutes: 150, description: 'Hand-painted balayage with bond-building gloss and blow-dry finish.' },
-    { name: 'HydraFacial Glow Ritual', category: 'skin', price: 4999, durationMinutes: 75, description: 'Deep-cleansing hydra-facial with antioxidant serum infusion.' },
-    { name: 'Russian Gel Nail Extensions', category: 'nails', price: 3499, durationMinutes: 90, description: 'Precision dry-manicure and durable gel extensions with custom art.' },
-    { name: 'Aroma Spa De-Stress Massage', category: 'spa', price: 3999, durationMinutes: 60, description: 'Full-body aroma therapy massage with warm oils.' },
-    { name: 'Professional Bridal Makeup Course', category: 'academy', price: 45000, durationMinutes: 480, description: 'Hands-on bridal makeup certification with kit and portfolio shoot.' },
-  ];
-  services.forEach((s, i) => seedService(salonId, s, i));
+  LUMINA_LUXE_SERVICES.forEach((s, i) => seedService(salonId, s, i));
 
   const staffMembers = [
     {
@@ -1017,15 +1066,7 @@ export function ensureDemoUsers(hashPassword) {
         ts,
         ts
       );
-      const services = [
-        { name: 'HD Airbrush Bridal Makeover', category: 'bridal', price: 24999, durationMinutes: 180, description: 'Long-wear HD airbrush bridal look with premium products, lashes and draping.' },
-        { name: 'Balayage & Gloss Couture', category: 'hair', price: 8999, durationMinutes: 150, description: 'Hand-painted balayage with bond-building gloss and blow-dry finish.' },
-        { name: 'HydraFacial Glow Ritual', category: 'skin', price: 4999, durationMinutes: 75, description: 'Deep-cleansing hydra-facial with antioxidant serum infusion.' },
-        { name: 'Russian Gel Nail Extensions', category: 'nails', price: 3499, durationMinutes: 90, description: 'Precision dry-manicure and durable gel extensions with custom art.' },
-        { name: 'Aroma Spa De-Stress Massage', category: 'spa', price: 3999, durationMinutes: 60, description: 'Full-body aroma therapy massage with warm oils.' },
-        { name: 'Professional Bridal Makeup Course', category: 'academy', price: 45000, durationMinutes: 480, description: 'Hands-on bridal makeup certification with kit and portfolio shoot.' },
-      ];
-      services.forEach((s, i) => seedService(salonId, s, i));
+      LUMINA_LUXE_SERVICES.forEach((s, i) => seedService(salonId, s, i));
       const periodEnd = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
       db.prepare(
         `INSERT OR IGNORE INTO subscriptions (id, salon_id, plan, status, current_period_end, created_at, updated_at)

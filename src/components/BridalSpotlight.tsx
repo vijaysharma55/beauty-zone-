@@ -39,13 +39,16 @@ export const BridalSpotlight: React.FC<BridalSpotlightProps> = ({
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-[10px] uppercase tracking-widest text-[#D09A40] font-bold block">
-                      Signature Bridal Package
+                      Signature Royal HD Bridal Makeover
                     </span>
                     <p className="font-serif text-lg font-bold text-[#FAF5E5]">
-                      Starts at {formatPrice(14999)}
+                      {formatPrice(24999)} <span className="font-sans text-[11px] font-medium text-[#FAF5E5]/70">all-inclusive · 210 mins</span>
+                    </p>
+                    <p className="mt-1 text-[10px] text-[#FAF5E5]/70">
+                      Airbrush studio from {formatPrice(34999)} · Pre-bridal programmes from {formatPrice(28500)}
                     </p>
                   </div>
-                  <span className="px-3 py-1 rounded-full bg-[#D09A40] text-[#0F172A] text-xs font-bold">
+                  <span className="px-3 py-1 rounded-full bg-[#D09A40] text-[#0F172A] text-xs font-bold shrink-0 ml-2">
                     Free Trial Consultation
                   </span>
                 </div>
@@ -83,8 +86,32 @@ export const BridalSpotlight: React.FC<BridalSpotlightProps> = ({
               ))}
             </div>
 
+            {/* The bridal studio protocol — step-by-step, product-transparent */}
+            <div className="pt-2">
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="w-4 h-4 text-[#D09A40]" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#D09A40]">
+                  Our Bridal Studio Protocol
+                </span>
+              </div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+                {[
+                  { step: '01', title: 'Consult & Match', detail: 'Complexion, undertone & outfit shade mapping' },
+                  { step: '02', title: 'Prep & Prime', detail: 'Forest Essentials cleanse + MAC Prep + Prime' },
+                  { step: '03', title: 'HD / Airbrush', detail: 'MAC, Huda Beauty, Charlotte Tilbury & Temptu' },
+                  { step: '04', title: 'Set & Seal', detail: 'Kundan draping, Dyson finish & touch-up kit' },
+                ].map((item) => (
+                  <div key={item.step} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    <span className="font-mono text-[10px] font-bold text-[#D09A40]">{item.step}</span>
+                    <p className="mt-1 text-xs font-bold text-[#FAF5E5]">{item.title}</p>
+                    <p className="mt-0.5 text-[10px] leading-relaxed text-[#FAF5E5]/65">{item.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* CTAs */}
-            <div className="pt-4 flex flex-wrap items-center gap-4">
+            <div className="pt-2 flex flex-wrap items-center gap-4">
               <button
                 onClick={onBookBridalConsultation}
                 className="flex items-center gap-2.5 bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A] font-bold text-sm sm:text-base px-7 py-4 rounded-full shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer"

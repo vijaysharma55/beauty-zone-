@@ -10,6 +10,8 @@ import { SocialLinksBar, InstagramIcon } from './SocialIcons';
 import { useBrand } from '../context/BrandContext';
 import { BrandEmblemIcon } from './BrandEmblemIcon';
 import { useAuth } from '../context/AuthContext';
+import { isAdminRole, isStaffRole } from '../lib/roles.js';
+import { homeForAuthUser } from '../lib/authRoutes';
 
 interface FooterProps {
   onNavigate: (sectionId: string) => void;
@@ -25,8 +27,8 @@ export const Footer: React.FC<FooterProps> = ({
   const { brand, setIsCustomizerOpen, t } = useBrand();
   const { user } = useAuth();
   // Template/catalog tools are only offered to signed-in owners and admins.
-  const isStaff = !!user && (user.role === 'salon_owner' || user.role === 'super_admin');
-  const accountHref = user ? (user.role === 'super_admin' ? '/admin' : '/dashboard') : '/login';
+  const isStaff = isStaffRole(user?.role);
+  const accountHref = user ? homeForAuthUser(user, true) : '/login';
 
   const branchNames =
     brand.branches.length > 0
@@ -209,7 +211,7 @@ export const Footer: React.FC<FooterProps> = ({
           <p>{brand.copyrightText}</p>
           <nav aria-label="Owner tools" className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-[#FAF5E5]/40">
             <Link to={accountHref} className="hover:text-[#D09A40] transition-colors">
-              {user ? (user.role === 'super_admin' ? 'Admin console' : 'My dashboard') : 'Owner login'}
+              {user ? (isAdminRole(user.role) ? 'Admin console' : 'My workspace') : 'Owner login'}
             </Link>
             {isStaff && (
               <>

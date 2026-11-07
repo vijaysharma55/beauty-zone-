@@ -5,6 +5,7 @@ import { AuthLayout } from './AuthLayout';
 import { GoogleSignInButton } from './GoogleSignInButton';
 import { Button, Field, Input } from '../ui';
 import { useAuth } from '../../context/AuthContext';
+import { homeForAuthUser } from '../../lib/authRoutes';
 import { errorMessage } from '../../lib/api';
 
 const rules = [
@@ -16,7 +17,7 @@ const rules = [
 ];
 
 export const RegisterPage: React.FC = () => {
-  const { register, loginWithGoogle, user } = useAuth();
+  const { register, loginWithGoogle, user, salon } = useAuth();
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -28,7 +29,7 @@ export const RegisterPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   if (user) {
-    return <Navigate to={user.role === 'super_admin' ? '/admin' : '/dashboard'} replace />;
+    return <Navigate to={homeForAuthUser(user, Boolean(salon))} replace />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {

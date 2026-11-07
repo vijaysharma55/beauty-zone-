@@ -8,8 +8,10 @@ import {
   PACKAGE_PRESET_TEMPLATES,
   PACKAGE_PRESET_IMAGES,
   generateTaglineIdeas,
-  PackagePresetTemplate
+  PackagePresetTemplate,
+  packageCardDescription
 } from '../data/packagesData';
+import { serviceCardDescription } from '../data/servicesStore';
 import { 
   GALLERY_TYPES, 
   GALLERY_CATEGORIES, 
@@ -1194,8 +1196,11 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
                                     <div className="font-serif font-bold text-[#0F172A] text-sm truncate">
                                       {service.title}
                                     </div>
-                                    <p className="text-[11px] text-[#4A4A4A] line-clamp-1 font-light mt-0.5">
-                                      {service.description}
+                                    <p
+                                      className="text-[11px] text-[#4A4A4A] line-clamp-1 font-light mt-0.5"
+                                      title={serviceCardDescription(service)}
+                                    >
+                                      {serviceCardDescription(service)}
                                     </p>
                                   </div>
                                 </div>
@@ -1379,8 +1384,11 @@ export const ManagementModal: React.FC<ManagementModalProps> = ({
                               "{pkg.tagline}"
                             </p>
                           )}
-                          <p className="text-xs text-[#4A4A4A] line-clamp-1 mt-0.5">
-                            {pkg.description}
+                          <p
+                            className="text-xs text-[#4A4A4A] line-clamp-1 mt-0.5"
+                            title={packageCardDescription(pkg)}
+                          >
+                            {packageCardDescription(pkg)}
                           </p>
                         </div>
                       </div>
