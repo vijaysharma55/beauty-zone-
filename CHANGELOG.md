@@ -1,5 +1,17 @@
 # BeautyZone — Audit Changelog
 
+## Nexora SalonOS landing page (2026-11-07)
+
+- Added the 10-section Nexora SalonOS sales page at `/nexora-salonos` (sticky header + shared countdown,
+  ROI metrics, comparison table, 9-module grid, testimonials, 14-day guarantee, sticky bottom bar).
+- Every CTA opens a demo-request dialog that stores leads in the new `public.demo_requests` table
+  (migration `20261107_nexora_salonos_demo_requests.sql`; insert-only RLS for visitors, super-admin reads).
+- The route is lazy-loaded and scoped under `.nexora-root`; no existing component, route or style was changed.
+- Added `/nexora-salonos` to the deep-link list in `server/tests/vercel-routing.test.js`.
+- Details: `docs/NEXORA_SALONOS_LANDING.md`.
+
+---
+
 ## PR 1 — Vercel deep-link routing fix (2026-11-06)
 
 Fixes the P1 deployment blocker recorded in AUDIT-REPORT.md, GAP-ANALYSIS.md, BUG-FIX-REPORT.md and

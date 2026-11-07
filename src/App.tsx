@@ -70,6 +70,8 @@ const AdminApprovals = React.lazy(() => import('./components/admin/AdminApproval
 const PublicSalonPage = React.lazy(() => import('./components/site/PublicSalonPage').then((module) => ({ default: module.PublicSalonPage })));
 const SalonDirectoryPage = React.lazy(() => import('./components/site/SalonDirectoryPage').then((module) => ({ default: module.SalonDirectoryPage })));
 
+const NexoraSalonOSPage = React.lazy(() => import('./components/nexora-salonos/NexoraSalonOSPage').then((module) => ({ default: module.NexoraSalonOSPage })));
+
 const CustomerPanel = React.lazy(() => import('./components/customer/CustomerPanel').then((module) => ({ default: module.CustomerPanel })));
 const ReceiptPage = React.lazy(() => import('./components/customer/ReceiptPage').then((module) => ({ default: module.ReceiptPage })));
 
@@ -636,6 +638,8 @@ export function App() {
       {/* Public, unauthenticated salon websites with unique URLs */}
       <Route path="/salon/:slug" element={<PublicSalonPage />} />
 
+      {/* Nexora SalonOS sales landing page (noindex by default; see RouteIndexingPolicy) */}
+      <Route path="/nexora-salonos" element={<NexoraSalonOSPage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
     </React.Suspense>
