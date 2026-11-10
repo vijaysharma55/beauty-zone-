@@ -257,6 +257,12 @@ export interface TranslationDictionary {
   navHomeServiceAvailable: string;
   navWhiteLabelStudio: string;
   navCatalogAdmin: string;
+  navCardServicesDesc: string;
+  navCardBridalDesc: string;
+  navCardVisitDesc: string;
+  navLanguage: string;
+  navCardLanguageDesc: string;
+  navLanguageCurrent: string;
 
   // Hero
   heroBookBtn: string;

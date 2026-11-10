@@ -49,6 +49,9 @@ import { homeStructuredData, SITE_ORIGIN } from './homeMetadata';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 
 
+/** Section ids used by callers that differ from the rendered DOM id. */
+const SECTION_ALIASES: Record<string, string> = { packages: 'bundles' };
+
 const LoginPage = React.lazy(() => import('./components/auth/LoginPage').then((module) => ({ default: module.LoginPage })));
 const RegisterPage = React.lazy(() => import('./components/auth/RegisterPage').then((module) => ({ default: module.RegisterPage })));
 const ForgotPasswordPage = React.lazy(() => import('./components/auth/ForgotPasswordPage').then((module) => ({ default: module.ForgotPasswordPage })));
@@ -248,7 +251,9 @@ function MarketingSite() {
   };
 
   const scrollToSection = (id: string) => {
-    const el = document.getElementById(id);
+    // The Curated Packages section renders with the id "bundles"; keep the
+    // human-friendly "packages" call sites working.
+    const el = document.getElementById(id) || document.getElementById(SECTION_ALIASES[id] || '');
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
