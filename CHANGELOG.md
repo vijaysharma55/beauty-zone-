@@ -1,5 +1,43 @@
 # BeautyZone — Audit Changelog
 
+## PR — React Bits `CardNav` integrated as the marketing header (2026-11-08)
+
+Replaces the hand-rolled fixed header with the React Bits **CardNav** component: a floating,
+frosted-glass pill that expands into a staggered card mega-menu. The white-label theme, the
+section toggles and all seven locales keep working unchanged.
+
+### New files
+- `src/components/reactbits/CardNav.jsx` + `CardNav.css` — the React Bits component, copied
+  verbatim (JS + CSS variant) so future upstream updates can be diffed in place.
+- `src/components/Navbar.css` — the floating shell, the brand lockup and the `scroll-margin-top`
+  that keeps in-page landings below the pill.
+
+### Dependencies
+- `@hugeicons/react` and `@hugeicons/core-free-icons` (the arrow glyphs in the card links).
+
+### Header behaviour
+- `Navbar.tsx` now renders `<CardNav>` in a controlled state (`open` + `onOpenChange`) so the
+  menu also closes on navigation, CTA clicks and logo clicks.
+- Cards are built from the live white-label config and only list sections the owner has enabled:
+  **Services** (services, packages, reels, gift cards), **Bridal Studio** (bridal, gallery,
+  stylists, testimonials), **Locations** (branches, phone, WhatsApp, email, FAQ) and
+  **Language** (only when the language switcher is on and more than one locale is enabled).
+- The bar is tinted from `brand.theme.primaryColor` and the CTA from `brand.theme.accentColor`,
+  with the ink colour picked automatically for contrast.
+- In-page links stay buttons (no URL hash); `onLinkClick` forwards the section id to the page's
+  smooth scroller. Language entries call `setLanguage` and the whole menu re-renders translated.
+- Logo clicks smooth-scroll to the top instead of pushing a stray `#` onto the URL.
+- Below 560px CardNav switches to its narrow layout (logo left, burger right, CTA at the bottom
+  of the menu); the wordmark is hidden there because the logo keeps the accessible name.
+
+### Fixes picked up on the way
+- `scrollToSection('packages')` never matched a DOM node — the packages bundle renders as
+  `id="bundles"`. Added `SECTION_ALIASES` in `App.tsx` so Packages nav/CTA/book flows land on the
+  bundle section.
+- New translations (`navCardServicesDesc`, `navCardBridalDesc`, `navCardVisitDesc`, `navLanguage`,
+  `navCardLanguageDesc`, `navLanguageCurrent`) added to all seven dictionaries and to
+  `TranslationDictionary`.
+
 ## PR — "Add New Staff Member" onboarding module (2026-11-08)
 
 Completes the salon-owner staff onboarding flow with every field captured from the latest UI walkthrough,

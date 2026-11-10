@@ -1,186 +1,306 @@
-import React, { useState, useEffect } from 'react';
-import { MapPin, Phone, Menu, X, CalendarCheck } from 'lucide-react';
-import { SocialLinksBar } from './SocialIcons';
-import { useBrand } from '../context/BrandContext';
+import React, { useCallback, useMemo, useState } from 'react';
+import CardNavSource from './reactbits/CardNav';
 import { BrandEmblemIcon } from './BrandEmblemIcon';
-import { LanguageSwitcher } from './LanguageSwitcher';
+import { useBrand } from '../context/BrandContext';
+import { SUPPORTED_LANGUAGES } from '../data/i18nData';
+import type { SupportedLanguage } from '../types';
+import './Navbar.css';
 
 /**
  * Customer-facing header only. Owner/admin entry points (login, catalog admin,
  * brand studio, design tokens) live in the footer's discreet "Owner tools" row.
+ *
+ * The bar itself is the React Bits <CardNav /> component: a floating glass pill
+ * with the brand emblem, a card mega-menu and the primary booking CTA. Every
+ * in-page destination is a button link (no URL hash), so the smooth-scroll
+ * offset of the floating bar stays under our control.
  */
 interface NavbarProps {
   onNavigate: (sectionId: string) => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
-  const { brand, t } = useBrand();
-  const [isScrolled, setIsScrolled] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+/**
+ * CardNav ships as plain JavaScript, so its prop types are inferred from the
+ * default `DEFAULT_ITEMS` array. Declaring the contract here keeps the site
+ * navigation fully typed while still consuming the unmodified React Bits
+ * component (in-page `section` links instead of hrefs, plus locale entries).
+ */
+interface CardNavLink {
+  label: string;
+  href?: string;
+  ariaLabel?: string;
+  section?: string;
+  locale?: SupportedLanguage;
+}
 
-  useEffect(() => {
-    const handleScroll = () => setIsScrolled(window.scrollY > 20);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+interface CardNavCard {
+  label: string;
+  description?: string;
+  bgColor?: string;
+  textColor?: string;
+  links: CardNavLink[];
+}
+
+interface CardNavProps {
+  logo?: React.ReactNode;
+  logoAlt?: string;
+  logoHref?: string;
+  items: CardNavCard[];
+  cta?: { label: string; href?: string; onClick?: (event: React.MouseEvent) => void };
+  theme?: 'dark' | 'light';
+  surface?: 'glass' | 'solid';
+  openOn?: 'click' | 'hover';
+  cardEffect?: 'rise' | 'unfold' | 'fade';
+  stagger?: number;
+  bounce?: number;
+  speed?: number;
+  cardHeight?: number;
+  maxWidth?: number;
+  accentColor?: string;
+  menuLabel?: boolean;
+  intro?: boolean;
+  defaultOpen?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  linkComponent?: React.ElementType;
+  onLinkClick?: (link: CardNavLink, item: CardNavCard, event: React.MouseEvent) => void;
+  ariaLabel?: string;
+  className?: string;
+  style?: React.CSSProperties;
+}
+
+const CardNav = CardNavSource as unknown as React.ComponentType<CardNavProps>;
+
+const toRgba = (hex: string, alpha: number, fallback: string) => {
+  const value = String(hex || '').replace('#', '').trim();
+  const full =
+    value.length === 3
+      ? value
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : value;
+  if (!/^[0-9a-f]{6}$/i.test(full)) return fallback;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
+export const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
+  const { brand, t, language, setLanguage } = useBrand();
+
+  const primary = brand.theme?.primaryColor || '#0F172A';
+  const accent = brand.theme?.accentColor || '#D09A40';
+
+  const enabledLanguages = useMemo(() => {
+    const codes =
+      brand.localization?.enabledLanguages?.length > 0
+        ? brand.localization.enabledLanguages
+        : (['en'] as SupportedLanguage[]);
+    return SUPPORTED_LANGUAGES.filter((option) => codes.includes(option.code));
+  }, [brand.localization?.enabledLanguages]);
+
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // `onNavigate` owns the id mapping (e.g. "packages" → the rendered "bundles").
+  const go = useCallback(
+    (id?: string) => {
+      if (id) onNavigate(id);
+    },
+    [onNavigate]
+  );
+
+  const items = useMemo<CardNavCard[]>(() => {
+    const cards: CardNavCard[] = [];
+
+    if (brand.sections.showServices || brand.sections.showPackages) {
+      cards.push({
+        label: t('navServices'),
+        description: t('navCardServicesDesc'),
+        links: [
+          brand.sections.showServices && {
+            label: t('navServices'),
+            section: 'services',
+          },
+          brand.sections.showPackages && {
+            label: t('navPackages'),
+            section: 'packages',
+          },
+          brand.sections.showReels && {
+            label: t('navReels'),
+            section: 'featured-reels',
+          },
+          brand.sections.showGiftCards && {
+            label: t('navGiftCards'),
+            section: 'gift-cards',
+          },
+        ].filter(Boolean) as CardNavLink[],
+      });
+    }
+
+    if (brand.sections.showBridalSpotlight || brand.sections.showGallery) {
+      cards.push({
+        label: t('navBridal'),
+        description: t('navCardBridalDesc'),
+        links: [
+          brand.sections.showBridalSpotlight && {
+            label: t('navBridal'),
+            section: 'bridal',
+          },
+          brand.sections.showGallery && {
+            label: t('navGallery'),
+            section: 'gallery',
+          },
+          brand.sections.showStylists && {
+            label: t('stylistsOverline'),
+            section: 'stylists',
+          },
+          brand.sections.showTestimonials && {
+            label: t('testimonialsOverline'),
+            section: 'testimonials',
+          },
+        ].filter(Boolean) as CardNavLink[],
+      });
+    }
+
+    const contactLinks: CardNavLink[] = [
+      brand.sections.showLocations && {
+        label: t('navLocations'),
+        section: 'locations',
+      },
+      {
+        label: brand.phoneDisplay,
+        href: `tel:+${brand.phoneRaw}`,
+        ariaLabel: `${t('navHomeServiceAvailable')} — ${brand.phoneDisplay}`,
+      },
+      {
+        label: 'WhatsApp',
+        href: `https://wa.me/${brand.whatsappNumber}?text=${encodeURIComponent(
+          `Namaste ${brand.brandName} (${brand.cityName}), I would like to book an appointment.`
+        )}`,
+        ariaLabel: `WhatsApp ${brand.brandName}`,
+      },
+      {
+        label: brand.email,
+        href: `mailto:${brand.email}`,
+        ariaLabel: `${brand.brandName} ${brand.email}`,
+      },
+      brand.sections.showFAQ && {
+        label: t('faqOverline'),
+        section: 'faq',
+      },
+    ].filter(Boolean) as CardNavLink[];
+
+    if (contactLinks.length > 0) {
+      cards.push({
+        label: t('navLocations'),
+        description: t('navCardVisitDesc'),
+        links: contactLinks,
+      });
+    }
+
+    if (enabledLanguages.length > 1 && brand.localization?.showLanguageSwitcher !== false) {
+      cards.push({
+        label: t('navLanguage'),
+        description: t('navCardLanguageDesc'),
+        links: enabledLanguages.map((option) => ({
+          label: option.code === language ? `✓ ${option.nativeName}` : option.nativeName,
+          ariaLabel:
+            option.code === language
+              ? `${option.name} (${t('navLanguageCurrent')})`
+              : option.name,
+          locale: option.code,
+        })),
+      });
+    }
+
+    return cards.length > 0
+      ? cards
+      : [
+          {
+            label: t('navServices'),
+            links: [{ label: t('navServices'), section: 'services' }],
+          },
+        ];
+  }, [brand, enabledLanguages, language, t]);
+
+  const handleLinkClick = useCallback(
+    (link: CardNavLink) => {
+      setMenuOpen(false);
+      if (link.locale) {
+        setLanguage(link.locale);
+        return;
+      }
+      go(link.section);
+    },
+    [go, setLanguage]
+  );
+
+  const handleBooking = useCallback(() => {
+    setMenuOpen(false);
+    go('booking');
+  }, [go]);
+
+  // CardNav anchors its logo with `logoHref`; intercepting the click in the
+  // capture phase keeps the visitor on the page (smooth scroll to the top)
+  // instead of pushing a stray "#" onto this hash-free marketing URL.
+  const handleShellClickCapture = useCallback((event: React.MouseEvent) => {
+    const target = event.target as HTMLElement | null;
+    if (!target?.closest('.card-nav__logo')) return;
+    event.preventDefault();
+    setMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  const navLinks = [
-    { label: t('navServices'), id: 'services', show: brand.sections.showServices },
-    { label: t('navPackages'), id: 'packages', show: brand.sections.showPackages },
-    { label: t('navBridal'), id: 'bridal', show: brand.sections.showBridalSpotlight },
-    { label: t('navGallery'), id: 'gallery', show: brand.sections.showGallery },
-    { label: t('navLocations'), id: 'locations', show: brand.sections.showLocations },
-  ].filter((item) => item.show);
-
-  const handleLinkClick = (id: string) => {
-    onNavigate(id);
-    setMobileMenuOpen(false);
-  };
-
-  const branchSummary =
-    brand.branches.length > 0
-      ? brand.branches
-          .slice(0, 3)
-          .map((b) => b.locality.split('/')[0].trim())
-          .join(' • ')
-      : brand.cityName;
+  const logo = (
+    <span className="bz-nav__brand">
+      <span className="bz-nav__emblem" aria-hidden="true">
+        {brand.logoUrl ? (
+          <img src={brand.logoUrl} alt="" className="bz-nav__emblem-img" />
+        ) : (
+          <BrandEmblemIcon icon={brand.logoIcon} className="bz-nav__emblem-icon" />
+        )}
+      </span>
+      <span className="bz-nav__wordmark">
+        <span className="bz-nav__name">{brand.brandName.toUpperCase()}</span>
+        <span className="bz-nav__subtext">{brand.brandSubtext}</span>
+      </span>
+    </span>
+  );
 
   return (
-    <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        isScrolled
-          ? 'bg-[#0F172A]/95 backdrop-blur-md shadow-xl py-3 border-b border-[#D09A40]/20'
-          : 'bg-[#0F172A] py-4'
-      }`}
-    >
-      {/* Top Info Strip - Desktop Only (customer information, no tools) */}
-      <div className="hidden lg:block border-b border-white/10 pb-2 mb-3">
-        <div className="w-full px-4 flex items-center justify-between text-xs text-[#FAF5E5]/80">
-          <div className="flex items-center space-x-6">
-            <span className="flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-[#D09A40]" />
-              <span>
-                {brand.cityName}: {branchSummary}
-              </span>
-            </span>
-            <span className="text-[#D09A40]">•</span>
-            <span>{t('navHomeServiceAvailable')}</span>
-          </div>
-          <div className="flex items-center space-x-5">
-            <LanguageSwitcher variant="dark" compact />
-            <SocialLinksBar
-              variant="header"
-              iconSize="w-3.5 h-3.5"
-              className="border-r border-white/15 pr-4"
-            />
-            <a
-              href={`tel:+${brand.phoneRaw}`}
-              className="flex items-center gap-1.5 hover:text-[#D09A40] transition-colors"
-            >
-              <Phone className="w-3.5 h-3.5 text-[#D09A40]" />
-              <span>{brand.phoneDisplay}</span>
-            </a>
-          </div>
-        </div>
+    <header className="bz-nav" data-brand-header>
+      <div className="bz-nav__shell" onClickCapture={handleShellClickCapture}>
+        <CardNav
+          logo={logo}
+          logoAlt={brand.brandName}
+          logoHref="#"
+          items={items}
+          cta={{ label: t('navBookAppointment'), onClick: handleBooking }}
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          theme="dark"
+          surface="glass"
+          openOn="click"
+          cardEffect="rise"
+          cardHeight={188}
+          maxWidth={1120}
+          accentColor={accent}
+          ariaLabel={`${brand.brandName} main navigation`}
+          stagger={0.1}
+          bounce={0.22}
+          onLinkClick={handleLinkClick}
+          style={{
+            '--cn-panel': toRgba(primary, 0.82, 'rgba(15, 23, 42, 0.82)'),
+            '--cn-solid': primary,
+            '--cn-tile': `linear-gradient(180deg, ${toRgba(primary, 0.92, primary)} 0%, ${primary} 100%)`,
+            '--cn-logo': '30px',
+          } as React.CSSProperties}
+        />
       </div>
-
-      {/* Main Nav Bar */}
-      <div className="w-full px-4 flex items-center justify-between gap-4">
-        {/* Brand Emblem */}
-        <button
-          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          className="flex items-center gap-3 text-left group cursor-pointer"
-          aria-label={`${brand.brandName} - back to top`}
-        >
-          {brand.logoUrl ? (
-            <img
-              src={brand.logoUrl}
-              alt={brand.brandName}
-              className="w-10 h-10 rounded-full object-cover border border-[#D09A40] shadow-md group-hover:scale-105 transition-transform duration-300"
-            />
-          ) : (
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#D09A40] to-[#B37E28] flex items-center justify-center shadow-md group-hover:scale-105 transition-transform duration-300">
-              <BrandEmblemIcon icon={brand.logoIcon} className="w-5 h-5 text-[#0F172A]" />
-            </div>
-          )}
-          <div>
-            <span className="block font-serif text-xl sm:text-2xl font-bold tracking-wider text-[#FAF5E5] leading-none">
-              {brand.brandName.toUpperCase()}
-            </span>
-            <span className="block text-[10px] uppercase tracking-[0.22em] text-[#D09A40] mt-1 font-medium">
-              {brand.brandSubtext}
-            </span>
-          </div>
-        </button>
-
-        {/* Desktop: essential links + primary CTA */}
-        <nav className="hidden lg:flex items-center space-x-7" aria-label="Main">
-          {navLinks.map((link) => (
-            <button
-              key={link.id}
-              onClick={() => handleLinkClick(link.id)}
-              className="relative text-sm font-medium text-[#FAF5E5]/90 hover:text-[#D09A40] transition-colors py-1 group cursor-pointer"
-            >
-              {link.label}
-              <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-[#D09A40] transition-all duration-300 group-hover:w-full" />
-            </button>
-          ))}
-          <button
-            onClick={() => handleLinkClick('booking')}
-            className="flex items-center gap-2 bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A] font-bold text-sm px-5 py-2.5 rounded-full shadow-lg hover:shadow-[#D09A40]/25 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
-          >
-            <CalendarCheck className="w-4 h-4" />
-            <span>{t('navBookAppointment')}</span>
-          </button>
-        </nav>
-
-        {/* Mobile / tablet: compact CTA always visible + menu */}
-        <div className="flex items-center gap-2 lg:hidden">
-          <LanguageSwitcher variant="dark" compact />
-          <button
-            onClick={() => handleLinkClick('booking')}
-            className="flex items-center gap-1.5 bg-[#D09A40] hover:bg-[#DCA54A] text-[#0F172A] font-bold text-xs sm:text-sm px-3.5 py-2 rounded-full shadow-md cursor-pointer"
-          >
-            <CalendarCheck className="w-4 h-4" />
-            <span>
-              <span className="sm:hidden">Book</span>
-              <span className="hidden sm:inline">{t('navBookAppointment')}</span>
-            </span>
-          </button>
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2 text-[#FAF5E5] hover:text-[#D09A40] transition-colors"
-            aria-label="Toggle Menu"
-            aria-expanded={mobileMenuOpen}
-          >
-            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
-        </div>
-      </div>
-
-      {/* Mobile Dropdown Drawer */}
-      {mobileMenuOpen && (
-        <div className="lg:hidden bg-[#0F172A] border-t border-white/10 px-6 py-5 space-y-4 shadow-2xl">
-          <nav className="flex flex-col space-y-3" aria-label="Mobile">
-            {navLinks.map((link) => (
-              <button
-                key={link.id}
-                onClick={() => handleLinkClick(link.id)}
-                className="text-left text-base font-medium text-[#FAF5E5] hover:text-[#D09A40] py-1.5 border-b border-white/5 transition-colors"
-              >
-                {link.label}
-              </button>
-            ))}
-          </nav>
-          <button
-            onClick={() => handleLinkClick('booking')}
-            className="w-full flex items-center justify-center gap-2 bg-[#D09A40] text-[#0F172A] font-bold py-3 rounded-full shadow-md"
-          >
-            <CalendarCheck className="w-4 h-4" />
-            <span>{t('navBookAppointment')}</span>
-          </button>
-        </div>
-      )}
     </header>
   );
 };
+
+export default Navbar;
