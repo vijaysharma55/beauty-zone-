@@ -1,5 +1,6 @@
 import { api } from './api';
 import { generateTaglineIdeas } from '../data/packagesData';
+import { SALON_NAME_MIN_LENGTH, fallbackSalonTaglines, normalizeSalonName } from './salonTaglines.js';
 
 export interface AiResult<T> {
   value: T;
@@ -33,6 +34,38 @@ export async function suggestTaglines(name: string, count = 3): Promise<AiResult
   } catch (err) {
     console.warn('[ai] tagline suggestion falling back to local templates:', err);
     return { value: localTaglines(clean), source: 'fallback', warnings: ['AI service unavailable'] };
+  }
+}
+
+/**
+ * Suggests three brand taglines for a salon name (the line shown under the
+ * salon name on its website).
+ *
+ * For "more ideas", pass the next `variant` (page of curated suggestions) and
+ * the taglines already shown in `exclude`, so every round offers something new.
+ */
+export async function suggestSalonTaglines(
+  salonName: string,
+  variant = 0,
+  exclude: string[] = []
+): Promise<AiResult<string[]>> {
+  const name = normalizeSalonName(salonName);
+  if (name.length < SALON_NAME_MIN_LENGTH) return { value: [], source: 'fallback', warnings: [] };
+  try {
+    const res = await api.post<{ taglines: string[]; source: AiResult<string[]>['source']; warnings: string[] }>(
+      '/ai/salon-taglines',
+      { name, variant, exclude }
+    );
+    const taglines = Array.isArray(res.taglines) ? res.taglines.filter((line) => typeof line === 'string' && line) : [];
+    if (taglines.length === 0) throw new Error('empty salon tagline response');
+    return { value: taglines, source: res.source || 'ai', warnings: res.warnings || [] };
+  } catch (err) {
+    console.warn('[ai] salon tagline suggestion falling back to local templates:', err);
+    return {
+      value: fallbackSalonTaglines(name, variant, exclude),
+      source: 'fallback',
+      warnings: ['AI service unavailable'],
+    };
   }
 }
 

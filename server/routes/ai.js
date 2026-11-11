@@ -2,10 +2,11 @@
  * AI assist endpoints.
  *
  * These back the "AI" affordances in the white-label studio and owner dashboard:
- *  - POST /api/ai/taglines      → 3 marketing taglines for a package/service
- *  - POST /api/ai/description   → short SEO-ish service description
- *  - POST /api/ai/review-reply  → polite owner reply to a client review
- *  - GET  /api/ai/status        → whether a model is wired up
+ *  - POST /api/ai/taglines        → 3 marketing taglines for a package/service
+ *  - POST /api/ai/salon-taglines  → 3 brand taglines for a salon name (auth required)
+ *  - POST /api/ai/description     → short SEO-ish service description
+ *  - POST /api/ai/review-reply    → polite owner reply to a client review (auth required)
+ *  - GET  /api/ai/status          → whether a model is wired up
  *
  * Design contract (no hard dependency on an external provider):
  *  * If GEMINI_API_KEY is configured, the request is forwarded to Google Generative AI.
@@ -15,12 +16,25 @@
  *  * Every provider failure is logged with `[ai]` prefix and surfaced in the response
  *    `warnings` array for observability.
  *
- * Rate limited: these are unauthenticated-by-design but cheap; tune via env if needed.
+ * Rate limited: these are unauthenticated-by-design but cheap, unless marked
+ * "auth required" above; tune via env if needed.
  */
 
 import { Router } from 'express';
 import { str, rateLimit, ValidationError } from '../security.js';
 import { requireAuth } from '../middleware.js';
+import {
+  SALON_NAME_MAX_LENGTH,
+  SALON_NAME_MIN_LENGTH,
+  SALON_TAGLINE_COUNT,
+  buildSalonTaglinePrompt,
+  completeSalonTaglines,
+  fallbackSalonTaglines,
+  normalizeSalonName,
+  normalizeTaglineExclusions,
+  normalizeTaglineVariant,
+  parseSalonTaglines,
+} from '../../src/lib/salonTaglines.js';
 
 export const aiRouter = Router();
 
@@ -52,7 +66,7 @@ export function aiConfigured() {
 }
 
 /** Calls Gemini with a hard timeout; resolves `null` on any failure. */
-async function callGemini(prompt) {
+async function callGemini(prompt, { maxOutputTokens = 400 } = {}) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || isKeyRevokedOrInvalid) {
     return { text: null, warning: 'AI provider unavailable; using smart local fallback' };
@@ -77,7 +91,7 @@ async function callGemini(prompt) {
       contents: prompt,
       config: {
         temperature: 0.8,
-        maxOutputTokens: 400,
+        maxOutputTokens,
         abortSignal: controller.signal,
       },
     });
@@ -185,6 +199,49 @@ aiRouter.post('/taglines', aiLimiter, async (req, res, next) => {
     console.warn('[ai] taglines handler fallback:', err.message);
     const name = String(req.body?.name ?? req.body?.packageName ?? 'Signature Package');
     res.json({ taglines: fallbackTaglines(name, 3), source: 'fallback', warnings: ['Used local templates.'] });
+  }
+});
+
+/**
+ * Brand taglines for the salon itself (the line under the salon name), used by
+ * onboarding and the website editor. Sends the shared brand-strategist prompt
+ * with `{{Salon_Name}}` filled in and expects a JSON array of 3 strings back.
+ *
+ * Body: `name` (or `salonName`), plus two optional "more ideas" hints:
+ * `variant` (page of curated suggestions) and `exclude` (taglines already shown).
+ */
+aiRouter.post('/salon-taglines', requireAuth, aiLimiter, async (req, res, next) => {
+  let name = '';
+  const variant = normalizeTaglineVariant(req.body?.variant);
+  const exclude = normalizeTaglineExclusions(req.body?.exclude);
+  try {
+    name = normalizeSalonName(
+      str(req.body?.name ?? req.body?.salonName, { max: SALON_NAME_MAX_LENGTH, field: 'Salon name', required: true })
+    );
+    if (name.length < SALON_NAME_MIN_LENGTH) {
+      throw new ValidationError(`Salon name must be at least ${SALON_NAME_MIN_LENGTH} characters`);
+    }
+    // The answer itself is tiny, but on reasoning models the thinking tokens
+    // count against this cap too, so leave headroom for a complete JSON array.
+    const { text, warning } = await callGemini(buildSalonTaglinePrompt(name), { maxOutputTokens: 2048 });
+    const generated = parseSalonTaglines(text);
+    const taglines = completeSalonTaglines(generated, name, variant, exclude);
+    const kept = taglines.filter((tagline) => generated.includes(tagline)).length;
+    const source = kept >= SALON_TAGLINE_COUNT ? 'ai' : kept > 0 ? 'ai+fallback' : 'fallback';
+    const warnings = [];
+    if (warning) warnings.push(warning);
+    else if (generated.length === 0) warnings.push('AI answer was unusable; showing curated suggestions.');
+    else if (kept < generated.length) warnings.push('AI repeated earlier ideas; added curated suggestions.');
+    else if (kept < SALON_TAGLINE_COUNT) warnings.push('AI answer was incomplete; added curated suggestions.');
+    res.json({ taglines, source, warnings });
+  } catch (err) {
+    if (err instanceof ValidationError) return next(err);
+    console.warn('[ai] salon-taglines handler fallback:', err.message);
+    res.json({
+      taglines: fallbackSalonTaglines(name, variant, exclude),
+      source: 'fallback',
+      warnings: ['Used local templates.'],
+    });
   }
 });
 

@@ -132,6 +132,7 @@ npm run verify        # lint (tsc --noEmit) → all tests → production build
 npm run test:unit     # unit tests: subdomain parsing, slot generation, payments
 npm run test:api      # end-to-end API tests (boots a real server on a temp DB)
 npm run test:payments # mock + Razorpay payment tests (boots three real servers)
+npm run test:ai       # salon tagline suggestions against a local stand-in for Gemini
 npm run lint          # TypeScript check
 ```
 
@@ -324,12 +325,45 @@ When the salon is unknown or has no hours, platform defaults are used and `degra
 the UI can be honest about it.
 
 ### AI assist (`/api/ai`) — graceful by design
-`GET /status`, `POST /taglines`, `POST /description`, `POST /review-reply` (auth required).
+`GET /status`, `POST /taglines`, `POST /salon-taglines` (auth required), `POST /description`,
+`POST /review-reply` (auth required).
 
 Set `GEMINI_API_KEY` to enable live generation. **These endpoints never fail hard:** a missing key,
 an unavailable SDK, a timeout (12 s) or an empty model response all fall back to deterministic local
 templates and answer `200` with `source: "fallback"` and a populated `warnings` array. Every provider
 failure is logged with the `[ai]` prefix.
+
+#### Salon tagline suggestions (`POST /api/ai/salon-taglines`)
+
+Backs the **Suggest taglines** button under the Tagline field in owner onboarding and in
+*My Website → Brand identity*. The salon name replaces `{{Salon_Name}}` in the brand-strategist
+prompt (`SALON_TAGLINE_PROMPT` in `src/lib/salonTaglines.js`), which asks the model for a JSON array
+of three taglines.
+
+```jsonc
+// Request. `name` is 2–120 characters; `variant` and `exclude` are optional "more ideas" hints.
+{ "name": "Velvet Rose Atelier", "variant": 1, "exclude": ["Step In. Bloom Out."] }
+
+// Response: always exactly three distinct taglines of 2–10 words (max 160 characters).
+{
+  "taglines": ["Where Velvet Meets Radiance", "Your Signature Look, Beautifully Crafted", "Bloom Into Your Best Self"],
+  "source": "ai",
+  "warnings": []
+}
+```
+
+- `source` is `ai` (all three from the model), `ai+fallback` (the model's usable options, topped up
+  with curated lines) or `fallback` (curated lines only).
+- The answer is validated before it reaches the owner: code fences, prose and cut-off JSON are
+  tolerated, while duplicates, non-strings, options over 10 words and the prompt's own
+  "Tagline Option N" examples are dropped.
+- `exclude` lists taglines the owner has already seen, so **More ideas** never repeats one;
+  `variant` pages through the curated lines, which follow the speciality in the salon name
+  (bridal, barber, nails, spa, skin, makeup, hair).
+- Signed-in users only (`401` otherwise) and rate limited with the other AI routes. A missing or
+  one-character name answers `400`.
+- A suggestion is only a draft: the owner picks one, can edit it, and it is saved and approved
+  through the normal website workflow.
 
 ---
 
@@ -413,6 +447,7 @@ src/
   lib/supabase.ts        Supabase Auth, PostgREST and Storage client
   lib/sectionStore.ts    Owner-scoped Supabase website content sync
   lib/ai.ts              AI helpers with local fallbacks
+  lib/salonTaglines.js   Salon tagline prompt, answer parsing and curated lines (shared with the API)
 data/                    SQLite database + uploads (gitignored)
 docs/PAYMENTS.md         Mock payment + Razorpay setup, test IDs and API reference
 docs/SUPABASE_RLS.md     Current Supabase RLS, workflow and migration boundary

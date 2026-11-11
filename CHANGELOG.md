@@ -1,5 +1,43 @@
 # BeautyZone — Audit Changelog
 
+## PR — AI tagline suggestions for the salon Tagline field (2026-11-11)
+
+Salon owners can now ask an AI brand strategist for tagline ideas instead of starting from a blank
+field. A **Suggest taglines** button sits under the Tagline field in owner onboarding and in
+*My Website → Brand identity*; it offers three options based on the salon name, and one click puts
+the chosen line in the field, where it stays editable.
+
+### New files
+- `src/lib/salonTaglines.js` — the rules shared by the API and the browser: the brand-strategist
+  prompt with its `{{Salon_Name}}` placeholder, validation of the model's answer and the curated
+  lines used when no model is reachable.
+- `src/components/dashboard/TaglineSuggestions.tsx` — the button and the list of options, used by
+  `OnboardingPage` and `WebsiteEditor`.
+- `server/tests/salon-taglines-unit.test.js`, `server/tests/ai-salon-taglines.test.js` — unit tests
+  for the rules, and the endpoint tested against a local stand-in for the Gemini API
+  (`npm run test:ai`).
+
+### API
+- `POST /api/ai/salon-taglines` (signed-in users, rate limited): body `{ name, variant?, exclude? }`,
+  answer `{ taglines: [3 strings], source, warnings }`. See the README for the full contract.
+- The prompt is sent with the salon name in place of `{{Salon_Name}}`. The name is kept on one line
+  and inside its quotes, so it cannot add lines of its own to the prompt.
+- The answer must be a JSON array of three strings. Code fences, surrounding prose and cut-off JSON
+  are tolerated; duplicates, non-strings, options over 10 words and echoed "Tagline Option N"
+  examples are dropped, and any gap is filled from the curated lines.
+- Like the other AI routes it always answers `200`: without `GEMINI_API_KEY`, or when the provider
+  fails, the owner gets curated suggestions that follow the speciality in the salon name.
+- `callGemini` takes a `maxOutputTokens` option; this route uses 2048 so reasoning models have room
+  to finish the JSON. The other AI routes keep their 400-token cap.
+
+### Dashboard behaviour
+- The button is disabled until the salon name has two characters, and never submits the form.
+- **More ideas** asks again and never repeats an option already shown or the tagline in use.
+- Nothing is saved by a suggestion: the owner still saves the form, and tagline changes still go
+  through super admin approval before they reach the live site.
+- Keyboard and screen-reader support: focus stays on the button while ideas load, progress is
+  announced through a live region, and the option in use is exposed with `aria-pressed`.
+
 ## PR — React Bits `CardNav` integrated as the marketing header (2026-11-08)
 
 Replaces the hand-rolled fixed header with the React Bits **CardNav** component: a floating,

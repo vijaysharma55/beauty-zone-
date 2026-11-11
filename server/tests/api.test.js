@@ -1078,6 +1078,28 @@ test('AI endpoints answer with graceful fallbacks when no provider is configured
   assert.equal(unknown.status, 404);
 });
 
+test('salon tagline suggestions need a signed-in user and always return three options', async () => {
+  // The model sits behind the session: visitors cannot spend the AI budget.
+  const anonymous = await makeClient().post('/api/ai/salon-taglines', { name: 'Velvet Rose Atelier' });
+  assert.equal(anonymous.status, 401);
+
+  const suggestions = await ownerClient.post('/api/ai/salon-taglines', { name: 'Velvet Rose Atelier' });
+  assert.equal(suggestions.status, 200);
+  assert.ok(['ai', 'fallback', 'ai+fallback'].includes(suggestions.data.source));
+  assert.ok(Array.isArray(suggestions.data.warnings));
+  assert.equal(suggestions.data.taglines.length, 3);
+  assert.equal(new Set(suggestions.data.taglines).size, 3, 'options are distinct');
+  for (const tagline of suggestions.data.taglines) {
+    assert.equal(typeof tagline, 'string');
+    assert.ok(tagline.trim().split(/\s+/).length <= 10, `"${tagline}" is at most 10 words`);
+    assert.ok(tagline.length <= 160, `"${tagline}" fits the salon tagline field`);
+  }
+
+  // Validation still applies before any model call.
+  assert.equal((await ownerClient.post('/api/ai/salon-taglines', { name: '' })).status, 400);
+  assert.equal((await ownerClient.post('/api/ai/salon-taglines', {})).status, 400);
+});
+
 test('specialist online-booking switch round-trips and stays tenant-scoped', async () => {
   const owner = await loginAs('owner@test.local', 'Owner@12345');
   const list = await owner.get('/api/salon/staff');

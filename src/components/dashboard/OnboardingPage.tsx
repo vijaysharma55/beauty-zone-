@@ -6,6 +6,7 @@ import { api, errorMessage } from '../../lib/api';
 import type { OpeningHours, TemplateId, WebsiteTemplate } from '../../types/auth';
 import { Alert, Badge, Button, Card, Field, Input, PageHeader, Textarea } from '../ui';
 import { ImageUploader } from './ImageUploader';
+import { TaglineSuggestions } from './TaglineSuggestions';
 
 interface FormState {
   name: string;
@@ -209,14 +210,21 @@ export const OnboardingPage: React.FC = () => {
             )}
           </Field>
 
-          <Field label="Tagline" htmlFor="tagline" hint="A short line under your salon name.">
-            <Input
-              id="tagline"
+          <div className="space-y-2">
+            <Field label="Tagline" htmlFor="tagline" hint="A short line under your salon name.">
+              <Input
+                id="tagline"
+                value={form.tagline}
+                onChange={(e) => set('tagline', e.target.value)}
+                placeholder="Luxury Salon & Bridal Studio"
+              />
+            </Field>
+            <TaglineSuggestions
+              salonName={form.name}
               value={form.tagline}
-              onChange={(e) => set('tagline', e.target.value)}
-              placeholder="Luxury Salon & Bridal Studio"
+              onSelect={(tagline) => set('tagline', tagline)}
             />
-          </Field>
+          </div>
 
           <Field label="About your salon" htmlFor="description">
             <Textarea
