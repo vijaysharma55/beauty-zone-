@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Calendar,
@@ -46,8 +46,30 @@ export const DashboardLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
-
+  const [welcomeNotice, setWelcomeNotice] = useState(false);
   const isOnboarding = location.pathname.startsWith('/dashboard/onboarding');
+
+  useEffect(() => {
+    if (isOnboarding || !salon || !user?.id) return;
+    let completedInThisTab = false;
+    try {
+      const key = `beautyzone.onboarding.complete:${user.id}`;
+      completedInThisTab = window.sessionStorage.getItem(key) === '1';
+      if (completedInThisTab) window.sessionStorage.removeItem(key);
+    } catch { /* route state is the fallback */ }
+    if (location.state?.onboardingComplete || completedInThisTab) {
+      setWelcomeNotice(true);
+      if (location.state?.onboardingComplete) {
+        navigate(location.pathname + location.search, { replace: true, state: null });
+      }
+    }
+  }, [isOnboarding, salon?.id, user?.id, location.state, location.pathname, location.search, navigate]);
+  useEffect(() => {
+    if (!welcomeNotice) return;
+    const timer = window.setTimeout(() => setWelcomeNotice(false), 5000);
+    return () => window.clearTimeout(timer);
+  }, [welcomeNotice]);
+
   if (!salon && !isOnboarding) return <Navigate to="/dashboard/onboarding" replace />;
   if (salon && isOnboarding) return <Navigate to="/dashboard" replace />;
 
@@ -175,13 +197,15 @@ export const DashboardLayout: React.FC = () => {
               <Menu className="h-5 w-5" />
             </button>
             <div>
-              <p className="text-sm font-semibold text-slate-900">Owner dashboard</p>
+              <p className="text-sm font-semibold text-slate-900">{isOnboarding ? 'Salon setup' : 'Owner dashboard'}</p>
               <p className="hidden text-xs text-slate-500 sm:block">
-                {salon?.suspended
-                  ? 'Your website is suspended by the platform.'
-                  : salon?.published && workflow?.status === 'approved'
-                    ? 'Your website is live and accepting visitors.'
-                    : (STATUS_META[workflow?.status || salon?.status || 'draft'] || STATUS_META.draft).description}
+                {isOnboarding
+                  ? 'Complete your setup to unlock your dashboard.'
+                  : salon?.suspended
+                    ? 'Your website is suspended by the platform.'
+                    : salon?.published && workflow?.status === 'approved'
+                      ? 'Your website is live and accepting visitors.'
+                      : (STATUS_META[workflow?.status || salon?.status || 'draft'] || STATUS_META.draft).description}
               </p>
             </div>
           </div>
@@ -201,13 +225,13 @@ export const DashboardLayout: React.FC = () => {
                 <ExternalLink className="h-3.5 w-3.5" /> View live site
               </a>
             )}
-            <Link
+            {!isOnboarding && <Link
               to={workflow?.status === 'approved' || workflow?.status === 'pending' ? '/dashboard/approval' : '/dashboard/website'}
               className="inline-flex items-center gap-1.5 rounded-lg bg-[#D09A40] px-3 py-2 text-xs font-semibold text-slate-900 hover:bg-[#DCA54A]"
             >
               <Calendar className="h-3.5 w-3.5" />
               {workflow?.status === 'approved' ? 'Live website' : workflow?.status === 'pending' ? 'Review status' : 'Manage website'}
-            </Link>
+            </Link>}
           </div>
         </header>
 
@@ -215,6 +239,7 @@ export const DashboardLayout: React.FC = () => {
           <EmailVerificationBanner />
           <Outlet />
         </main>
+        {welcomeNotice && <div role="status" className="fixed bottom-5 right-5 z-50 rounded-xl border border-emerald-200 bg-white px-4 py-3 text-sm font-semibold text-emerald-800 shadow-lg">Salon setup complete. Welcome to your dashboard!</div>}
       </div>
     </div>
   );

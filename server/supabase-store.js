@@ -44,6 +44,7 @@ export async function requestSupabase(path, token, options = {}) {
     method: options.method || 'GET',
     headers,
     body: options.body === undefined ? undefined : options.body instanceof Blob ? options.body : JSON.stringify(options.body),
+    signal: options.signal || AbortSignal.timeout(12_000),
   });
   const text = await response.text();
   let data = null;

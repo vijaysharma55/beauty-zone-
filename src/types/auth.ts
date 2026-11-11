@@ -16,6 +16,8 @@ export interface AuthUser {
   emailVerified: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  /** Stable identity for owner-scoped drafts; absent for legacy accounts. */
+  supabaseUserId?: string | null;
 }
 
 export type SalonStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'changes_requested';

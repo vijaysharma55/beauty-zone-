@@ -87,7 +87,8 @@ returns `404` and changes nothing. Super admins are the only role that can read 
 ## 2. Tech stack
 
 - **Frontend:** React 19, React Router 7, TypeScript, Tailwind CSS 4, Lucide icons
-- **Backend:** Node.js + Express 4, `node:sqlite` (`DatabaseSync`) — no external DB service required
+- **Backend:** Node.js + Express 4; Supabase Auth/Postgres/Storage for linked owner onboarding,
+  with `node:sqlite` (`DatabaseSync`) for legacy and operational routes
 - **Security:** scrypt password hashing, opaque session tokens (SHA-256 hashed at rest), HttpOnly
   SameSite cookies, CSRF origin checks, security headers/CSP, login rate limiting + account lockout,
   server-side validation on every field, magic-byte checking for image uploads
@@ -184,9 +185,12 @@ of being sent through an SMTP provider. Outside production the API also returns
 ### Salon owner
 1. `/register` — create an account (always provisioned as `salon_owner`; the client cannot choose a
    role). Google sign-in is available when `GOOGLE_CLIENT_ID` is configured.
-2. `/dashboard/onboarding` — salon name, unique website slug, owner details, phone, complete address,
-   logo, hero image, weekly opening hours and a website template. Slugs are validated for format,
-   reserved words and uniqueness; the API returns `409` on collision.
+2. `/dashboard/onboarding` — a four-step, saved-in-order wizard: salon identity, location/contact,
+   owner branding (logo and hero image), then template and opening hours. Required fields must be
+   valid and saved before continuing. Supabase owners get a revisioned, owner-only database draft
+   plus an immediate per-tab browser backup; local-development accounts use SQLite plus the same
+   backup. Slugs are checked for format, reserved words and uniqueness. See
+   [Onboarding persistence](docs/ONBOARDING.md) for deployment, recovery and migration limits.
 3. `/dashboard` — overview, setup checklist, publish status.
 4. `/dashboard/website` — brand identity, logo/hero upload, gallery, contact details, hero copy,
    template picker, opening hours, theme colours and the unique slug. Saves stay in Draft.
@@ -279,7 +283,9 @@ All routes are JSON and cookie-authenticated. Writes require a same-origin `Orig
 | POST | `/resend-verification` | auth | Re-send the verification email |
 
 ### Owner (`/api/salon`) — `salon_owner` only
-`GET /` (includes `workflow` + version history), `POST /onboarding`, `PATCH /` (draft saves),
+`GET /` (includes `workflow` + version history), `GET|PUT /onboarding/draft`,
+`POST /onboarding/draft/resolve`, `GET /onboarding/slug-available`, `POST /onboarding/complete`,
+`POST /onboarding` (local-only legacy integration endpoint), `PATCH /` (website draft saves),
 `POST /submit`, `POST /publish`, `POST /unpublish`, `GET /versions`, `GET /subscription`,
 `GET|POST /services`, `PATCH|DELETE /services/:id`, `GET|POST /staff`, `PATCH|DELETE /staff/:id`,
 `GET /bookings` (own salon's appointment inbox), `PATCH /bookings/:id` (`requested` → `confirmed` →

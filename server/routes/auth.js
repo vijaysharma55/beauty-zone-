@@ -37,6 +37,7 @@ import { verifyGoogleIdToken, googleConfigured } from '../google.js';
 import { sendMail, verificationEmail, passwordResetEmail } from '../mailer.js';
 import { workflowInfo } from '../workflow.js';
 import { verifySupabaseAccessToken, syncLocalUser, forgetVerifiedToken } from '../supabase-auth.js';
+import { restoreOnboardingMirror } from '../onboarding-mirror.js';
 import { SUPER_ADMIN, ADMIN } from '../roles.js';
 
 export const authRouter = Router();
@@ -128,6 +129,17 @@ function userPayload(userRow) {
   };
 }
 
+async function restoreCompletedSalonAtSignIn(req, localUser, verified, token) {
+  if (verified.role !== 'salon_owner' || findSalonByOwner(localUser.id)) return;
+  try {
+    await restoreOnboardingMirror({ ...req, user: localUser }, { token, id: verified.identityId });
+  } catch (error) {
+    // Sign-in remains possible during a storage outage. The onboarding page
+    // will show a retry instead of replacing an existing remote draft.
+    console.warn('[onboarding] sign-in restore unavailable:', error.message);
+  }
+}
+
 function createSession(req, res, userId) {
   const token = createSessionToken();
   const now = new Date();
@@ -170,6 +182,7 @@ authRouter.post(
       throw new HttpError(401, 'Phone sign-ins are for customer appointments only. Use an email admin account.');
     }
     const localUser = syncLocalUser(verified, { touchLogin: true });
+    await restoreCompletedSalonAtSignIn(req, localUser, verified, accessToken);
 
     // The HttpOnly cookie remains a convenience for warm serverless instances;
     // protected routes also accept the verified bearer token directly, so a
@@ -224,6 +237,7 @@ function portalSessionHandler(portal, { adminAllowed }) {
     }
 
     const localUser = syncLocalUser(verified, { touchLogin: true });
+    await restoreCompletedSalonAtSignIn(req, localUser, verified, accessToken);
     createSession(req, res, localUser.id);
     req.user = findUserById(localUser.id);
     audit(req, 'auth.supabase_session', 'user', localUser.id, {

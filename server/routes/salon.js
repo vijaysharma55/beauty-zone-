@@ -38,6 +38,16 @@ import { ownerBookingsRouter } from './bookings.js';
 import { salonPaymentsRouter } from './salon-payments.js';
 import { serviceAdvanceFields } from '../payments/salon-settings.js';
 import { detectImage } from '../payments/proofs.js';
+import { createOnboardingMirror } from '../onboarding-mirror.js';
+import {
+  completeSupabaseOnboarding,
+  onboardingSlugAvailability,
+  onboardingSupabaseContext,
+  readOnboardingDraft,
+  resolveOnboardingDraft,
+  saveOnboardingDraft,
+} from '../onboarding.js';
+import { onboardingValuesSchema } from '../../src/lib/onboardingSchema.js';
 import {
   DEFAULT_COMMISSION_PERCENT,
   DEFAULT_STAFF_APP_ACCESS_ROLE,
@@ -74,6 +84,12 @@ export const salonRouter = Router();
 /* Every route in this router is salon-owner only. Ownership is resolved from the
    session, so there is no client-supplied salon id anywhere in this file. */
 salonRouter.use(requireAuth, requireRole('salon_owner'));
+salonRouter.use((req, res, next) => {
+  if (req.onboardingRestoreError && !req.path.startsWith('/onboarding')) {
+    return res.status(503).json({ error: 'Could not restore your salon data. Please retry.', code: 'ONBOARDING_RESTORE_FAILED' });
+  }
+  return next();
+});
 
 /* Booking & advance payment settings, payment methods, transactions,
    verification queue, receipts and WhatsApp retries. */
@@ -190,9 +206,76 @@ salonRouter.get('/', (req, res) => {
   });
 });
 
+// In-progress data is stored separately from salons: a partial draft must not
+// unlock dashboard routes or create a public-facing salon.
+salonRouter.get('/onboarding/draft', asyncHandler(async (req, res) => {
+  const draft = await readOnboardingDraft(req);
+  return res.json({ draft });
+}));
+
+salonRouter.put('/onboarding/draft', asyncHandler(async (req, res) => {
+  const draft = await saveOnboardingDraft(req, req.body);
+  return res.json({ draft });
+}));
+
+salonRouter.post('/onboarding/draft/resolve', asyncHandler(async (req, res) => {
+  const draft = await resolveOnboardingDraft(req, req.body);
+  return res.json({ draft });
+}));
+
+const onboardingSlugLimiter = rateLimit({ windowMs: 60_000, max: 90, key: 'onboarding-slug' });
+salonRouter.get('/onboarding/slug-available', onboardingSlugLimiter, asyncHandler(async (req, res) => {
+  return res.json(await onboardingSlugAvailability(req, req.query.slug));
+}));
+
+salonRouter.post('/onboarding/complete', asyncHandler(async (req, res) => {
+  const expectedRevision = req.body?.expectedRevision;
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
+    throw new HttpError(400, 'Save your onboarding draft before completing setup.', 'ONBOARDING_INVALID_DRAFT');
+  }
+  const context = onboardingSupabaseContext(req);
+  const existing = findSalonByOwner(req.user.id);
+  if (existing) {
+    return res.json({ salon: serializeSalon(existing), subscription: serializeSubscription(getSubscriptionForSalon(existing.id)) });
+  }
+  const stored = await readOnboardingDraft(req, context);
+  if (!stored) throw new HttpError(400, 'Save your onboarding draft before completing setup.');
+  if (!stored.completed && stored.revision !== expectedRevision) {
+    throw new HttpError(409, 'Your saved draft changed in another session.', 'ONBOARDING_CONFLICT');
+  }
+  if (stored.draft.currentStep !== 4 || !onboardingValuesSchema.safeParse(stored.draft.values).success) {
+    throw new HttpError(400, 'Complete all required fields and steps before creating your salon.', 'ONBOARDING_INCOMPLETE');
+  }
+  if (!stored.completed) {
+    const availability = await onboardingSlugAvailability(req, stored.draft.values.slug, context);
+    if (!availability.available) throw new HttpError(409, availability.reason, 'ONBOARDING_SLUG_TAKEN');
+  }
+
+  let salon;
+  if (context) {
+    // The RPC creates the Supabase salon, subscription and completed marker in
+    // one transaction; a retry after a lost response returns those same rows.
+    const result = await completeSupabaseOnboarding(context, expectedRevision);
+    if (!result?.salon?.id) throw new HttpError(503, 'Your salon could not be restored. Please try again.');
+    salon = createOnboardingMirror(req, stored.draft.values, {
+      remoteSalon: result.salon, remoteSubscription: result.subscription,
+    });
+  } else {
+    salon = createOnboardingMirror(req, stored.draft.values, { localRevision: stored.revision });
+  }
+  return res.status(201).json({
+    salon: serializeSalon(salon), subscription: serializeSubscription(getSubscriptionForSalon(salon.id)),
+  });
+}));
+
+// Kept for local legacy integrations. Supabase owners must go through the
+// validated, revisioned /onboarding/complete endpoint above.
 salonRouter.post(
   '/onboarding',
   asyncHandler(async (req, res) => {
+    if (req.supabaseIdentity || req.user.supabase_uid) {
+      throw new HttpError(409, 'Complete the saved salon setup first.', 'ONBOARDING_REQUIRED');
+    }
     if (findSalonByOwner(req.user.id)) {
       throw new HttpError(409, 'You have already completed salon onboarding.');
     }
@@ -377,10 +460,18 @@ salonRouter.post(
   '/uploads',
   uploadLimiter,
   asyncHandler(async (req, res) => {
-    req.salon = requireOwnSalon(req);
     const kind = String(req.query.kind || 'image');
     if (!['logo', 'cover', 'gallery', 'staff', 'service', 'payment_qr'].includes(kind)) {
       return res.status(400).json({ error: 'Unsupported upload type' });
+    }
+    req.salon = findSalonByOwner(req.user.id);
+    // Local-only owner accounts can add the two onboarding assets before a
+    // salon exists. Supabase owners use their owner-scoped Storage folder.
+    if (!req.salon && !['logo', 'cover'].includes(kind)) {
+      throw new HttpError(409, 'Complete salon onboarding first.', 'ONBOARDING_REQUIRED');
+    }
+    if (!req.salon && onboardingSupabaseContext(req)) {
+      throw new HttpError(409, 'Upload onboarding images to your online storage.', 'ONBOARDING_USE_STORAGE');
     }
     const mime = String(req.get('content-type') || '').split(';')[0].trim().toLowerCase();
     const ext = MIME_EXT[mime];
