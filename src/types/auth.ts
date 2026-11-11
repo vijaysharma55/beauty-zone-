@@ -152,8 +152,16 @@ export interface SalonService {
   id: string;
   salonId: string;
   name: string;
+  /** Main category: a preset key (`hair`, `nails`, …) or a custom owner label. */
   category: string;
+  /** Display label for `category` (`Hair`, `Gel Extensions`, …). */
+  categoryLabel?: string;
+  /** Optional grouping under the main category (e.g. "Gel Nails" under Nails). */
+  subcategory?: string;
+  subcategoryLabel?: string;
   description: string;
+  /** "Important notes / custom instructions" — duration, prerequisites, client prep. */
+  notes?: string;
   pricePaise: number;
   price: number;
   durationMinutes: number;
@@ -162,6 +170,31 @@ export interface SalonService {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** One subcategory bucket of the owner's catalogue. */
+export interface ServiceSubcategoryGroup {
+  subcategory: string;
+  label: string;
+  total: number;
+  services: SalonService[];
+}
+
+/** One main-category bucket of the owner's catalogue. */
+export interface ServiceCategoryGroup {
+  category: string;
+  label: string;
+  total: number;
+  active: number;
+  subcategories: ServiceSubcategoryGroup[];
+}
+
+/** An option in the main-category picker. */
+export interface ServiceCategoryOption {
+  value: string;
+  label: string;
+  custom: boolean;
+  subcategories: string[];
 }
 
 export interface StaffWorkPhoto {

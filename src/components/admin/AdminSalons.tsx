@@ -693,9 +693,13 @@ export const AdminSalons: React.FC = () => {
                     <li key={service.id} className="flex items-center justify-between gap-3 px-4 py-2">
                       <div className="min-w-0">
                         <p className="truncate text-xs font-medium text-slate-800">{service.name}</p>
-                        <p className="text-[11px] capitalize text-slate-500">
-                          {service.category} · {service.durationMinutes} min
+                        <p className="text-[11px] text-slate-500">
+                          {service.categoryLabel || service.category}
+                          {service.subcategory ? ` › ${service.subcategory}` : ''} · {service.durationMinutes} min
                         </p>
+                        {service.notes && (
+                          <p className="mt-0.5 line-clamp-2 text-[11px] italic text-slate-400">{service.notes}</p>
+                        )}
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
                         {!service.active && <Badge tone="amber">Hidden</Badge>}

@@ -42,6 +42,18 @@ Image storage uses the beautyzone-assets bucket. Public image reads are
 enabled; authenticated uploads, updates and deletes must use a first-level
 folder matching the caller's auth.uid().
 
+## Service catalogue
+
+Migration `20261111_beautyzone_service_catalogue.sql` extends `public.services`
+with `subcategory`, `image_url` and `notes`. The new columns are covered by the
+existing `services_owner_admin_*` and `services_owner_or_public_select` row
+policies: a salon owner can read and mutate only their own salon's rows, and
+anonymous visitors only see active rows of a published, approved, non-suspended
+salon. Length constraints mirror the API (`category` 1–60, `subcategory` ≤ 60,
+`notes` ≤ 1000), and `public.service_catalogue_groups` (a `security_invoker`
+view) exposes per-category/subcategory counts under the caller's own RLS. See
+`docs/SERVICE_CATALOGUE.md` for the full field and API reference.
+
 ## Customer appointment history
 
 Migration `20261106_beautyzone_customer_appointment_history.sql` adds

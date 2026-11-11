@@ -20,7 +20,8 @@ import { formatCurrency } from '../ui';
 import { DEMO_SALON_STAFF } from '../../data/demoStaffData';
 import { SalonBookingPanel } from './SalonBookingPanel';
 import { StylistProfileModal, staffToProfile, type StylistProfile } from '../StylistProfileModal';
-import type { Salon, SalonService, SalonStaff } from '../../types/auth';
+import type { Salon, SalonService, SalonStaff, ServiceCategoryGroup } from '../../types/auth';
+import { groupServicesByCategory } from '../../lib/serviceCategories.js';
 
 const CATEGORY_LABELS: Record<string, string> = {
   bridal: 'Bridal',
@@ -95,7 +96,11 @@ export const SalonSite: React.FC<{
 
   const branchLabel = [salon.addressLine, salon.city, salon.state].filter(Boolean).join(', ');
 
-  const categories = Array.from(new Set(services.map((s) => s.category)));
+  const serviceGroups = useMemo(
+    () => groupServicesByCategory(services) as ServiceCategoryGroup[],
+    [services]
+  );
+  const categories = serviceGroups.map((group) => group.label);
   const phoneRaw = (salon.whatsapp || salon.phone || '').replace(/[^\d]/g, '');
   const timings = Array.isArray(salon.timings) ? salon.timings : [];
   const mapHref =
@@ -312,7 +317,7 @@ export const SalonSite: React.FC<{
                   className="rounded-full border px-3 py-1 text-xs font-medium"
                   style={{ borderColor: `${primary}22`, color: `${primary}AA` }}
                 >
-                  {CATEGORY_LABELS[c] || c}
+                  {c}
                 </span>
               ))}
             </div>
@@ -327,38 +332,93 @@ export const SalonSite: React.FC<{
             Services will be listed here shortly.
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {services.map((service) => (
-              <article
-                key={service.id}
-                className={`flex flex-col justify-between ${cardRadius} border p-5 shadow-sm`}
-                style={{ backgroundColor: surface, borderColor: `${primary}12` }}
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-3">
-                    <h3 className="font-semibold leading-snug">{service.name}</h3>
-                    <span className="shrink-0 font-serif text-lg font-bold" style={{ color: accent }}>
-                      {formatCurrency(service.pricePaise)}
-                    </span>
-                  </div>
-                  {service.description && (
-                    <p className="mt-2 text-sm leading-relaxed" style={{ color: `${primary}99` }}>
-                      {service.description}
-                    </p>
-                  )}
+          <div className="space-y-10">
+            {serviceGroups.map((group) => (
+              <div key={group.category} data-testid={`service-category-${group.category}`}>
+                <div className="mb-4 flex items-center gap-3">
+                  <h3 className={`${headingClass} text-xl font-bold`}>{group.label}</h3>
+                  <span className="h-px flex-1" style={{ backgroundColor: `${primary}18` }} />
                 </div>
-                <div className="mt-3 flex items-center justify-between">
-                  <span
-                    className="rounded-full px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide"
-                    style={{ backgroundColor: `${accent}1F`, color: accent }}
-                  >
-                    {CATEGORY_LABELS[service.category] || service.category}
-                  </span>
-                  <span className="inline-flex items-center gap-1 text-xs" style={{ color: `${primary}88` }}>
-                    <Clock className="h-3.5 w-3.5" /> {service.durationMinutes} min
-                  </span>
+                <div className="space-y-6">
+                  {group.subcategories.map((bucket) => (
+                    <div key={`${group.category}:${bucket.subcategory || 'general'}`}>
+                      {bucket.subcategory && (
+                        <p
+                          className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em]"
+                          style={{ color: `${primary}88` }}
+                        >
+                          {bucket.label}
+                        </p>
+                      )}
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        {bucket.services.map((service) => (
+                          <article
+                            key={service.id}
+                            className={`flex flex-col justify-between overflow-hidden ${cardRadius} border shadow-sm`}
+                            style={{ backgroundColor: surface, borderColor: `${primary}12` }}
+                          >
+                            {service.imageUrl && (
+                              <img
+                                src={service.imageUrl}
+                                alt={service.name}
+                                loading="lazy"
+                                className="h-40 w-full object-cover"
+                              />
+                            )}
+                            <div className="flex flex-1 flex-col justify-between p-5">
+                              <div>
+                                <div className="flex items-start justify-between gap-3">
+                                  <h4 className="font-semibold leading-snug">{service.name}</h4>
+                                  <span className="shrink-0 font-serif text-lg font-bold" style={{ color: accent }}>
+                                    {formatCurrency(service.pricePaise)}
+                                  </span>
+                                </div>
+                                {service.description && (
+                                  <p className="mt-2 text-sm leading-relaxed" style={{ color: `${primary}99` }}>
+                                    {service.description}
+                                  </p>
+                                )}
+                                {service.notes && (
+                                  <p
+                                    className="mt-2 rounded-lg px-2.5 py-1.5 text-[11px] leading-relaxed"
+                                    style={{ backgroundColor: `${accent}14`, color: `${primary}CC` }}
+                                  >
+                                    {service.notes}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="mt-3 flex items-center justify-between gap-2">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span
+                                    className="rounded-full px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide"
+                                    style={{ backgroundColor: `${accent}1F`, color: accent }}
+                                  >
+                                    {service.categoryLabel || CATEGORY_LABELS[service.category] || service.category}
+                                  </span>
+                                  {service.subcategory && (
+                                    <span
+                                      className="rounded-full border px-2 py-0.5 text-[11px] font-medium"
+                                      style={{ borderColor: `${primary}22`, color: `${primary}99` }}
+                                    >
+                                      {service.subcategory}
+                                    </span>
+                                  )}
+                                </div>
+                                <span
+                                  className="inline-flex shrink-0 items-center gap-1 text-xs"
+                                  style={{ color: `${primary}88` }}
+                                >
+                                  <Clock className="h-3.5 w-3.5" /> {service.durationMinutes} min
+                                </span>
+                              </div>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </article>
+              </div>
             ))}
           </div>
         )}

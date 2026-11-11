@@ -10,6 +10,7 @@ import {
   normalizeSkillList,
   type StaffScheduleDay,
 } from '../../lib/staffRoles.js';
+import { serviceCategoryLabel } from '../../lib/serviceCategories.js';
 import type { SalonService } from '../../types/auth';
 
 /* ------------------------------------------------------------------ */
@@ -146,8 +147,8 @@ interface ServiceAssignmentPickerProps {
   emptyAction?: React.ReactNode;
 }
 
-const categoryLabel = (category: string) =>
-  category ? category.charAt(0).toUpperCase() + category.slice(1) : 'Other';
+/** Preset keys get their official label; custom owner categories stay as typed. */
+const categoryLabel = (category: string) => serviceCategoryLabel(category);
 
 /**
  * Checkbox group mapping the staff member to specific salon services.
@@ -258,6 +259,9 @@ export const ServiceAssignmentPicker: React.FC<ServiceAssignmentPickerProps> = (
                     />
                     <span className="min-w-0">
                       <span className="block truncate font-medium">{service.name}</span>
+                      {service.subcategory && (
+                        <span className="block truncate text-[10px] text-slate-400">{service.subcategory}</span>
+                      )}
                       <span className="block text-[11px] text-slate-500">
                         ₹{Math.round(service.pricePaise / 100).toLocaleString('en-IN')} · {service.durationMinutes} min
                       </span>

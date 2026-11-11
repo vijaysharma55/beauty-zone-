@@ -64,7 +64,10 @@ export const api = {
     request<T>(path, { method: 'PUT', body: body === undefined ? undefined : JSON.stringify(body) }),
   rawPost: <T>(path: string, file: Blob, contentType = file.type) =>
     request<T>(path, { method: 'POST', body: file, headers: { 'Content-Type': contentType } }),
-  upload: async (file: File, kind: 'logo' | 'cover' | 'gallery' | 'staff' | 'payment_qr'): Promise<{ url: string }> => {
+  upload: async (
+    file: File,
+    kind: 'logo' | 'cover' | 'gallery' | 'staff' | 'service' | 'payment_qr'
+  ): Promise<{ url: string }> => {
     if (!file.type.startsWith('image/')) {
       throw new ApiError(400, 'Please choose an image file.');
     }
