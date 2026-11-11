@@ -166,6 +166,15 @@ re-expressed as policies — see `docs/SUPABASE_RLS.md` for the mapping.
 - **`src/lib/ai.ts`** — client wrapper (`suggestTaglines`, `suggestDescription`,
   `aiStatus`) with its own local fallback, wired into `ManagementModal`'s
   tagline generator (with a loading state).
+- **`POST /api/ai/salon-taglines`** (auth required, added 2026-11-11) — three
+  brand taglines for a salon name, behind the **Suggest taglines** button in
+  owner onboarding and the website editor. Same always-200 contract; the prompt,
+  the answer validation and the curated fallback live in
+  `src/lib/salonTaglines.js`, shared by the API and the browser.
+- **`POST /api/ai/salon-descriptions`** (auth required, added 2026-11-11) —
+  three "About Us" descriptions for a salon name and its tagline, one per tone,
+  behind the **Suggest descriptions** button in the same forms. Same contract;
+  its rules live in `src/lib/salonDescriptions.js`.
 - **`vite.config.ts`** — `fileURLToPath(new URL('.', import.meta.url))` instead of
   `__dirname`; build is now warning-free.
 

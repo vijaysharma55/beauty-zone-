@@ -2,10 +2,12 @@
  * AI assist endpoints.
  *
  * These back the "AI" affordances in the white-label studio and owner dashboard:
- *  - POST /api/ai/taglines      → 3 marketing taglines for a package/service
- *  - POST /api/ai/description   → short SEO-ish service description
- *  - POST /api/ai/review-reply  → polite owner reply to a client review
- *  - GET  /api/ai/status        → whether a model is wired up
+ *  - POST /api/ai/taglines        → 3 marketing taglines for a package/service
+ *  - POST /api/ai/salon-taglines  → 3 brand taglines for a salon name (auth required)
+ *  - POST /api/ai/salon-descriptions → 3 "About Us" descriptions, one per tone (auth required)
+ *  - POST /api/ai/description     → short SEO-ish service description
+ *  - POST /api/ai/review-reply    → polite owner reply to a client review (auth required)
+ *  - GET  /api/ai/status          → whether a model is wired up
  *
  * Design contract (no hard dependency on an external provider):
  *  * If GEMINI_API_KEY is configured, the request is forwarded to Google Generative AI.
@@ -15,12 +17,35 @@
  *  * Every provider failure is logged with `[ai]` prefix and surfaced in the response
  *    `warnings` array for observability.
  *
- * Rate limited: these are unauthenticated-by-design but cheap; tune via env if needed.
+ * Rate limited: these are unauthenticated-by-design but cheap, unless marked
+ * "auth required" above; tune via env if needed.
  */
 
 import { Router } from 'express';
 import { str, rateLimit, ValidationError } from '../security.js';
 import { requireAuth } from '../middleware.js';
+import {
+  SALON_NAME_MAX_LENGTH,
+  SALON_NAME_MIN_LENGTH,
+  SALON_TAGLINE_COUNT,
+  SALON_TAGLINE_MAX_LENGTH,
+  buildSalonTaglinePrompt,
+  completeSalonTaglines,
+  fallbackSalonTaglines,
+  normalizeSalonName,
+  normalizeSalonTagline,
+  normalizeTaglineExclusions,
+  normalizeSuggestionVariant,
+  parseSalonTaglines,
+} from '../../src/lib/salonTaglines.js';
+import {
+  SALON_DESCRIPTION_COUNT,
+  SALON_DESCRIPTION_TAGLINE_MIN_LENGTH,
+  buildSalonDescriptionPrompt,
+  completeSalonDescriptions,
+  fallbackSalonDescriptions,
+  parseSalonDescriptions,
+} from '../../src/lib/salonDescriptions.js';
 
 export const aiRouter = Router();
 
@@ -52,7 +77,7 @@ export function aiConfigured() {
 }
 
 /** Calls Gemini with a hard timeout; resolves `null` on any failure. */
-async function callGemini(prompt) {
+async function callGemini(prompt, { maxOutputTokens = 400 } = {}) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || isKeyRevokedOrInvalid) {
     return { text: null, warning: 'AI provider unavailable; using smart local fallback' };
@@ -77,7 +102,7 @@ async function callGemini(prompt) {
       contents: prompt,
       config: {
         temperature: 0.8,
-        maxOutputTokens: 400,
+        maxOutputTokens,
         abortSignal: controller.signal,
       },
     });
@@ -185,6 +210,106 @@ aiRouter.post('/taglines', aiLimiter, async (req, res, next) => {
     console.warn('[ai] taglines handler fallback:', err.message);
     const name = String(req.body?.name ?? req.body?.packageName ?? 'Signature Package');
     res.json({ taglines: fallbackTaglines(name, 3), source: 'fallback', warnings: ['Used local templates.'] });
+  }
+});
+
+/** The salon name of a suggestion request: one line, 2-120 characters. */
+function readSalonName(body) {
+  const name = normalizeSalonName(
+    str(body?.name ?? body?.salonName, { max: SALON_NAME_MAX_LENGTH, field: 'Salon name', required: true })
+  );
+  if (name.length < SALON_NAME_MIN_LENGTH) {
+    throw new ValidationError(`Salon name must be at least ${SALON_NAME_MIN_LENGTH} characters`);
+  }
+  return name;
+}
+
+/**
+ * Brand taglines for the salon itself (the line under the salon name), used by
+ * onboarding and the website editor. Sends the shared brand-strategist prompt
+ * with `{{Salon_Name}}` filled in and expects a JSON array of 3 strings back.
+ *
+ * Body: `name` (or `salonName`), plus two optional "more ideas" hints:
+ * `variant` (page of curated suggestions) and `exclude` (taglines already shown).
+ */
+aiRouter.post('/salon-taglines', requireAuth, aiLimiter, async (req, res, next) => {
+  let name = '';
+  const variant = normalizeSuggestionVariant(req.body?.variant);
+  const exclude = normalizeTaglineExclusions(req.body?.exclude);
+  try {
+    name = readSalonName(req.body);
+    // The answer itself is tiny, but on reasoning models the thinking tokens
+    // count against this cap too, so leave headroom for a complete JSON array.
+    const { text, warning } = await callGemini(buildSalonTaglinePrompt(name), { maxOutputTokens: 2048 });
+    const generated = parseSalonTaglines(text);
+    const taglines = completeSalonTaglines(generated, name, variant, exclude);
+    const kept = taglines.filter((tagline) => generated.includes(tagline)).length;
+    const source = kept >= SALON_TAGLINE_COUNT ? 'ai' : kept > 0 ? 'ai+fallback' : 'fallback';
+    const warnings = [];
+    if (warning) warnings.push(warning);
+    else if (generated.length === 0) warnings.push('AI answer was unusable; showing curated suggestions.');
+    else if (kept < generated.length) warnings.push('AI repeated earlier ideas; added curated suggestions.');
+    else if (kept < SALON_TAGLINE_COUNT) warnings.push('AI answer was incomplete; added curated suggestions.');
+    res.json({ taglines, source, warnings });
+  } catch (err) {
+    if (err instanceof ValidationError) return next(err);
+    console.warn('[ai] salon-taglines handler fallback:', err.message);
+    res.json({
+      taglines: fallbackSalonTaglines(name, variant, exclude),
+      source: 'fallback',
+      warnings: ['Used local templates.'],
+    });
+  }
+});
+
+/**
+ * "About Us" descriptions for the salon (the "About your salon" field), used
+ * by onboarding and the website editor. Sends the shared copywriter prompt
+ * with `{{Salon_Name}}` and `{{Selected_Tagline}}` filled in and expects a JSON
+ * array of 3 strings back, one per tone: Elegant & Premium, Modern & Trendy,
+ * Warm & Customer-Centric.
+ *
+ * Body: `name` (or `salonName`), `tagline` (or `selectedTagline`), plus the
+ * optional "more ideas" hint `variant` (which curated descriptions to use).
+ */
+aiRouter.post('/salon-descriptions', requireAuth, aiLimiter, async (req, res, next) => {
+  let name = '';
+  let tagline = '';
+  const variant = normalizeSuggestionVariant(req.body?.variant);
+  try {
+    name = readSalonName(req.body);
+    tagline = normalizeSalonTagline(
+      str(req.body?.tagline ?? req.body?.selectedTagline, {
+        max: SALON_TAGLINE_MAX_LENGTH,
+        field: 'Tagline',
+        required: true,
+      })
+    );
+    if (tagline.length < SALON_DESCRIPTION_TAGLINE_MIN_LENGTH) {
+      throw new ValidationError(`Tagline must be at least ${SALON_DESCRIPTION_TAGLINE_MIN_LENGTH} characters`);
+    }
+    // Three paragraphs of about 65 words, plus headroom for the thinking
+    // tokens that count against this cap on reasoning models.
+    const { text, warning } = await callGemini(buildSalonDescriptionPrompt(name, tagline), { maxOutputTokens: 4096 });
+    // One slot per tone; a slot the model left unusable gets the curated text
+    // for that tone, so the three tones always arrive in the same order.
+    const generated = parseSalonDescriptions(text);
+    const descriptions = completeSalonDescriptions(generated, name, tagline, variant);
+    const kept = generated.filter(Boolean).length;
+    const source = kept >= SALON_DESCRIPTION_COUNT ? 'ai' : kept > 0 ? 'ai+fallback' : 'fallback';
+    const warnings = [];
+    if (warning) warnings.push(warning);
+    else if (kept === 0) warnings.push('AI answer was unusable; showing curated descriptions.');
+    else if (kept < SALON_DESCRIPTION_COUNT) warnings.push('AI answer was incomplete; added curated descriptions.');
+    res.json({ descriptions, source, warnings });
+  } catch (err) {
+    if (err instanceof ValidationError) return next(err);
+    console.warn('[ai] salon-descriptions handler fallback:', err.message);
+    res.json({
+      descriptions: fallbackSalonDescriptions(name, tagline, variant),
+      source: 'fallback',
+      warnings: ['Used local templates.'],
+    });
   }
 });
 

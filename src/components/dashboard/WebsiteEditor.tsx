@@ -27,7 +27,9 @@ import {
   PageHeader,
   Textarea,
 } from '../ui';
+import { DescriptionSuggestions } from './DescriptionSuggestions';
 import { ImageUploader } from './ImageUploader';
+import { TaglineSuggestions } from './TaglineSuggestions';
 import { StatusBadge, WorkflowActions } from './WorkflowStatus';
 
 interface FormState {
@@ -283,18 +285,33 @@ export const WebsiteEditor: React.FC = () => {
             <Field label="Salon name" htmlFor="salon-name" required>
               <Input id="salon-name" value={form.name} onChange={(e) => set('name', e.target.value)} />
             </Field>
-            <Field label="Tagline" htmlFor="salon-tagline">
-              <Input id="salon-tagline" value={form.tagline} onChange={(e) => set('tagline', e.target.value)} />
-            </Field>
+            <div className="space-y-2">
+              <Field label="Tagline" htmlFor="salon-tagline">
+                <Input id="salon-tagline" value={form.tagline} onChange={(e) => set('tagline', e.target.value)} />
+              </Field>
+              <TaglineSuggestions
+                salonName={form.name}
+                value={form.tagline}
+                onSelect={(tagline) => set('tagline', tagline)}
+              />
+            </div>
           </div>
-          <Field label="About your salon" htmlFor="salon-description">
-            <Textarea
-              id="salon-description"
+          <div className="space-y-2">
+            <Field label="About your salon" htmlFor="salon-description">
+              <Textarea
+                id="salon-description"
+                value={form.description}
+                onChange={(e) => set('description', e.target.value)}
+                rows={4}
+              />
+            </Field>
+            <DescriptionSuggestions
+              salonName={form.name}
+              tagline={form.tagline}
               value={form.description}
-              onChange={(e) => set('description', e.target.value)}
-              rows={4}
+              onSelect={(description) => set('description', description)}
             />
-          </Field>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <ImageUploader
               label="Logo"

@@ -1078,6 +1078,52 @@ test('AI endpoints answer with graceful fallbacks when no provider is configured
   assert.equal(unknown.status, 404);
 });
 
+test('salon tagline suggestions need a signed-in user and always return three options', async () => {
+  // The model sits behind the session: visitors cannot spend the AI budget.
+  const anonymous = await makeClient().post('/api/ai/salon-taglines', { name: 'Velvet Rose Atelier' });
+  assert.equal(anonymous.status, 401);
+
+  const suggestions = await ownerClient.post('/api/ai/salon-taglines', { name: 'Velvet Rose Atelier' });
+  assert.equal(suggestions.status, 200);
+  assert.ok(['ai', 'fallback', 'ai+fallback'].includes(suggestions.data.source));
+  assert.ok(Array.isArray(suggestions.data.warnings));
+  assert.equal(suggestions.data.taglines.length, 3);
+  assert.equal(new Set(suggestions.data.taglines).size, 3, 'options are distinct');
+  for (const tagline of suggestions.data.taglines) {
+    assert.equal(typeof tagline, 'string');
+    assert.ok(tagline.trim().split(/\s+/).length <= 10, `"${tagline}" is at most 10 words`);
+    assert.ok(tagline.length <= 160, `"${tagline}" fits the salon tagline field`);
+  }
+
+  // Validation still applies before any model call.
+  assert.equal((await ownerClient.post('/api/ai/salon-taglines', { name: '' })).status, 400);
+  assert.equal((await ownerClient.post('/api/ai/salon-taglines', {})).status, 400);
+});
+
+test('salon description suggestions need a signed-in user and return one option per tone', async () => {
+  const body = { name: 'Velvet Rose Atelier', tagline: 'Step In. Bloom Out.' };
+  const anonymous = await makeClient().post('/api/ai/salon-descriptions', body);
+  assert.equal(anonymous.status, 401);
+
+  const suggestions = await ownerClient.post('/api/ai/salon-descriptions', body);
+  assert.equal(suggestions.status, 200);
+  assert.ok(['ai', 'fallback', 'ai+fallback'].includes(suggestions.data.source));
+  assert.ok(Array.isArray(suggestions.data.warnings));
+  assert.equal(suggestions.data.descriptions.length, 3);
+  assert.equal(new Set(suggestions.data.descriptions).size, 3, 'options are distinct');
+  for (const description of suggestions.data.descriptions) {
+    assert.equal(typeof description, 'string');
+    const wordCount = description.trim().split(/\s+/).length;
+    assert.ok(wordCount >= 30 && wordCount <= 90, `"${description}" is about 45-65 words (${wordCount})`);
+    assert.ok(description.length <= 3000, 'fits the salon description field');
+    assert.doesNotMatch(description, /[*_#`]|\n/, 'plain text, one paragraph');
+  }
+
+  // The selected tagline is part of the brief, so it is required as well.
+  assert.equal((await ownerClient.post('/api/ai/salon-descriptions', { name: body.name })).status, 400);
+  assert.equal((await ownerClient.post('/api/ai/salon-descriptions', { tagline: body.tagline })).status, 400);
+});
+
 test('specialist online-booking switch round-trips and stays tenant-scoped', async () => {
   const owner = await loginAs('owner@test.local', 'Owner@12345');
   const list = await owner.get('/api/salon/staff');

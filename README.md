@@ -132,6 +132,7 @@ npm run verify        # lint (tsc --noEmit) → all tests → production build
 npm run test:unit     # unit tests: subdomain parsing, slot generation, payments
 npm run test:api      # end-to-end API tests (boots a real server on a temp DB)
 npm run test:payments # mock + Razorpay payment tests (boots three real servers)
+npm run test:ai       # salon tagline + description suggestions against a local stand-in for Gemini
 npm run lint          # TypeScript check
 ```
 
@@ -324,12 +325,80 @@ When the salon is unknown or has no hours, platform defaults are used and `degra
 the UI can be honest about it.
 
 ### AI assist (`/api/ai`) — graceful by design
-`GET /status`, `POST /taglines`, `POST /description`, `POST /review-reply` (auth required).
+`GET /status`, `POST /taglines`, `POST /salon-taglines` (auth required),
+`POST /salon-descriptions` (auth required), `POST /description`, `POST /review-reply` (auth required).
 
 Set `GEMINI_API_KEY` to enable live generation. **These endpoints never fail hard:** a missing key,
 an unavailable SDK, a timeout (12 s) or an empty model response all fall back to deterministic local
 templates and answer `200` with `source: "fallback"` and a populated `warnings` array. Every provider
 failure is logged with the `[ai]` prefix.
+
+#### Salon tagline suggestions (`POST /api/ai/salon-taglines`)
+
+Backs the **Suggest taglines** button under the Tagline field in owner onboarding and in
+*My Website → Brand identity*. The salon name replaces `{{Salon_Name}}` in the brand-strategist
+prompt (`SALON_TAGLINE_PROMPT` in `src/lib/salonTaglines.js`), which asks the model for a JSON array
+of three taglines.
+
+```jsonc
+// Request. `name` is 2–120 characters; `variant` and `exclude` are optional "more ideas" hints.
+{ "name": "Velvet Rose Atelier", "variant": 1, "exclude": ["Step In. Bloom Out."] }
+
+// Response: always exactly three distinct taglines of 2–10 words (max 160 characters).
+{
+  "taglines": ["Where Velvet Meets Radiance", "Your Signature Look, Beautifully Crafted", "Bloom Into Your Best Self"],
+  "source": "ai",
+  "warnings": []
+}
+```
+
+- `source` is `ai` (all three from the model), `ai+fallback` (the model's usable options, topped up
+  with curated lines) or `fallback` (curated lines only).
+- The answer is validated before it reaches the owner: code fences, prose and cut-off JSON are
+  tolerated, while duplicates, non-strings, options over 10 words and the prompt's own
+  "Tagline Option N" examples are dropped.
+- `exclude` lists taglines the owner has already seen, so **More ideas** never repeats one;
+  `variant` pages through the curated lines, which follow the speciality in the salon name
+  (bridal, barber, nails, spa, skin, makeup, hair).
+- Signed-in users only (`401` otherwise) and rate limited with the other AI routes. A missing or
+  one-character name answers `400`.
+- A suggestion is only a draft: the owner picks one, can edit it, and it is saved and approved
+  through the normal website workflow.
+
+#### Salon description suggestions (`POST /api/ai/salon-descriptions`)
+
+Backs the **Suggest descriptions** button under the "About your salon" field in the same two forms.
+The salon name and the tagline in the form replace `{{Salon_Name}}` and `{{Selected_Tagline}}` in the
+copywriter prompt (`SALON_DESCRIPTION_PROMPT` in `src/lib/salonDescriptions.js`), which asks the
+model for a JSON array of three "About Us" descriptions of about 45–65 words.
+
+```jsonc
+// Request. `name` is 2–120 characters, `tagline` 2–160; `variant` is an optional "more ideas" hint.
+{ "name": "Velvet Rose Atelier", "tagline": "Step In. Bloom Out.", "variant": 0 }
+
+// Response: always three plain-text paragraphs, one per tone, in this order:
+// Elegant & Premium, Modern & Trendy, Warm & Customer-Centric.
+{
+  "descriptions": ["At Velvet Rose Atelier, luxury is …", "Velvet Rose Atelier is where …", "Welcome to Velvet Rose Atelier, …"],
+  "source": "ai",
+  "warnings": []
+}
+```
+
+- The tones are told apart by position, so each option is checked on its own: one that is missing,
+  under 30 or over 90 words, or a repeat is replaced by the curated description **for that tone**
+  and `source` becomes `ai+fallback`. The other options keep their place.
+- Markdown, "Option 1:" labels, tone headings and wrapping quotes are stripped. An answer that is
+  not JSON is not guessed at: all three options are then curated (`source: "fallback"`).
+- The curated descriptions name the salon and quote the tagline. `variant` moves every tone on to
+  its next curated text (three per tone).
+- Both the name and the tagline are required (`400` otherwise): the tagline is part of the brief, so
+  the button stays disabled until the Tagline field is filled in.
+- Signed-in users only, and rate limited together with the other AI routes (30 requests a minute).
+
+In the dashboard both helpers work the same way: nothing is written until the owner picks an option,
+the picked text stays editable, and text of their own that an option replaced comes back with
+**Undo**.
 
 ---
 
@@ -413,6 +482,8 @@ src/
   lib/supabase.ts        Supabase Auth, PostgREST and Storage client
   lib/sectionStore.ts    Owner-scoped Supabase website content sync
   lib/ai.ts              AI helpers with local fallbacks
+  lib/salonTaglines.js   Salon tagline prompt, answer parsing and curated lines (shared with the API)
+  lib/salonDescriptions.js  Salon "About Us" prompt, answer parsing and curated texts (shared with the API)
 data/                    SQLite database + uploads (gitignored)
 docs/PAYMENTS.md         Mock payment + Razorpay setup, test IDs and API reference
 docs/SUPABASE_RLS.md     Current Supabase RLS, workflow and migration boundary

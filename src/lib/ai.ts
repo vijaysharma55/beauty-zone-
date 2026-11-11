@@ -1,5 +1,16 @@
 import { api } from './api';
 import { generateTaglineIdeas } from '../data/packagesData';
+import {
+  SALON_NAME_MIN_LENGTH,
+  fallbackSalonTaglines,
+  normalizeSalonName,
+  normalizeSalonTagline,
+} from './salonTaglines.js';
+import {
+  SALON_DESCRIPTION_COUNT,
+  SALON_DESCRIPTION_TAGLINE_MIN_LENGTH,
+  fallbackSalonDescriptions,
+} from './salonDescriptions.js';
 
 export interface AiResult<T> {
   value: T;
@@ -33,6 +44,79 @@ export async function suggestTaglines(name: string, count = 3): Promise<AiResult
   } catch (err) {
     console.warn('[ai] tagline suggestion falling back to local templates:', err);
     return { value: localTaglines(clean), source: 'fallback', warnings: ['AI service unavailable'] };
+  }
+}
+
+/**
+ * Suggests three brand taglines for a salon name (the line shown under the
+ * salon name on its website).
+ *
+ * For "more ideas", pass the next `variant` (page of curated suggestions) and
+ * the taglines already shown in `exclude`, so every round offers something new.
+ */
+export async function suggestSalonTaglines(
+  salonName: string,
+  variant = 0,
+  exclude: string[] = []
+): Promise<AiResult<string[]>> {
+  const name = normalizeSalonName(salonName);
+  if (name.length < SALON_NAME_MIN_LENGTH) return { value: [], source: 'fallback', warnings: [] };
+  try {
+    const res = await api.post<{ taglines: string[]; source: AiResult<string[]>['source']; warnings: string[] }>(
+      '/ai/salon-taglines',
+      { name, variant, exclude }
+    );
+    const taglines = Array.isArray(res.taglines) ? res.taglines.filter((line) => typeof line === 'string' && line) : [];
+    if (taglines.length === 0) throw new Error('empty salon tagline response');
+    return { value: taglines, source: res.source || 'ai', warnings: res.warnings || [] };
+  } catch (err) {
+    console.warn('[ai] salon tagline suggestion falling back to local templates:', err);
+    return {
+      value: fallbackSalonTaglines(name, variant, exclude),
+      source: 'fallback',
+      warnings: ['AI service unavailable'],
+    };
+  }
+}
+
+/**
+ * Suggests three "About Us" descriptions for a salon, one per tone in
+ * `SALON_DESCRIPTION_TONES` order, based on its name and selected tagline.
+ *
+ * For "more ideas", pass the next `variant` so the curated fallback moves on
+ * to its next texts as well.
+ */
+export async function suggestSalonDescriptions(
+  salonName: string,
+  tagline: string,
+  variant = 0
+): Promise<AiResult<string[]>> {
+  const name = normalizeSalonName(salonName);
+  const line = normalizeSalonTagline(tagline);
+  if (name.length < SALON_NAME_MIN_LENGTH || line.length < SALON_DESCRIPTION_TAGLINE_MIN_LENGTH) {
+    return { value: [], source: 'fallback', warnings: [] };
+  }
+  try {
+    const res = await api.post<{ descriptions: string[]; source: AiResult<string[]>['source']; warnings: string[] }>(
+      '/ai/salon-descriptions',
+      { name, tagline: line, variant }
+    );
+    const descriptions = Array.isArray(res.descriptions) ? res.descriptions : [];
+    // The tones are told apart by position, so anything but a full set is unusable.
+    if (
+      descriptions.length !== SALON_DESCRIPTION_COUNT ||
+      !descriptions.every((text) => typeof text === 'string' && text.trim())
+    ) {
+      throw new Error('incomplete salon description response');
+    }
+    return { value: descriptions, source: res.source || 'ai', warnings: res.warnings || [] };
+  } catch (err) {
+    console.warn('[ai] salon description suggestion falling back to local templates:', err);
+    return {
+      value: fallbackSalonDescriptions(name, line, variant),
+      source: 'fallback',
+      warnings: ['AI service unavailable'],
+    };
   }
 }
 
