@@ -58,6 +58,16 @@ import {
   normalizeWeeklySchedule,
   suggestedAppAccessRole,
 } from '../../src/lib/staffRoles.js';
+import {
+  DEFAULT_SERVICE_CATEGORY,
+  MAX_SERVICE_CATEGORY_LENGTH,
+  MAX_SERVICE_NOTES_LENGTH,
+  MAX_SERVICE_SUBCATEGORY_LENGTH,
+  groupServicesByCategory,
+  normalizeServiceCategory,
+  normalizeServiceSubcategory,
+  serviceCategoryOptions,
+} from '../../src/lib/serviceCategories.js';
 
 export const salonRouter = Router();
 
@@ -74,8 +84,6 @@ function requireOwnSalon(req) {
   if (!salon) throw new HttpError(409, 'Complete salon onboarding first.');
   return salon;
 }
-
-const SERVICE_CATEGORIES = new Set(['bridal', 'hair', 'skin', 'nails', 'spa', 'academy', 'makeup', 'other']);
 
 const SALON_FIELD_MAP = {
   name: { column: 'name', validate: (v) => str(v, { min: 2, max: 120, field: 'Salon name', required: true }) },
@@ -371,7 +379,7 @@ salonRouter.post(
   asyncHandler(async (req, res) => {
     req.salon = requireOwnSalon(req);
     const kind = String(req.query.kind || 'image');
-    if (!['logo', 'cover', 'gallery', 'staff', 'payment_qr'].includes(kind)) {
+    if (!['logo', 'cover', 'gallery', 'staff', 'service', 'payment_qr'].includes(kind)) {
       return res.status(400).json({ error: 'Unsupported upload type' });
     }
     const mime = String(req.get('content-type') || '').split(';')[0].trim().toLowerCase();
@@ -413,16 +421,54 @@ function looksLikeImage(buf) {
 /* Services                                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Validate a category / subcategory pair from a service payload.
+ *
+ * Presets collapse to their canonical key (`Hair` → `hair`); any other label the
+ * owner typed is kept verbatim so custom categories survive a round-trip. The
+ * subcategory is optional but, when it names a platform preset, it is spelled
+ * the official way so identical groups never split.
+ */
+function serviceCategoryFields(body, out, { partial }) {
+  const hasCategory = body.category !== undefined || body.categoryLabel !== undefined;
+  const hasSubcategory = body.subcategory !== undefined || body.subcategoryLabel !== undefined;
+
+  if (!partial || hasCategory) {
+    const raw = body.category ?? body.categoryLabel ?? DEFAULT_SERVICE_CATEGORY;
+    const label = str(String(raw), { max: MAX_SERVICE_CATEGORY_LENGTH, field: 'Category' }) || DEFAULT_SERVICE_CATEGORY;
+    out.category = normalizeServiceCategory(label);
+    if (!out.category) throw new ValidationError('Category must contain letters or numbers');
+  }
+  if (!partial || hasSubcategory) {
+    const raw = body.subcategory ?? body.subcategoryLabel ?? '';
+    const label = str(String(raw), { max: MAX_SERVICE_SUBCATEGORY_LENGTH, field: 'Subcategory' });
+    out.subcategory = normalizeServiceSubcategory(label);
+  }
+}
+
+/** Cover image for a service: our uploads, static images, https URLs or nothing. */
+function serviceImageField(body, out, { partial }) {
+  if (partial && body.imageUrl === undefined) return;
+  const value = str(body.imageUrl ?? '', { max: 2_000_000, field: 'Service image' });
+  if (value && !isSafeImageUrl(value)) {
+    throw new ValidationError('Service images must be an uploaded file, a data URL or an http(s) link');
+  }
+  out.image_url = value;
+}
+
 function servicePayload(body, { partial = false } = {}) {
   const out = {};
   if (!partial || body.name !== undefined) out.name = str(body.name, { min: 2, max: 120, field: 'Service name', required: true });
-  if (!partial || body.category !== undefined) {
-    const category = str(body.category || 'other', { max: 30, field: 'Category' }).toLowerCase();
-    if (!SERVICE_CATEGORIES.has(category)) throw new ValidationError('Invalid service category');
-    out.category = category;
-  }
+  serviceCategoryFields(body, out, { partial });
+  serviceImageField(body, out, { partial });
   if (!partial || body.description !== undefined) {
     out.description = sanitizeText(str(body.description, { max: 2000, field: 'Description' }), 2000);
+  }
+  if (!partial || body.notes !== undefined) {
+    out.notes = sanitizeText(
+      str(body.notes, { max: MAX_SERVICE_NOTES_LENGTH, field: 'Important notes' }),
+      MAX_SERVICE_NOTES_LENGTH
+    );
   }
   if (!partial || body.pricePaise !== undefined || body.price !== undefined) {
     const raw = body.pricePaise ?? (body.price !== undefined ? Math.round(Number(body.price) * 100) : undefined);
@@ -437,9 +483,30 @@ function servicePayload(body, { partial = false } = {}) {
   return out;
 }
 
+/**
+ * Read the salon's catalogue with the vocabulary the dashboard needs to render
+ * the category tree: presets, custom categories already in use and the bucket
+ * counts per category/subcategory.
+ *
+ * `services` is omitted for mutations, which already return the changed row.
+ */
+function readCatalogue(salonId, { includeServices = true } = {}) {
+  const services = getServicesForSalon(salonId).map(serializeService);
+  const meta = { categories: serviceCategoryOptions(services), groups: groupServicesByCategory(services) };
+  return includeServices ? { services, ...meta } : meta;
+}
+
+const catalogueMeta = (salonId) => readCatalogue(salonId, { includeServices: false });
+
 salonRouter.get('/services', (req, res) => {
   const salon = requireOwnSalon(req);
-  res.json({ services: getServicesForSalon(salon.id).map(serializeService) });
+  res.json(readCatalogue(salon.id));
+});
+
+/** Reusable category tree for pickers outside the catalogue page. */
+salonRouter.get('/service-categories', (req, res) => {
+  const salon = requireOwnSalon(req);
+  res.json(catalogueMeta(salon.id));
 });
 
 salonRouter.post('/services', (req, res) => {
@@ -449,15 +516,19 @@ salonRouter.post('/services', (req, res) => {
   const ts = nowIso();
   const count = getServicesForSalon(salon.id).length;
   db.prepare(
-    `INSERT INTO services (id, salon_id, name, category, description, price_paise, duration_minutes, active, sort_order,
+    `INSERT INTO services (id, salon_id, name, category, subcategory, description, notes, image_url,
+       price_paise, duration_minutes, active, sort_order,
        advance_mode, advance_percent, advance_fixed_paise, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     salon.id,
     data.name,
     data.category,
+    data.subcategory ?? '',
     data.description,
+    data.notes ?? '',
+    data.image_url ?? '',
     data.price_paise,
     data.duration_minutes,
     data.active ?? 1,
@@ -470,7 +541,7 @@ salonRouter.post('/services', (req, res) => {
   );
   audit(req, 'service.created', 'service', id);
   const row = db.prepare('SELECT * FROM services WHERE id = ? AND salon_id = ?').get(id, salon.id);
-  res.status(201).json({ service: serializeService(row) });
+  res.status(201).json({ service: serializeService(row), ...catalogueMeta(salon.id) });
 });
 
 salonRouter.patch('/services/:serviceId', (req, res) => {
@@ -490,7 +561,9 @@ salonRouter.patch('/services/:serviceId', (req, res) => {
   );
   audit(req, 'service.updated', 'service', existing.id);
   const row = db.prepare('SELECT * FROM services WHERE id = ? AND salon_id = ?').get(existing.id, salon.id);
-  res.json({ service: serializeService(row) });
+  // The refreshed vocabulary lets inline edits (rate, image, notes) update the
+  // grouped catalogue without a second request.
+  res.json({ service: serializeService(row), ...catalogueMeta(salon.id) });
 });
 
 salonRouter.delete('/services/:serviceId', (req, res) => {
@@ -500,7 +573,7 @@ salonRouter.delete('/services/:serviceId', (req, res) => {
     .run(req.params.serviceId, salon.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Service not found' });
   audit(req, 'service.deleted', 'service', req.params.serviceId);
-  res.json({ ok: true });
+  res.json({ ok: true, ...catalogueMeta(salon.id) });
 });
 
 /* ------------------------------------------------------------------ */

@@ -10,6 +10,7 @@ import {
   isStaffPrimaryRole,
   parseWeeklySchedule,
 } from '../src/lib/staffRoles.js';
+import { serviceCategoryLabel, serviceSubcategoryLabel } from '../src/lib/serviceCategories.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -116,7 +117,10 @@ db.exec(`
     salon_id TEXT NOT NULL REFERENCES salons(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     category TEXT NOT NULL DEFAULT 'other',
+    subcategory TEXT NOT NULL DEFAULT '',
     description TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    image_url TEXT NOT NULL DEFAULT '',
     price_paise INTEGER NOT NULL DEFAULT 0 CHECK (price_paise >= 0),
     duration_minutes INTEGER NOT NULL DEFAULT 30 CHECK (duration_minutes > 0 AND duration_minutes <= 1440),
     active INTEGER NOT NULL DEFAULT 1,
@@ -531,7 +535,12 @@ export function serializeService(row) {
     salonId: row.salon_id,
     name: row.name,
     category: row.category,
+    categoryLabel: serviceCategoryLabel(row.category),
+    subcategory: row.subcategory || '',
+    subcategoryLabel: serviceSubcategoryLabel(row.subcategory),
     description: row.description,
+    notes: row.notes || '',
+    imageUrl: row.image_url || '',
     pricePaise: row.price_paise,
     price: row.price_paise / 100,
     durationMinutes: row.duration_minutes,

@@ -8,6 +8,7 @@ import {
   isStaffPrimaryRole,
   parseWeeklySchedule,
 } from '../src/lib/staffRoles.js';
+import { serviceCategoryLabel, serviceSubcategoryLabel } from '../src/lib/serviceCategories.js';
 
 export const SUPABASE_URL = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://botkjeikjzhnbxnowdkl.supabase.co').replace(/\/+$/, '');
 export const SUPABASE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_f2nHVHcAdrlosQbZwAAxnQ_vnHQuuv0';
@@ -68,21 +69,29 @@ export const PROFILE_SELECT_VARIANTS = [
 
 export const SERVICE_SELECT_VARIANTS = [
   {
+    select:
+      'id,salon_id,name,category,subcategory,description,notes,price_paise,duration_minutes,image_url,active,sort_order,created_at,updated_at',
+  },
+  {
     select: 'id,salon_id,name,category,description,price_paise,duration_minutes,image_url,active,sort_order,created_at,updated_at',
+    defaults: { subcategory: '', notes: '' },
   },
   {
     select: 'id,salon_id,name,category,description,price_paise,duration_minutes,active,sort_order,created_at,updated_at',
-    defaults: { image_url: '' },
+    defaults: { image_url: '', subcategory: '', notes: '' },
   },
   {
     select: 'id,salon_id,name,category,description,price_paise,duration_minutes,created_at,updated_at',
-    defaults: { image_url: '', active: true, sort_order: 0 },
+    defaults: { image_url: '', subcategory: '', notes: '', active: true, sort_order: 0 },
   },
   {
     select: 'id,salon_id,name,description,price_paise,created_at,updated_at',
-    defaults: { category: 'other', duration_minutes: 30, image_url: '', active: true, sort_order: 0 },
+    defaults: { category: 'other', subcategory: '', notes: '', duration_minutes: 30, image_url: '', active: true, sort_order: 0 },
   },
-  { select: '*', defaults: { active: true, sort_order: 0, duration_minutes: 30, image_url: '' } },
+  {
+    select: '*',
+    defaults: { active: true, sort_order: 0, duration_minutes: 30, image_url: '', subcategory: '', notes: '' },
+  },
 ];
 
 export const STAFF_SELECT_VARIANTS = [
@@ -230,9 +239,14 @@ export function mapSalon(row, extras = {}) {
 export function mapService(row) {
   if (!row) return null;
   const pricePaise = Number(row.price_paise || 0);
+  const category = row.category || 'other';
+  const subcategory = row.subcategory || '';
   return {
-    id: row.id, salonId: row.salon_id, name: row.name, category: row.category || 'other',
-    description: row.description || '', pricePaise, price: pricePaise / 100,
+    id: row.id, salonId: row.salon_id, name: row.name, category,
+    categoryLabel: serviceCategoryLabel(category),
+    subcategory, subcategoryLabel: serviceSubcategoryLabel(subcategory),
+    description: row.description || '', notes: row.notes || '',
+    pricePaise, price: pricePaise / 100,
     durationMinutes: Number(row.duration_minutes || 30), imageUrl: row.image_url || '',
     active: Boolean(row.active), sortOrder: Number(row.sort_order || 0),
     createdAt: row.created_at, updatedAt: row.updated_at,
@@ -323,7 +337,10 @@ export function buildSnapshot(salon, services, staff) {
       ownerName: salon.owner_name, ownerPhone: salon.owner_phone,
     },
     services: services.map((s) => ({
-      id: s.id, name: s.name, category: s.category, description: s.description,
+      id: s.id, name: s.name, category: s.category,
+      categoryLabel: serviceCategoryLabel(s.category),
+      subcategory: s.subcategory || '', subcategoryLabel: serviceSubcategoryLabel(s.subcategory),
+      description: s.description, notes: s.notes || '', imageUrl: s.image_url || '',
       pricePaise: Number(s.price_paise || 0), durationMinutes: Number(s.duration_minutes || 30),
       active: Boolean(s.active), sortOrder: Number(s.sort_order || 0),
     })),
@@ -477,7 +494,10 @@ export function livePayload(live) {
     approvedAt: live.salon.approved_at, websiteVersion: live.version.version, updatedAt: live.version.reviewed_at || live.salon.updated_at,
   };
   const services = (live.snapshot.services || []).filter((s) => s.active).map((s) => ({
-    id:s.id, salonId:live.salon.id, name:s.name, category:s.category, description:s.description,
+    id:s.id, salonId:live.salon.id, name:s.name, category:s.category,
+    categoryLabel:s.categoryLabel || serviceCategoryLabel(s.category),
+    subcategory:s.subcategory || '', subcategoryLabel:s.subcategoryLabel || serviceSubcategoryLabel(s.subcategory),
+    description:s.description, notes:s.notes || '', imageUrl:s.imageUrl || '',
     pricePaise:s.pricePaise, price:s.pricePaise/100, durationMinutes:s.durationMinutes, active:true, sortOrder:s.sortOrder,
   }));
   const staff = (live.snapshot.staff || []).filter((s) => s.active).map((s) => ({

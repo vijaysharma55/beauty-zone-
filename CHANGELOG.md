@@ -1,5 +1,61 @@
 # BeautyZone — Audit Changelog
 
+## PR — Full service-catalogue management (2026-11-11)
+
+*Services & Prices* in the owner dashboard is now a complete catalogue manager
+instead of a flat list with one fixed category list:
+
+- **Main categories.** A dropdown offers the presets (Hair, Nails, Makeup, Skin,
+  Bridal, Spa, Academy, Other) and every custom category the salon has created,
+  with *+ Add new category…* to type one on the fly. Presets keep their
+  historical lowercase key, so existing rows, templates and analytics are
+  unchanged; custom labels such as "Gel Extensions" are stored verbatim and are
+  never folded back into a preset.
+- **Subcategories.** A second dropdown under the category filters to that
+  category's suggestions (*Gel Nails*, *Acrylic Nails*, *HydraFacial*, …) merged
+  with every subcategory already in use, and supports
+  *+ Add new subcategory…*. Preset spellings are canonicalised, so "gel nails"
+  and "Gel Nails" land in the same group.
+- **Service image.** Upload with an instant preview **or** paste an image URL;
+  replace and remove are one click. Uploads are optimised in the browser and
+  stored in the Supabase `beautyzone-assets` bucket under `<uid>/services/…`;
+  if Storage is unreachable the optimised image is embedded instead so the edit
+  still saves.
+- **Rate (₹)** and **duration**, editable inline straight from the catalogue.
+- **Important notes / custom instructions** — a dedicated, client-visible field
+  for duration specifics, prerequisites, patch tests and products.
+- **Visibility toggle** (Active / Inactive) controlling public-website
+  visibility, on the card, in the table and in the form.
+- **Catalogue display** grouped by main category → subcategory, in either a card
+  grid or a compact table, with search, category/status filters, per-group
+  "Add here" shortcuts, and inline edit / photo / notes / delete actions.
+- The public salon website now renders the same grouping with cover photos and
+  the notes strip.
+
+### New files
+- `src/lib/serviceCategories.js` — presets, normalisation and the category
+  grouping shared by the browser and the API.
+- `src/components/dashboard/ServiceCategoryPicker.tsx` — two-level picker with
+  on-the-fly category and subcategory creation.
+- `src/components/dashboard/ServiceImageField.tsx` — upload / URL / replace /
+  remove with preview.
+- `src/lib/serviceImages.ts` — Supabase Storage upload with an inline fallback.
+- `supabase/migrations/20261111_beautyzone_service_catalogue.sql` — columns,
+  constraints, indexes, storage policies and the `service_catalogue_groups` view.
+- `docs/SERVICE_CATALOGUE.md` — field reference, API contract and UI behaviour.
+- `server/tests/service-catalogue-unit.test.js` — vocabulary and grouping tests.
+
+### API
+- `GET /api/salon/services` now also returns `categories` (picker vocabulary) and
+  `groups` (category → subcategory buckets); every service carries
+  `subcategory`, `subcategoryLabel`, `categoryLabel`, `notes` and `imageUrl`.
+- `GET /api/salon/service-categories` — the vocabulary on its own.
+- `PATCH /api/salon/services/:id` returns the refreshed vocabulary alongside the
+  updated service; every field remains independently patchable.
+- `POST /api/salon/uploads?kind=service` accepts service cover images.
+- Service notes are capped at 1000 characters and images are validated against
+  the same safe-URL rules as staff photos.
+
 ## PR — AI suggestions for the salon Tagline and About fields (2026-11-11)
 
 Salon owners can now ask an AI assistant for ideas instead of starting from a blank field, in owner

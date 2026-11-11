@@ -354,6 +354,13 @@ addColumn('services', 'advance_mode', "TEXT NOT NULL DEFAULT 'inherit'");
 addColumn('services', 'advance_percent', 'REAL');
 addColumn('services', 'advance_fixed_paise', 'INTEGER');
 
+/* Full catalogue management: subcategory, cover image and the owner's
+   "important notes / custom instructions" shown next to the price. */
+addColumn('services', 'subcategory', "TEXT NOT NULL DEFAULT ''");
+addColumn('services', 'image_url', "TEXT NOT NULL DEFAULT ''");
+addColumn('services', 'notes', "TEXT NOT NULL DEFAULT ''");
+db.exec('CREATE INDEX IF NOT EXISTS idx_services_catalogue ON services(salon_id, active, category)');
+
 /* Salon-owner booking & advance payment settings. */
 db.exec(`
   CREATE TABLE IF NOT EXISTS salon_payment_settings (

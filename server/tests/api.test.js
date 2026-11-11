@@ -78,11 +78,18 @@ function makeClient() {
   const request = async (method, path, body, extraHeaders = {}) => {
     const headers = { Origin: ORIGIN, 'X-Requested-With': 'beautyzone', ...extraHeaders };
     if (cookie) headers.Cookie = cookie;
-    if (body !== undefined && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+    if (body !== undefined && !Buffer.isBuffer(body) && !headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json';
+    }
     const res = await fetch(`${BASE}${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body),
+      body:
+        body === undefined
+          ? undefined
+          : typeof body === 'string' || Buffer.isBuffer(body)
+            ? body
+            : JSON.stringify(body),
     });
     const setCookies = res.headers.getSetCookie?.() || [];
     for (const entry of setCookies) {
@@ -301,6 +308,193 @@ test('invalid service payloads are rejected', async () => {
     durationMinutes: 9999,
   });
   assert.equal(huge.status, 400);
+});
+
+test('catalogue supports preset and custom categories with subcategories, notes, images and prices', async () => {
+  const list = await ownerClient.get('/api/salon/services');
+  assert.equal(list.status, 200);
+  assert.ok(Array.isArray(list.data.services));
+  assert.ok(Array.isArray(list.data.categories), 'the picker vocabulary ships with the catalogue');
+  assert.ok(Array.isArray(list.data.groups), 'the grouped catalogue ships with the response');
+  for (const preset of ['hair', 'nails', 'makeup', 'skin']) {
+    assert.ok(list.data.categories.some((option) => option.value === preset), `preset ${preset} is offered`);
+  }
+
+  // Preset category + preset subcategory, image, notes and a rupee price.
+  const gel = await ownerClient.post('/api/salon/services', {
+    name: 'Gel Extension Set',
+    category: 'Nails',
+    subcategory: 'gel nails',
+    description: 'Builder-gel extensions with a hand-filed finish.',
+    notes: 'Patch test 24 hours before. Arrive with clean nails.',
+    imageUrl: 'https://cdn.example.com/gel.jpg',
+    price: 3499,
+    durationMinutes: 90,
+    active: true,
+  });
+  assert.equal(gel.status, 201, JSON.stringify(gel.data));
+  const gelService = gel.data.service;
+  assert.equal(gelService.category, 'nails', 'preset categories collapse to their key');
+  assert.equal(gelService.categoryLabel, 'Nails');
+  assert.equal(gelService.subcategory, 'Gel Nails', 'preset subcategories keep the official spelling');
+  assert.equal(gelService.pricePaise, 349900);
+  assert.equal(gelService.notes, 'Patch test 24 hours before. Arrive with clean nails.');
+  assert.equal(gelService.imageUrl, 'https://cdn.example.com/gel.jpg');
+  assert.ok(gel.data.groups.some((group) => group.category === 'nails'));
+
+  // Custom main category and custom subcategory survive a round-trip verbatim.
+  const piercing = await ownerClient.post('/api/salon/services', {
+    name: 'Nostril Piercing',
+    category: 'Piercing',
+    subcategory: 'Nose',
+    pricePaise: 150000,
+    durationMinutes: 30,
+    notes: 'Single-use needle kit included.',
+  });
+  assert.equal(piercing.status, 201, JSON.stringify(piercing.data));
+  assert.equal(piercing.data.service.category, 'Piercing');
+  assert.equal(piercing.data.service.subcategory, 'Nose');
+
+  const catalogued = await ownerClient.get('/api/salon/services');
+  const custom = catalogued.data.categories.find((option) => option.value === 'Piercing');
+  assert.ok(custom, 'a custom category appears in the picker options');
+  assert.equal(custom.custom, true);
+  assert.deepEqual(custom.subcategories, ['Nose']);
+
+  const nailsGroup = catalogued.data.groups.find((group) => group.category === 'nails');
+  const gelBucket = nailsGroup.subcategories.find((bucket) => bucket.subcategory === 'Gel Nails');
+  assert.ok(gelBucket.services.some((service) => service.id === gelService.id));
+
+  // Inline rate edit keeps the rest of the row intact.
+  const repriced = await ownerClient.patch(`/api/salon/services/${gelService.id}`, { pricePaise: 399900 });
+  assert.equal(repriced.status, 200);
+  assert.equal(repriced.data.service.pricePaise, 399900);
+  assert.equal(repriced.data.service.notes, gelService.notes, 'a rate edit must not clear the notes');
+
+  // Inline notes + image edit.
+  const noted = await ownerClient.patch(`/api/salon/services/${gelService.id}`, {
+    notes: 'Include a 4-week after-care guide.',
+    imageUrl: '/api/uploads/service-abc123.jpg',
+  });
+  assert.equal(noted.status, 200);
+  assert.equal(noted.data.service.notes, 'Include a 4-week after-care guide.');
+  assert.equal(noted.data.service.imageUrl, '/api/uploads/service-abc123.jpg');
+  assert.equal(noted.data.service.pricePaise, 399900, 'an image edit must not clear the price');
+
+  // Moving a service between categories re-groups it.
+  const moved = await ownerClient.patch(`/api/salon/services/${gelService.id}`, {
+    category: 'Makeup',
+    subcategory: 'Party Makeup',
+  });
+  assert.equal(moved.status, 200);
+  assert.equal(moved.data.service.category, 'makeup');
+  assert.ok(moved.data.groups.some((group) => group.category === 'makeup'));
+
+  // Deleting returns the refreshed vocabulary.
+  const removed = await ownerClient.del(`/api/salon/services/${piercing.data.service.id}`);
+  assert.equal(removed.status, 200);
+  assert.ok(!removed.data.categories.some((option) => option.value === 'Piercing'));
+
+  await ownerClient.del(`/api/salon/services/${gelService.id}`);
+});
+
+test('catalogue rejects unsafe images and malformed category data', async () => {
+  const script = await ownerClient.post('/api/salon/services', {
+    name: 'Bad Image',
+    category: 'hair',
+    pricePaise: 10000,
+    durationMinutes: 30,
+    imageUrl: 'javascript:alert(1)',
+  });
+  assert.equal(script.status, 400);
+
+  const longCategory = await ownerClient.post('/api/salon/services', {
+    name: 'Too Long',
+    category: 'C'.repeat(120),
+    pricePaise: 10000,
+    durationMinutes: 30,
+  });
+  assert.equal(longCategory.status, 400);
+
+  const longSubcategory = await ownerClient.post('/api/salon/services', {
+    name: 'Too Long Sub',
+    category: 'hair',
+    subcategory: 'S'.repeat(120),
+    pricePaise: 10000,
+    durationMinutes: 30,
+  });
+  assert.equal(longSubcategory.status, 400);
+
+  const longNotes = await ownerClient.post('/api/salon/services', {
+    name: 'Wordy Notes',
+    category: 'hair',
+    pricePaise: 10000,
+    durationMinutes: 30,
+    notes: 'n'.repeat(4000),
+  });
+  assert.equal(longNotes.status, 400);
+
+  // Missing category still falls back to the historical 'other' bucket.
+  const fallback = await ownerClient.post('/api/salon/services', {
+    name: 'Uncategorised Treatment',
+    pricePaise: 10000,
+    durationMinutes: 30,
+  });
+  assert.equal(fallback.status, 201);
+  assert.equal(fallback.data.service.category, 'other');
+  await ownerClient.del(`/api/salon/services/${fallback.data.service.id}`);
+});
+
+test('service images upload through the salon upload endpoint', async () => {
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=',
+    'base64'
+  );
+  const upload = await ownerClient.post('/api/salon/uploads?kind=service', png, {
+    'Content-Type': 'image/png',
+  });
+  assert.equal(upload.status, 201, JSON.stringify(upload.data));
+  assert.match(upload.data.url, /^\/api\/uploads\/.+\.png$/);
+
+  const attached = await ownerClient.post('/api/salon/services', {
+    name: 'Uploaded Photo Service',
+    category: 'skin',
+    pricePaise: 200000,
+    durationMinutes: 60,
+    imageUrl: upload.data.url,
+  });
+  assert.equal(attached.status, 201);
+  assert.equal(attached.data.service.imageUrl, upload.data.url);
+  await ownerClient.del(`/api/salon/services/${attached.data.service.id}`);
+
+  const wrongKind = await ownerClient.post('/api/salon/uploads?kind=not-a-kind', png, {
+    'Content-Type': 'image/png',
+  });
+  assert.equal(wrongKind.status, 400);
+});
+
+test('the live website carries the catalogue grouping, notes and image fields', async () => {
+  const res = await fetch(`${BASE}/api/public/salons/lumina-luxe`);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.ok(body.services.length > 0);
+  const service = body.services[0];
+  for (const key of ['category', 'categoryLabel', 'subcategory', 'subcategoryLabel', 'notes', 'imageUrl']) {
+    assert.ok(key in service, `public service payload exposes ${key}`);
+  }
+  assert.ok(body.services.every((item) => item.active), 'only active services are public');
+});
+
+test('the grouped catalogue is tenant scoped', async () => {
+  const mine = await ownerClient.get('/api/salon/services');
+  const theirs = await secondClient.get('/api/salon/services');
+  assert.equal(theirs.status, 200);
+  const mineIds = new Set(mine.data.services.map((service) => service.id));
+  assert.ok(theirs.data.services.every((service) => !mineIds.has(service.id)));
+  assert.ok(
+    theirs.data.categories.every((option) => option.custom === false),
+    'another salon cannot see my custom categories'
+  );
 });
 
 test('salon owners cannot publish their own website (no self-approval)', async () => {

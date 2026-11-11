@@ -12,6 +12,7 @@ import {
   DEFAULT_LEAD_MINUTES,
 } from '../availability.js';
 import { parseWeeklySchedule, scheduleWindowForDay } from '../../src/lib/staffRoles.js';
+import { serviceCategoryLabel, serviceSubcategoryLabel } from '../../src/lib/serviceCategories.js';
 
 export const publicRouter = Router();
 
@@ -91,7 +92,12 @@ function livePayload(salon) {
       salonId: salon.id,
       name: service.name,
       category: service.category,
+      categoryLabel: service.categoryLabel || serviceCategoryLabel(service.category),
+      subcategory: service.subcategory || '',
+      subcategoryLabel: service.subcategoryLabel || serviceSubcategoryLabel(service.subcategory),
       description: service.description,
+      notes: service.notes || '',
+      imageUrl: service.imageUrl || '',
       pricePaise: service.pricePaise,
       price: service.pricePaise / 100,
       durationMinutes: service.durationMinutes,

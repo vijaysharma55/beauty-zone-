@@ -1,7 +1,26 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Pencil, Plus, Scissors, Trash2 } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Clock3,
+  ImageOff,
+  LayoutGrid,
+  ListFilter,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Scissors,
+  StickyNote,
+  Tag,
+  Trash2,
+} from 'lucide-react';
 import { api, errorMessage } from '../../lib/api';
-import type { SalonService } from '../../types/auth';
+import type {
+  SalonService,
+  ServiceCategoryGroup,
+  ServiceCategoryOption,
+  ServiceSubcategoryGroup,
+} from '../../types/auth';
 import {
   Alert,
   Badge,
@@ -12,19 +31,30 @@ import {
   Input,
   Modal,
   PageHeader,
-  Select,
   Textarea,
   Toggle,
+  cn,
   formatCurrency,
 } from '../ui';
-import { ImageUploader } from './ImageUploader';
+import { ServiceCategoryPicker } from './ServiceCategoryPicker';
+import { ServiceImageField } from './ServiceImageField';
+import {
+  MAX_SERVICE_NOTES_LENGTH,
+  groupServicesByCategory,
+  normalizeServiceCategory,
+  normalizeServiceSubcategory,
+  serviceCategoryLabel,
+  serviceCategoryOptions,
+} from '../../lib/serviceCategories.js';
 
-const CATEGORIES = ['bridal', 'hair', 'skin', 'nails', 'spa', 'academy', 'makeup', 'other'];
+const CATALOGUE_PATH = '/salon/services';
 
 interface Draft {
   name: string;
   category: string;
+  subcategory: string;
   description: string;
+  notes: string;
   price: string;
   durationMinutes: string;
   imageUrl: string;
@@ -33,54 +63,149 @@ interface Draft {
 
 const emptyDraft: Draft = {
   name: '',
-  category: 'hair',
+  category: '',
+  subcategory: '',
   description: '',
+  notes: '',
   price: '',
   durationMinutes: '60',
   imageUrl: '',
   active: true,
 };
 
+type RateDraft = { id: string; value: string } | null;
+type NotesDraft = { id: string; value: string } | null;
+
+/** ₹ input → paise, rejecting anything that is not a non-negative amount. */
+function parseRupeesToPaise(value: string): number | null {
+  const text = String(value ?? '').replace(/[₹,\s]/g, '');
+  if (!text) return null;
+  const amount = Number(text);
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  return Math.round(amount * 100);
+}
+
 export const ServicesPage: React.FC = () => {
   const [services, setServices] = useState<SalonService[]>([]);
+  const [sessionCategories, setSessionCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<SalonService | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<SalonService | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [query, setQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [view, setView] = useState<'grid' | 'table'>('grid');
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [rateDraft, setRateDraft] = useState<RateDraft>(null);
+  const [notesDraft, setNotesDraft] = useState<NotesDraft>(null);
+  const [busyServiceId, setBusyServiceId] = useState<string | null>(null);
+  const [imageTarget, setImageTarget] = useState<SalonService | null>(null);
 
-  const load = async () => {
-    try {
-      const res = await api.get<{ services: SalonService[] }>('/salon/services');
-      setServices(res.services);
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    load();
+  const flash = useCallback((text: string) => {
+    setNotice(text);
+    window.setTimeout(() => setNotice(''), 4000);
   }, []);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return services;
-    return services.filter(
-      (s) => s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q)
-    );
-  }, [services, query]);
+  const applyPayload = useCallback(
+    (payload: { services?: SalonService[]; service?: SalonService }) => {
+      if (Array.isArray(payload.services)) setServices(payload.services);
+      else if (payload.service) {
+        setServices((prev) => {
+          const exists = prev.some((item) => item.id === payload.service!.id);
+          return exists
+            ? prev.map((item) => (item.id === payload.service!.id ? payload.service! : item))
+            : [...prev, payload.service!];
+        });
+      }
+    },
+    []
+  );
 
-  const openCreate = () => {
+  const load = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (silent) setRefreshing(true);
+      try {
+        const res = await api.get<{ services: SalonService[] }>(CATALOGUE_PATH);
+        setServices(res.services || []);
+        setError('');
+      } catch (err) {
+        setError(errorMessage(err));
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  /**
+   * Picker vocabulary: presets + every category/subcategory already used by a
+   * saved service + anything the owner created earlier in this session. The
+   * server sends the same list; deriving it here keeps the modal in sync the
+   * instant a service is saved, renamed or deleted.
+   */
+  const options = useMemo(
+    () => serviceCategoryOptions(services, sessionCategories) as ServiceCategoryOption[],
+    [services, sessionCategories]
+  );
+
+  const groups = useMemo<ServiceCategoryGroup[]>(() => {
+    const q = query.trim().toLowerCase();
+    const filtered = services.filter((service) => {
+      if (statusFilter === 'active' && !service.active) return false;
+      if (statusFilter === 'inactive' && service.active) return false;
+      if (categoryFilter !== 'all' && normalizeServiceCategory(service.category) !== categoryFilter) return false;
+      if (!q) return true;
+      const haystack = [
+        service.name,
+        service.categoryLabel || service.category,
+        service.subcategory,
+        service.description,
+        service.notes,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+    return groupServicesByCategory(filtered) as ServiceCategoryGroup[];
+  }, [services, query, statusFilter, categoryFilter]);
+
+  const stats = useMemo(() => {
+    const total = services.length;
+    const active = services.filter((service) => service.active).length;
+    const withImages = services.filter((service) => Boolean(service.imageUrl)).length;
+    return { total, active, inactive: total - active, withImages };
+  }, [services]);
+
+  /** Keep owner-created categories selectable for the rest of the session. */
+  const rememberCategory = (category: string) => {
+    const value = normalizeServiceCategory(category);
+    if (!value) return;
+    setSessionCategories((prev) => (prev.includes(value) ? prev : [...prev, value]));
+  };
+
+  const openCreate = (preset?: { category?: string; subcategory?: string }) => {
     setEditing(null);
-    setDraft(emptyDraft);
-    setError('');
+    setDraft({
+      ...emptyDraft,
+      category: preset?.category ? normalizeServiceCategory(preset.category) : '',
+      subcategory: preset?.subcategory ? normalizeServiceSubcategory(preset.subcategory) : '',
+    });
+    if (preset?.category) rememberCategory(preset.category);
+    setFormError('');
     setModalOpen(true);
   };
 
@@ -88,51 +213,65 @@ export const ServicesPage: React.FC = () => {
     setEditing(service);
     setDraft({
       name: service.name,
-      category: service.category,
-      description: service.description,
-      price: (service.pricePaise / 100).toString(),
+      category: normalizeServiceCategory(service.category),
+      subcategory: service.subcategory || '',
+      description: service.description || '',
+      notes: service.notes || '',
+      price: String(Math.round(service.pricePaise / 100)),
       durationMinutes: String(service.durationMinutes),
       imageUrl: service.imageUrl || '',
       active: service.active,
     });
-    setError('');
+    setFormError('');
     setModalOpen(true);
   };
 
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    const priceNumber = Number(draft.price);
+  const patchService = async (id: string, payload: Record<string, unknown>) => {
+    const res = await api.patch<{ service: SalonService }>(`${CATALOGUE_PATH}/${id}`, payload);
+    applyPayload(res);
+    return res.service;
+  };
+
+  const save = async (event?: React.FormEvent) => {
+    event?.preventDefault();
+    setFormError('');
+    const pricePaise = parseRupeesToPaise(draft.price);
     const duration = Number(draft.durationMinutes);
-    if (!draft.name.trim()) return setError('Please enter a service name.');
-    if (!Number.isFinite(priceNumber) || priceNumber < 0) return setError('Please enter a valid price.');
+    if (!draft.name.trim()) return setFormError('Please enter a service name.');
+    if (!draft.category) return setFormError('Choose a main category or add a new one.');
+    if (pricePaise === null) return setFormError('Enter a valid rate in ₹ (0 or more).');
     if (!Number.isInteger(duration) || duration < 5 || duration > 1440) {
-      return setError('Duration must be between 5 and 1440 minutes.');
+      return setFormError('Duration must be between 5 and 1440 minutes.');
     }
+
+    const category = normalizeServiceCategory(draft.category);
+    const subcategory = normalizeServiceSubcategory(draft.subcategory);
+    const payload = {
+      name: draft.name.trim(),
+      category,
+      subcategory,
+      description: draft.description.trim(),
+      notes: draft.notes.trim(),
+      pricePaise,
+      durationMinutes: duration,
+      imageUrl: draft.imageUrl,
+      active: draft.active,
+    };
+
     setSaving(true);
     try {
-      const payload = {
-        name: draft.name.trim(),
-        category: draft.category,
-        description: draft.description.trim(),
-        pricePaise: Math.round(priceNumber * 100),
-        durationMinutes: duration,
-        imageUrl: draft.imageUrl,
-        active: draft.active,
-      };
       if (editing) {
-        const res = await api.patch<{ service: SalonService }>(`/salon/services/${editing.id}`, payload);
-        setServices((prev) => prev.map((s) => (s.id === editing.id ? res.service : s)));
-        setNotice('Service updated.');
+        await patchService(editing.id, payload);
+        flash(`${payload.name} updated.`);
       } else {
-        const res = await api.post<{ service: SalonService }>('/salon/services', payload);
-        setServices((prev) => [...prev, res.service]);
-        setNotice('Service added.');
+        const res = await api.post<{ service: SalonService }>(CATALOGUE_PATH, payload);
+        applyPayload(res);
+        flash(`${payload.name} added to ${serviceCategoryLabel(category)}.`);
       }
+      rememberCategory(category);
       setModalOpen(false);
-      setTimeout(() => setNotice(''), 3500);
     } catch (err) {
-      setError(errorMessage(err));
+      setFormError(errorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -140,13 +279,63 @@ export const ServicesPage: React.FC = () => {
 
   const toggleActive = async (service: SalonService) => {
     setError('');
+    setBusyServiceId(service.id);
     try {
-      const res = await api.patch<{ service: SalonService }>(`/salon/services/${service.id}`, {
-        active: !service.active,
-      });
-      setServices((prev) => prev.map((s) => (s.id === service.id ? res.service : s)));
+      await patchService(service.id, { active: !service.active });
+      flash(`${service.name} is now ${service.active ? 'hidden from' : 'visible on'} the website.`);
     } catch (err) {
       setError(errorMessage(err));
+    } finally {
+      setBusyServiceId(null);
+    }
+  };
+
+  const saveRate = async (service: SalonService) => {
+    if (!rateDraft) return;
+    const pricePaise = parseRupeesToPaise(rateDraft.value);
+    if (pricePaise === null) {
+      setError('Enter a valid rate in ₹ (0 or more).');
+      return;
+    }
+    setError('');
+    setBusyServiceId(service.id);
+    try {
+      await patchService(service.id, { pricePaise });
+      setRateDraft(null);
+      flash(`${service.name} rate updated to ${formatCurrency(pricePaise)}.`);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusyServiceId(null);
+    }
+  };
+
+  const saveNotes = async (service: SalonService) => {
+    if (!notesDraft) return;
+    setError('');
+    setBusyServiceId(service.id);
+    try {
+      await patchService(service.id, { notes: notesDraft.value });
+      setNotesDraft(null);
+      flash(`Notes saved for ${service.name}.`);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusyServiceId(null);
+    }
+  };
+
+  const changeImage = async (service: SalonService, url: string) => {
+    setError('');
+    setImageTarget(null);
+    setBusyServiceId(service.id);
+    try {
+      await patchService(service.id, { imageUrl: url });
+      flash(url ? `Image updated for ${service.name}.` : `Image removed from ${service.name}.`);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusyServiceId(null);
     }
   };
 
@@ -155,11 +344,10 @@ export const ServicesPage: React.FC = () => {
     setDeleting(true);
     setError('');
     try {
-      await api.del(`/salon/services/${deleteTarget.id}`);
-      setServices((prev) => prev.filter((s) => s.id !== deleteTarget.id));
+      await api.del<{ ok: boolean }>(`${CATALOGUE_PATH}/${deleteTarget.id}`);
+      setServices((prev) => prev.filter((service) => service.id !== deleteTarget.id));
+      flash(`${deleteTarget.name} removed from the catalogue.`);
       setDeleteTarget(null);
-      setNotice('Service removed.');
-      setTimeout(() => setNotice(''), 3500);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -167,145 +355,281 @@ export const ServicesPage: React.FC = () => {
     }
   };
 
+  const toggleGroup = (category: string) =>
+    setCollapsed((prev) => ({ ...prev, [category]: !prev[category] }));
+
+  const emptyCatalogue = !loading && services.length === 0;
+  const nothingMatches = !loading && services.length > 0 && groups.length === 0;
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Catalogue"
         title="Services & prices"
-        description="Everything here appears on your public website. Inactive services stay hidden."
+        description="Group every treatment under a main category and subcategory, add a photo, set the rate in ₹ and keep private notes for your team. Active services appear on your public website."
         actions={
-          <Button variant="gold" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Add service
-          </Button>
+          <>
+            <Button variant="secondary" onClick={() => void load({ silent: true })} loading={refreshing}>
+              {!refreshing && <RefreshCw className="h-4 w-4" />} Refresh
+            </Button>
+            <Button variant="gold" onClick={() => openCreate()}>
+              <Plus className="h-4 w-4" /> Add service
+            </Button>
+          </>
         }
       />
 
-      {error && !modalOpen && <Alert tone="error">{error}</Alert>}
+      {error && <Alert tone="error">{error}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search services…"
-          className="max-w-xs"
-        />
-        <p className="text-xs text-slate-500">
-          Showing <strong className="text-slate-900">{filtered.length}</strong> of {services.length} services
-        </p>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Services</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{stats.total}</p>
+          <p className="text-xs text-slate-500">
+            {groups.length} {groups.length === 1 ? 'category' : 'categories'} in view
+          </p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Visible online</p>
+          <p className="mt-1 text-2xl font-bold text-emerald-700">{stats.active}</p>
+          <p className="text-xs text-slate-500">{stats.inactive} hidden</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">With images</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{stats.withImages}</p>
+          <p className="text-xs text-slate-500">{stats.total - stats.withImages} missing a photo</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Catalogue value</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">
+            {formatCurrency(services.reduce((sum, service) => sum + (service.active ? service.pricePaise : 0), 0))}
+          </p>
+          <p className="text-xs text-slate-500">Sum of visible rates</p>
+        </Card>
       </div>
+
+      <Card className="flex flex-wrap items-center gap-3 p-3">
+        <div className="relative min-w-[200px] flex-1">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search services, subcategories, notes…"
+            aria-label="Search services"
+            className="!py-2"
+          />
+        </div>
+        <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+          <ListFilter className="h-4 w-4 text-slate-400" />
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            aria-label="Filter by category"
+            className="rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium text-slate-700"
+          >
+            <option value="all">All categories</option>
+            {options.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+          <Tag className="h-4 w-4 text-slate-400" />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}
+            aria-label="Filter by status"
+            className="rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium text-slate-700"
+          >
+            <option value="all">All statuses</option>
+            <option value="active">Active only</option>
+            <option value="inactive">Hidden only</option>
+          </select>
+        </label>
+        <div className="flex overflow-hidden rounded-lg border border-slate-300">
+          <button
+            type="button"
+            onClick={() => setView('grid')}
+            aria-pressed={view === 'grid'}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-2 text-xs font-semibold',
+              view === 'grid' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+            )}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" /> Cards
+          </button>
+          <button
+            type="button"
+            onClick={() => setView('table')}
+            aria-pressed={view === 'table'}
+            className={cn(
+              'flex items-center gap-1.5 border-l border-slate-300 px-3 py-2 text-xs font-semibold',
+              view === 'table' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+            )}
+          >
+            <Scissors className="h-3.5 w-3.5" /> Table
+          </button>
+        </div>
+      </Card>
 
       {loading ? (
         <Card className="p-12 text-center">
-          <p className="text-sm text-slate-500">Loading services…</p>
+          <p className="text-sm text-slate-500">Loading your catalogue…</p>
         </Card>
-      ) : filtered.length === 0 ? (
+      ) : emptyCatalogue ? (
         <EmptyState
           icon={<Scissors className="h-6 w-6" />}
-          title="No services found"
-          description={query ? 'Try a different search term.' : 'Add your first salon treatment to get started.'}
+          title="No services yet"
+          description="Start with a main category such as Hair, Nails or Makeup — or create your own — then add the treatments you offer, their rates and notes."
           action={
-            <Button variant="gold" onClick={openCreate}>
-              <Plus className="h-4 w-4" /> Add service
+            <Button variant="gold" onClick={() => openCreate({ category: 'hair' })}>
+              <Plus className="h-4 w-4" /> Add your first service
+            </Button>
+          }
+        />
+      ) : nothingMatches ? (
+        <EmptyState
+          icon={<Scissors className="h-6 w-6" />}
+          title="Nothing matches those filters"
+          description="Try a different search term, category or status."
+          action={
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setQuery('');
+                setCategoryFilter('all');
+                setStatusFilter('all');
+              }}
+            >
+              Clear filters
             </Button>
           }
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((service) => (
-            <Card key={service.id} className="flex flex-col justify-between p-5">
-              <div className="space-y-3">
-                {service.imageUrl && (
-                  <div className="relative h-36 w-full overflow-hidden rounded-xl bg-slate-100">
-                    <img src={service.imageUrl} alt={service.name} className="h-full w-full object-cover" />
-                  </div>
-                )}
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
-                      {service.category}
-                    </span>
-                    <h3 className="font-serif text-lg font-bold text-slate-900">{service.name}</h3>
-                  </div>
-                  <Badge tone={service.active ? 'green' : 'slate'}>
-                    {service.active ? 'Active' : 'Hidden'}
-                  </Badge>
-                </div>
-                {service.description && (
-                  <p className="text-xs text-slate-600 line-clamp-2">{service.description}</p>
-                )}
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-700 pt-2 border-t border-slate-100">
-                  <span className="font-mono text-sm text-slate-900">{formatCurrency(service.price)}</span>
-                  <span>{service.durationMinutes} mins</span>
-                </div>
-              </div>
-
-              <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
-                <Toggle
-                  checked={service.active}
-                  onChange={() => toggleActive(service)}
-                  label="Visible"
-                />
-                <div className="flex gap-1.5">
-                  <Button variant="secondary" size="sm" onClick={() => openEdit(service)}>
-                    <Pencil className="h-3.5 w-3.5" /> Edit
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                    onClick={() => setDeleteTarget(service)}
+        <div className="space-y-5">
+          {groups.map((group) => {
+            const isCollapsed = Boolean(collapsed[group.category]);
+            const presetOption = options.find((option) => option.value === group.category);
+            const isCustom = presetOption ? presetOption.custom : true;
+            return (
+              <Card key={group.category} className="overflow-hidden">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.category)}
+                    aria-expanded={!isCollapsed}
+                    className="flex min-w-0 items-center gap-2 text-left"
                   >
-                    <Trash2 className="h-3.5 w-3.5" /> Remove
+                    {isCollapsed ? (
+                      <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                    )}
+                    <span className="truncate font-serif text-lg font-bold text-slate-900">{group.label}</span>
+                    <Badge tone={isCustom ? 'gold' : 'slate'}>
+                      {isCustom ? 'Custom' : 'Preset'}
+                    </Badge>
+                    <span className="text-xs text-slate-500">
+                      {group.active}/{group.total} visible
+                    </span>
+                  </button>
+                  <Button size="sm" variant="secondary" onClick={() => openCreate({ category: group.category })}>
+                    <Plus className="h-3.5 w-3.5" /> Add to {group.label}
                   </Button>
                 </div>
-              </div>
-            </Card>
-          ))}
+
+                {!isCollapsed && (
+                  <div className="space-y-4 p-4">
+                    {group.subcategories.map((bucket) => (
+                      <SubcategorySection
+                        key={`${group.category}:${bucket.subcategory}`}
+                        bucket={bucket}
+                        view={view}
+                        busyServiceId={busyServiceId}
+                        rateDraft={rateDraft}
+                        notesDraft={notesDraft}
+                        onStartRate={(service) =>
+                          setRateDraft({ id: service.id, value: String(Math.round(service.pricePaise / 100)) })
+                        }
+                        onRateChange={(value) => setRateDraft((prev) => (prev ? { ...prev, value } : prev))}
+                        onCancelRate={() => setRateDraft(null)}
+                        onSaveRate={saveRate}
+                        onStartNotes={(service) => setNotesDraft({ id: service.id, value: service.notes || '' })}
+                        onNotesChange={(value) => setNotesDraft((prev) => (prev ? { ...prev, value } : prev))}
+                        onCancelNotes={() => setNotesDraft(null)}
+                        onSaveNotes={saveNotes}
+                        onEdit={openEdit}
+                        onToggleActive={toggleActive}
+                        onDelete={setDeleteTarget}
+                        onManageImage={setImageTarget}
+                        onAddService={() => openCreate({ category: group.category, subcategory: bucket.subcategory })}
+                      />
+                    ))}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
         </div>
       )}
 
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editing ? 'Edit service' : 'Add new service'}
+        title={editing ? `Edit ${editing.name}` : 'Add a service'}
+        maxWidth="max-w-2xl"
         footer={
           <>
             <Button variant="ghost" onClick={() => setModalOpen(false)}>
               Cancel
             </Button>
-            <Button variant="gold" onClick={(e: any) => save(e)} loading={saving}>
+            <Button variant="gold" onClick={() => void save()} loading={saving}>
               {editing ? 'Save changes' : 'Add service'}
             </Button>
           </>
         }
       >
         <form onSubmit={save} className="space-y-4">
-          {error && <Alert tone="error">{error}</Alert>}
+          {formError && <Alert tone="error">{formError}</Alert>}
+
           <Field label="Service name" htmlFor="service-name" required>
             <Input
               id="service-name"
               value={draft.name}
               onChange={(e) => setDraft({ ...draft, name: e.target.value })}
               placeholder="Royal HD Bridal Makeover"
+              maxLength={120}
               required
             />
           </Field>
+
+          <ServiceCategoryPicker
+            category={draft.category}
+            subcategory={draft.subcategory}
+            options={options}
+            onChange={({ category, subcategory }) => {
+              rememberCategory(category);
+              setDraft((prev) => ({ ...prev, category, subcategory }));
+            }}
+          />
+
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Category" htmlFor="service-category" required>
-              <Select
-                id="service-category"
-                value={draft.category}
-                onChange={(e) => setDraft({ ...draft, category: e.target.value })}
-              >
-                {CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                  </option>
-                ))}
-              </Select>
+            <Field label="Rate / Price (₹)" htmlFor="service-price" required hint="Full price in rupees.">
+              <Input
+                id="service-price"
+                type="number"
+                min={0}
+                step="1"
+                inputMode="numeric"
+                value={draft.price}
+                onChange={(e) => setDraft({ ...draft, price: e.target.value })}
+                placeholder="4999"
+                required
+              />
             </Field>
-            <Field label="Duration (minutes)" htmlFor="service-duration" required>
+            <Field label="Duration (minutes)" htmlFor="service-duration" required hint="5–1440 minutes.">
               <Input
                 id="service-duration"
                 type="number"
@@ -317,47 +641,51 @@ export const ServicesPage: React.FC = () => {
               />
             </Field>
           </div>
-          <Field label="Price (₹)" htmlFor="service-price" required hint="Enter the full price in rupees.">
-            <Input
-              id="service-price"
-              type="number"
-              min={0}
-              step="1"
-              value={draft.price}
-              onChange={(e) => setDraft({ ...draft, price: e.target.value })}
-              placeholder="4999"
-              required
+
+          <ServiceImageField
+            value={draft.imageUrl}
+            onChange={(imageUrl) => setDraft({ ...draft, imageUrl })}
+            hint="Uploaded to Supabase Storage. Shows on the website card and booking flow."
+            onWarning={(message) => setFormError(message)}
+          />
+
+          <Field
+            label="Important notes / custom instructions"
+            htmlFor="service-notes"
+            hint="Duration specifics, prerequisites, patch tests or prep instructions. Shown as a note under the service."
+          >
+            <Textarea
+              id="service-notes"
+              value={draft.notes}
+              maxLength={MAX_SERVICE_NOTES_LENGTH}
+              onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
+              placeholder="Arrive 10 minutes early. Patch test required 24 hours before colour. Price includes blow-dry."
             />
           </Field>
-          <ImageUploader
-            label="Service Image"
-            kind="service"
-            value={draft.imageUrl}
-            onChange={(url) => setDraft({ ...draft, imageUrl: url })}
-            hint="Upload a photo for this service using FileReader preview."
-            previewClassName="h-24 w-32 rounded-xl"
-          />
-          <div className="flex items-end pb-1">
-            <Toggle
-              checked={draft.active}
-              onChange={(v) => setDraft({ ...draft, active: v })}
-              label="Visible on website"
-              description="Hidden services remain in your catalogue."
-            />
-          </div>
-          <Field label="Description" htmlFor="service-description">
+
+          <Field label="Description" htmlFor="service-description" hint="What's included, products used, finish.">
             <Textarea
               id="service-description"
               value={draft.description}
+              maxLength={2000}
               onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-              placeholder="What's included, products used, finish…"
+              placeholder="A 90-minute gel extension set with a hand-filed finish…"
             />
           </Field>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+            <Toggle
+              checked={draft.active}
+              onChange={(active) => setDraft({ ...draft, active })}
+              label={draft.active ? 'Active — visible on the public website' : 'Inactive — hidden from the public website'}
+              description="Hidden services stay in your catalogue, rates and reports."
+            />
+          </div>
         </form>
       </Modal>
 
       <Modal
-        open={!!deleteTarget}
+        open={Boolean(deleteTarget)}
         onClose={() => setDeleteTarget(null)}
         title="Delete service?"
         maxWidth="max-w-md"
@@ -366,7 +694,7 @@ export const ServicesPage: React.FC = () => {
             <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
               Keep service
             </Button>
-            <Button variant="danger" onClick={confirmDelete} loading={deleting}>
+            <Button variant="danger" onClick={() => void confirmDelete()} loading={deleting}>
               Delete permanently
             </Button>
           </>
@@ -374,14 +702,338 @@ export const ServicesPage: React.FC = () => {
       >
         <p className="text-sm text-slate-600">
           <strong className="text-slate-900">{deleteTarget?.name}</strong> will be removed from your website and
-          catalogue. This cannot be undone. To temporarily hide it instead, use the visibility toggle.
+          catalogue. This cannot be undone. To hide it temporarily instead, switch it to Inactive.
         </p>
-        {error && (
-          <div className="mt-3">
-            <Alert tone="error">{error}</Alert>
+      </Modal>
+
+      <Modal
+        open={Boolean(imageTarget)}
+        onClose={() => setImageTarget(null)}
+        title={imageTarget ? `Photo for ${imageTarget.name}` : 'Service photo'}
+        maxWidth="max-w-lg"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setImageTarget(null)}>
+              Close
+            </Button>
+            {imageTarget?.imageUrl && (
+              <Button
+                variant="danger"
+                onClick={() => imageTarget && void changeImage(imageTarget, '')}
+                loading={imageTarget ? busyServiceId === imageTarget.id : false}
+              >
+                <Trash2 className="h-4 w-4" /> Remove photo
+              </Button>
+            )}
+          </>
+        }
+      >
+        {imageTarget && (
+          <div className="space-y-3">
+            <ServiceImageField
+              value={imageTarget.imageUrl || ''}
+              onChange={(url) => void changeImage(imageTarget, url)}
+              label="Service image"
+              hint="Square photos look best. Uploads are stored in Supabase Storage."
+              onWarning={(message) => setError(message)}
+            />
+            {busyServiceId === imageTarget.id && <p className="text-xs text-slate-500">Saving…</p>}
+            <p className="text-xs text-slate-500">
+              This photo appears on the website card and in the booking flow for{" "}
+              <strong className="text-slate-700">{imageTarget.name}</strong>.
+            </p>
           </div>
         )}
       </Modal>
     </div>
   );
 };
+
+/* ------------------------------------------------------------------ */
+/* Subcategory bucket                                                  */
+/* ------------------------------------------------------------------ */
+
+const SubcategorySection: React.FC<{
+  bucket: ServiceSubcategoryGroup;
+  view: 'grid' | 'table';
+  busyServiceId: string | null;
+  rateDraft: RateDraft;
+  notesDraft: NotesDraft;
+  onStartRate: (service: SalonService) => void;
+  onRateChange: (value: string) => void;
+  onCancelRate: () => void;
+  onSaveRate: (service: SalonService) => void;
+  onStartNotes: (service: SalonService) => void;
+  onNotesChange: (value: string) => void;
+  onCancelNotes: () => void;
+  onSaveNotes: (service: SalonService) => void;
+  onEdit: (service: SalonService) => void;
+  onToggleActive: (service: SalonService) => void;
+  onDelete: (service: SalonService) => void;
+  onManageImage: (service: SalonService) => void;
+  onAddService: () => void;
+}> = ({
+  bucket,
+  view,
+  busyServiceId,
+  rateDraft,
+  notesDraft,
+  onStartRate,
+  onRateChange,
+  onCancelRate,
+  onSaveRate,
+  onStartNotes,
+  onNotesChange,
+  onCancelNotes,
+  onSaveNotes,
+  onEdit,
+  onToggleActive,
+  onDelete,
+  onManageImage,
+  onAddService,
+}) => (
+  <div>
+    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+      <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-500">
+        <span className="h-1.5 w-1.5 rounded-full bg-[#D09A40]" />
+        {bucket.label}
+        <span className="font-medium normal-case tracking-normal text-slate-400">({bucket.total})</span>
+      </h3>
+      <button
+        type="button"
+        onClick={onAddService}
+        className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#8a641f] hover:underline"
+      >
+        <Plus className="h-3 w-3" /> Add here
+      </button>
+    </div>
+
+    {view === 'table' ? (
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <table className="min-w-full text-left text-sm">
+          <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="px-3 py-2 font-semibold">Service</th>
+              <th className="px-3 py-2 font-semibold">Rate</th>
+              <th className="px-3 py-2 font-semibold">Duration</th>
+              <th className="px-3 py-2 font-semibold">Image</th>
+              <th className="px-3 py-2 font-semibold">Status</th>
+              <th className="px-3 py-2 text-right font-semibold">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {bucket.services.map((service) => (
+              <tr key={service.id} className="align-top hover:bg-slate-50/60">
+                <td className="px-3 py-2.5">
+                  <p className="font-medium text-slate-900">{service.name}</p>
+                  {service.notes && (
+                    <p className="mt-0.5 flex items-start gap-1 text-[11px] text-slate-500">
+                      <StickyNote className="mt-0.5 h-3 w-3 shrink-0" />
+                      <span className="line-clamp-2">{service.notes}</span>
+                    </p>
+                  )}
+                </td>
+                <td className="px-3 py-2.5">
+                  {rateDraft?.id === service.id ? (
+                    <div className="flex items-center gap-1">
+                      <Input
+                        value={rateDraft.value}
+                        onChange={(e) => onRateChange(e.target.value)}
+                        type="number"
+                        min={0}
+                        className="!w-24 !py-1 text-xs"
+                        aria-label={`Rate for ${service.name}`}
+                        autoFocus
+                      />
+                      <Button size="sm" variant="gold" onClick={() => onSaveRate(service)} loading={busyServiceId === service.id}>
+                        Save
+                      </Button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => onStartRate(service)}
+                      className="font-mono text-sm font-semibold text-slate-900 underline decoration-dotted hover:text-[#8a641f]"
+                      title="Click to edit the rate"
+                    >
+                      {formatCurrency(service.pricePaise)}
+                    </button>
+                  )}
+                </td>
+                <td className="px-3 py-2.5 text-xs text-slate-600">{service.durationMinutes} min</td>
+                <td className="px-3 py-2.5">
+                  <button
+                    type="button"
+                    onClick={() => onManageImage(service)}
+                    className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#8a641f] hover:underline"
+                  >
+                    {service.imageUrl ? (
+                      <>
+                        <img src={service.imageUrl} alt="" className="h-7 w-7 rounded object-cover" />
+                        Change
+                      </>
+                    ) : (
+                      <>
+                        <ImageOff className="h-3.5 w-3.5" /> Upload
+                      </>
+                    )}
+                  </button>
+                </td>
+                <td className="px-3 py-2.5">
+                  <Toggle
+                    checked={service.active}
+                    onChange={() => onToggleActive(service)}
+                    label={`${service.name} visible on website`}
+                    hideLabel
+                  />
+                </td>
+                <td className="px-3 py-2.5">
+                  <div className="flex justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => onEdit(service)} aria-label={`Edit notes for ${service.name}`}>
+                      <StickyNote className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => onEdit(service)}>
+                      <Pencil className="h-3.5 w-3.5" /> Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-red-600 hover:bg-red-50"
+                      onClick={() => onDelete(service)}
+                      aria-label={`Delete ${service.name}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    ) : (
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {bucket.services.map((service) => (
+          <Card key={service.id} className="flex flex-col overflow-hidden">
+            <div className="relative h-36 w-full bg-slate-100">
+              {service.imageUrl ? (
+                <img src={service.imageUrl} alt={service.name} className="h-full w-full object-cover" loading="lazy" />
+              ) : (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-slate-400">
+                  <ImageOff className="h-6 w-6" />
+                  <span className="text-[11px] font-medium">No image yet</span>
+                </div>
+              )}
+              <div className="absolute left-2 top-2 flex flex-wrap gap-1">
+                <Badge tone={service.active ? 'green' : 'slate'}>{service.active ? 'Active' : 'Inactive'}</Badge>
+              </div>
+            </div>
+
+            <div className="flex flex-1 flex-col gap-2 p-4">
+              <div>
+                <h4 className="font-semibold leading-snug text-slate-900">{service.name}</h4>
+                {service.subcategory && (
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                    {service.subcategory}
+                  </p>
+                )}
+              </div>
+
+              {service.description && <p className="line-clamp-2 text-xs text-slate-600">{service.description}</p>}
+
+              {notesDraft?.id === service.id ? (
+                <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
+                  <Textarea
+                    value={notesDraft.value}
+                    onChange={(e) => onNotesChange(e.target.value)}
+                    maxLength={MAX_SERVICE_NOTES_LENGTH}
+                    placeholder="Duration, prerequisites, prep instructions…"
+                    className="!min-h-[64px] text-xs"
+                    aria-label={`Notes for ${service.name}`}
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="gold" onClick={() => onSaveNotes(service)} loading={busyServiceId === service.id}>
+                      Save notes
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={onCancelNotes}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : service.notes ? (
+                <p className="flex items-start gap-1.5 rounded-lg bg-amber-50 px-2 py-1.5 text-[11px] leading-relaxed text-amber-900">
+                  <StickyNote className="mt-0.5 h-3 w-3 shrink-0" />
+                  <span className="line-clamp-3">{service.notes}</span>
+                </p>
+              ) : null}
+
+              <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-2.5">
+                {rateDraft?.id === service.id ? (
+                  <div className="flex items-center gap-1">
+                    <Input
+                      value={rateDraft.value}
+                      onChange={(e) => onRateChange(e.target.value)}
+                      type="number"
+                      min={0}
+                      className="!w-24 !py-1 text-xs"
+                      aria-label={`Rate for ${service.name}`}
+                      autoFocus
+                    />
+                    <Button size="sm" variant="gold" onClick={() => onSaveRate(service)} loading={busyServiceId === service.id}>
+                      Save
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={onCancelRate} aria-label="Cancel rate edit">
+                      ✕
+                    </Button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onStartRate(service)}
+                    className="font-mono text-base font-bold text-slate-900 underline decoration-dotted hover:text-[#8a641f]"
+                    title="Click to edit the rate"
+                  >
+                    {formatCurrency(service.pricePaise)}
+                  </button>
+                )}
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500">
+                  <Clock3 className="h-3 w-3" /> {service.durationMinutes} min
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/70 px-4 py-2.5">
+              <Toggle
+                checked={service.active}
+                onChange={() => onToggleActive(service)}
+                label={`${service.name} visible on website`}
+                hideLabel
+              />
+              <div className="flex items-center gap-1">
+                <Button size="sm" variant="ghost" onClick={() => onManageImage(service)}>
+                  <ImageOff className="h-3.5 w-3.5" /> {service.imageUrl ? 'Photo' : 'Add photo'}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => onStartNotes(service)} aria-label={`Edit notes for ${service.name}`}>
+                  <StickyNote className="h-3.5 w-3.5" />
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => onEdit(service)}>
+                  <Pencil className="h-3.5 w-3.5" /> Edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-red-600 hover:bg-red-50"
+                  onClick={() => onDelete(service)}
+                  aria-label={`Delete ${service.name}`}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+    )}
+  </div>
+);
