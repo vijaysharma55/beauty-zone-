@@ -7,6 +7,7 @@
  *  - the brand-strategist prompt and its `{{Salon_Name}}` placeholder
  *  - parsing and validating a model answer (a JSON array of 3 short strings)
  *  - the deterministic curated suggestions used when no model is reachable
+ *  - the small text helpers the description rules in `salonDescriptions.js` reuse
  */
 
 /** Every suggestion round returns exactly this many options. */
@@ -50,30 +51,52 @@ const PROMPT_EXAMPLE = /^tagline option \d+$/i;
 /** Opening → closing quote a model may leave around an option. */
 const QUOTE_PAIRS = { '"': '"', '“': '”', '`': '`', "'": "'", '‘': '’' };
 
-const collapseWhitespace = (value) => value.replace(CONTROL_CHARS, ' ').replace(/\s+/g, ' ').trim();
+/**
+ * Control characters and line breaks become single spaces.
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+export const collapseWhitespace = (value) => value.replace(CONTROL_CHARS, ' ').replace(/\s+/g, ' ').trim();
 
 /* ------------------------------------------------------------------ */
 /* Salon name + prompt                                                 */
 /* ------------------------------------------------------------------ */
 
+/** One line of at most `max` characters; never cuts an emoji in half. */
+function singleLine(value, max) {
+  if (typeof value !== 'string') return '';
+  const clean = collapseWhitespace(value);
+  if (clean.length <= max) return clean;
+  let capped = '';
+  // Iterate by code point so a surrogate pair stays whole.
+  for (const char of clean) {
+    if (capped.length + char.length > max) break;
+    capped += char;
+  }
+  return capped.trim();
+}
+
 /**
  * Single-line, length-capped salon name. Line breaks and control characters
- * become spaces, so a name can never add extra lines to the prompt.
+ * become spaces, so a name can never add extra lines to a prompt.
  *
  * @param {unknown} value
  * @returns {string}
  */
 export function normalizeSalonName(value) {
-  if (typeof value !== 'string') return '';
-  const clean = collapseWhitespace(value);
-  if (clean.length <= SALON_NAME_MAX_LENGTH) return clean;
-  let capped = '';
-  // Iterate by code point so an emoji is never cut in half.
-  for (const char of clean) {
-    if (capped.length + char.length > SALON_NAME_MAX_LENGTH) break;
-    capped += char;
-  }
-  return capped.trim();
+  return singleLine(value, SALON_NAME_MAX_LENGTH);
+}
+
+/**
+ * A tagline as typed or picked by the owner, on one line and within the
+ * length the `tagline` column accepts.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function normalizeSalonTagline(value) {
+  return singleLine(value, SALON_TAGLINE_MAX_LENGTH);
 }
 
 /**
@@ -108,6 +131,28 @@ export function countWords(text) {
 }
 
 /**
+ * Removes quotes or markdown italics that wrap a whole option, e.g. `"…"`.
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+export function unwrapQuotes(value) {
+  let text = value.trim();
+  for (let pass = 0; pass < 3 && text.length > 2; pass += 1) {
+    const open = text[0];
+    const close = QUOTE_PAIRS[open];
+    const inner = text.slice(1, -1);
+    const isItalic = (open === '*' || open === '_') && text.endsWith(open) && !inner.includes(open);
+    // `"A" and "B"` is two quoted words, not one wrapped option. Apostrophes
+    // are too common inside a sentence for that check to apply to single quotes.
+    const isQuoted = close === text[text.length - 1] && (open === "'" || open === '‘' || !inner.includes(close));
+    if (!isItalic && !isQuoted) break;
+    text = inner.trim();
+  }
+  return text;
+}
+
+/**
  * Strips list markers, wrapping quotes and markdown emphasis from one option.
  *
  * @param {unknown} value
@@ -115,23 +160,12 @@ export function countWords(text) {
  */
 export function cleanSalonTagline(value) {
   if (typeof value !== 'string') return '';
-  let text = collapseWhitespace(value)
-    .replace(/\*\*|__/g, '')
-    .replace(/^(?:[-*•·–—]|\d{1,2}[.)])\s+/, '')
-    .replace(/,$/, '')
-    .trim();
-  for (let pass = 0; pass < 3 && text.length > 2; pass += 1) {
-    const open = text[0];
-    const close = QUOTE_PAIRS[open];
-    const inner = text.slice(1, -1);
-    const isItalic = (open === '*' || open === '_') && text.endsWith(open) && !inner.includes(open);
-    // `"A" and "B"` is two quoted words, not one wrapped option. Apostrophes
-    // are too common inside a tagline for that check to apply to single quotes.
-    const isQuoted = close === text[text.length - 1] && (open === "'" || open === '‘' || !inner.includes(close));
-    if (!isItalic && !isQuoted) break;
-    text = inner.trim();
-  }
-  return text;
+  return unwrapQuotes(
+    collapseWhitespace(value)
+      .replace(/\*\*|__/g, '')
+      .replace(/^(?:[-*•·–—]|\d{1,2}[.)])\s+/, '')
+      .replace(/,$/, '')
+  );
 }
 
 /**
@@ -183,14 +217,17 @@ function tryParseJson(text) {
   }
 }
 
+const firstString = (strings) => strings[0];
+
 /** Flattens `["…"]`, `[{"tagline": "…"}]` and `{"taglines": ["…"]}` into strings. */
-function stringsFromJson(value) {
+function stringsFromJson(value, pickFromObject) {
   if (typeof value === 'string') return [value];
   if (Array.isArray(value)) {
     return value.map((item) => {
       if (typeof item === 'string') return item;
       if (item && typeof item === 'object' && !Array.isArray(item)) {
-        return Object.values(item).find((entry) => typeof entry === 'string') ?? '';
+        const strings = Object.values(item).filter((entry) => typeof entry === 'string');
+        return strings.length > 0 ? pickFromObject(strings) : '';
       }
       return '';
     });
@@ -198,24 +235,36 @@ function stringsFromJson(value) {
   if (value && typeof value === 'object') {
     const entries = Object.values(value);
     const list = entries.find(Array.isArray);
-    return list ? stringsFromJson(list) : entries.filter((entry) => typeof entry === 'string');
+    return list ? stringsFromJson(list, pickFromObject) : entries.filter((entry) => typeof entry === 'string');
   }
   return [];
 }
 
-function extractCandidates(raw) {
-  // Models often wrap JSON in a ```json fence even when told not to.
-  const text = raw.replace(/```[a-z0-9_-]*/gi, '').trim();
+/** Models often wrap JSON in a ```json fence even when told not to. */
+const withoutCodeFences = (raw) => raw.replace(/```[a-z0-9_-]*/gi, '').trim();
+
+/**
+ * The strings, in order, of a model answer that was asked for a JSON array of
+ * strings. Tolerates code fences, prose around the array, wrapper objects and
+ * a cut-off array. Returns `null` when the answer contains no JSON at all.
+ *
+ * @param {string} raw
+ * @param {(strings: string[]) => string} [pickFromObject] the string to keep
+ *   when an item is an object such as `{"tone": "…", "text": "…"}`
+ * @returns {string[] | null}
+ */
+export function extractJsonStrings(raw, pickFromObject = firstString) {
+  const text = withoutCodeFences(raw);
 
   const whole = tryParseJson(text);
-  if (whole !== undefined) return stringsFromJson(whole);
+  if (whole !== undefined) return stringsFromJson(whole, pickFromObject);
 
   // A JSON array surrounded by prose ("Here are your taglines: [...]").
   const end = text.lastIndexOf(']');
   let start = text.indexOf('[');
   for (let attempt = 0; start !== -1 && start < end && attempt < 20; attempt += 1) {
     const parsed = tryParseJson(text.slice(start, end + 1));
-    if (Array.isArray(parsed)) return stringsFromJson(parsed);
+    if (Array.isArray(parsed)) return stringsFromJson(parsed, pickFromObject);
     start = text.indexOf('[', start + 1);
   }
 
@@ -227,9 +276,16 @@ function extractCandidates(raw) {
     if (strings.length > 0) return strings;
   }
 
+  return null;
+}
+
+function extractCandidates(raw) {
+  const fromJson = extractJsonStrings(raw);
+  if (fromJson) return fromJson;
+
   // Not JSON at all: accept a bulleted, numbered or quoted list, one per line
   // (but not a lead-in such as `"Velvet Rose" could use:`).
-  return text
+  return withoutCodeFences(raw)
     .split(/\r?\n/)
     .filter((line) => /^\s*(?:[-*•·]|\d{1,2}[.)]|["“'`])/.test(line) && !/:\s*$/.test(line));
 }
@@ -332,8 +388,13 @@ const THEMED_LINES = Object.freeze([
   },
 ]);
 
-/** FNV-1a: a stable seed so different salons start on different lines. */
-function hashName(name) {
+/**
+ * FNV-1a: a stable seed so different salons start on different lines.
+ *
+ * @param {string} name
+ * @returns {number}
+ */
+export function hashName(name) {
   let hash = 2166136261;
   for (const char of name) {
     hash ^= char.codePointAt(0);
@@ -376,7 +437,7 @@ function curatedDeck(salonName) {
  * @param {unknown} variant
  * @returns {number}
  */
-export function normalizeTaglineVariant(variant) {
+export function normalizeSuggestionVariant(variant) {
   const value = Math.floor(Number(variant));
   return Number.isFinite(value) && value > 0 ? Math.min(value, 9999) : 0;
 }
@@ -415,7 +476,7 @@ export function completeSalonTaglines(candidates, salonName, variant = 0, exclud
   const picked = collectTaglines(Array.isArray(candidates) ? candidates : [], SALON_TAGLINE_COUNT, [], shown);
   if (picked.length >= SALON_TAGLINE_COUNT) return picked;
   const deck = curatedDeck(salonName);
-  const page = rotate(deck, (normalizeTaglineVariant(variant) * SALON_TAGLINE_COUNT) % deck.length);
+  const page = rotate(deck, (normalizeSuggestionVariant(variant) * SALON_TAGLINE_COUNT) % deck.length);
   collectTaglines(page, SALON_TAGLINE_COUNT, picked, shown);
   // Every curated line has been shown already: start the deck again.
   return collectTaglines(page, SALON_TAGLINE_COUNT, picked);

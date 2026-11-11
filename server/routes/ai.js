@@ -4,6 +4,7 @@
  * These back the "AI" affordances in the white-label studio and owner dashboard:
  *  - POST /api/ai/taglines        → 3 marketing taglines for a package/service
  *  - POST /api/ai/salon-taglines  → 3 brand taglines for a salon name (auth required)
+ *  - POST /api/ai/salon-descriptions → 3 "About Us" descriptions, one per tone (auth required)
  *  - POST /api/ai/description     → short SEO-ish service description
  *  - POST /api/ai/review-reply    → polite owner reply to a client review (auth required)
  *  - GET  /api/ai/status          → whether a model is wired up
@@ -27,14 +28,24 @@ import {
   SALON_NAME_MAX_LENGTH,
   SALON_NAME_MIN_LENGTH,
   SALON_TAGLINE_COUNT,
+  SALON_TAGLINE_MAX_LENGTH,
   buildSalonTaglinePrompt,
   completeSalonTaglines,
   fallbackSalonTaglines,
   normalizeSalonName,
+  normalizeSalonTagline,
   normalizeTaglineExclusions,
-  normalizeTaglineVariant,
+  normalizeSuggestionVariant,
   parseSalonTaglines,
 } from '../../src/lib/salonTaglines.js';
+import {
+  SALON_DESCRIPTION_COUNT,
+  SALON_DESCRIPTION_TAGLINE_MIN_LENGTH,
+  buildSalonDescriptionPrompt,
+  completeSalonDescriptions,
+  fallbackSalonDescriptions,
+  parseSalonDescriptions,
+} from '../../src/lib/salonDescriptions.js';
 
 export const aiRouter = Router();
 
@@ -202,6 +213,17 @@ aiRouter.post('/taglines', aiLimiter, async (req, res, next) => {
   }
 });
 
+/** The salon name of a suggestion request: one line, 2-120 characters. */
+function readSalonName(body) {
+  const name = normalizeSalonName(
+    str(body?.name ?? body?.salonName, { max: SALON_NAME_MAX_LENGTH, field: 'Salon name', required: true })
+  );
+  if (name.length < SALON_NAME_MIN_LENGTH) {
+    throw new ValidationError(`Salon name must be at least ${SALON_NAME_MIN_LENGTH} characters`);
+  }
+  return name;
+}
+
 /**
  * Brand taglines for the salon itself (the line under the salon name), used by
  * onboarding and the website editor. Sends the shared brand-strategist prompt
@@ -212,15 +234,10 @@ aiRouter.post('/taglines', aiLimiter, async (req, res, next) => {
  */
 aiRouter.post('/salon-taglines', requireAuth, aiLimiter, async (req, res, next) => {
   let name = '';
-  const variant = normalizeTaglineVariant(req.body?.variant);
+  const variant = normalizeSuggestionVariant(req.body?.variant);
   const exclude = normalizeTaglineExclusions(req.body?.exclude);
   try {
-    name = normalizeSalonName(
-      str(req.body?.name ?? req.body?.salonName, { max: SALON_NAME_MAX_LENGTH, field: 'Salon name', required: true })
-    );
-    if (name.length < SALON_NAME_MIN_LENGTH) {
-      throw new ValidationError(`Salon name must be at least ${SALON_NAME_MIN_LENGTH} characters`);
-    }
+    name = readSalonName(req.body);
     // The answer itself is tiny, but on reasoning models the thinking tokens
     // count against this cap too, so leave headroom for a complete JSON array.
     const { text, warning } = await callGemini(buildSalonTaglinePrompt(name), { maxOutputTokens: 2048 });
@@ -239,6 +256,57 @@ aiRouter.post('/salon-taglines', requireAuth, aiLimiter, async (req, res, next) 
     console.warn('[ai] salon-taglines handler fallback:', err.message);
     res.json({
       taglines: fallbackSalonTaglines(name, variant, exclude),
+      source: 'fallback',
+      warnings: ['Used local templates.'],
+    });
+  }
+});
+
+/**
+ * "About Us" descriptions for the salon (the "About your salon" field), used
+ * by onboarding and the website editor. Sends the shared copywriter prompt
+ * with `{{Salon_Name}}` and `{{Selected_Tagline}}` filled in and expects a JSON
+ * array of 3 strings back, one per tone: Elegant & Premium, Modern & Trendy,
+ * Warm & Customer-Centric.
+ *
+ * Body: `name` (or `salonName`), `tagline` (or `selectedTagline`), plus the
+ * optional "more ideas" hint `variant` (which curated descriptions to use).
+ */
+aiRouter.post('/salon-descriptions', requireAuth, aiLimiter, async (req, res, next) => {
+  let name = '';
+  let tagline = '';
+  const variant = normalizeSuggestionVariant(req.body?.variant);
+  try {
+    name = readSalonName(req.body);
+    tagline = normalizeSalonTagline(
+      str(req.body?.tagline ?? req.body?.selectedTagline, {
+        max: SALON_TAGLINE_MAX_LENGTH,
+        field: 'Tagline',
+        required: true,
+      })
+    );
+    if (tagline.length < SALON_DESCRIPTION_TAGLINE_MIN_LENGTH) {
+      throw new ValidationError(`Tagline must be at least ${SALON_DESCRIPTION_TAGLINE_MIN_LENGTH} characters`);
+    }
+    // Three paragraphs of about 65 words, plus headroom for the thinking
+    // tokens that count against this cap on reasoning models.
+    const { text, warning } = await callGemini(buildSalonDescriptionPrompt(name, tagline), { maxOutputTokens: 4096 });
+    // One slot per tone; a slot the model left unusable gets the curated text
+    // for that tone, so the three tones always arrive in the same order.
+    const generated = parseSalonDescriptions(text);
+    const descriptions = completeSalonDescriptions(generated, name, tagline, variant);
+    const kept = generated.filter(Boolean).length;
+    const source = kept >= SALON_DESCRIPTION_COUNT ? 'ai' : kept > 0 ? 'ai+fallback' : 'fallback';
+    const warnings = [];
+    if (warning) warnings.push(warning);
+    else if (kept === 0) warnings.push('AI answer was unusable; showing curated descriptions.');
+    else if (kept < SALON_DESCRIPTION_COUNT) warnings.push('AI answer was incomplete; added curated descriptions.');
+    res.json({ descriptions, source, warnings });
+  } catch (err) {
+    if (err instanceof ValidationError) return next(err);
+    console.warn('[ai] salon-descriptions handler fallback:', err.message);
+    res.json({
+      descriptions: fallbackSalonDescriptions(name, tagline, variant),
       source: 'fallback',
       warnings: ['Used local templates.'],
     });

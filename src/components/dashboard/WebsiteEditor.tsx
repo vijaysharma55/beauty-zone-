@@ -27,6 +27,7 @@ import {
   PageHeader,
   Textarea,
 } from '../ui';
+import { DescriptionSuggestions } from './DescriptionSuggestions';
 import { ImageUploader } from './ImageUploader';
 import { TaglineSuggestions } from './TaglineSuggestions';
 import { StatusBadge, WorkflowActions } from './WorkflowStatus';
@@ -295,14 +296,22 @@ export const WebsiteEditor: React.FC = () => {
               />
             </div>
           </div>
-          <Field label="About your salon" htmlFor="salon-description">
-            <Textarea
-              id="salon-description"
+          <div className="space-y-2">
+            <Field label="About your salon" htmlFor="salon-description">
+              <Textarea
+                id="salon-description"
+                value={form.description}
+                onChange={(e) => set('description', e.target.value)}
+                rows={4}
+              />
+            </Field>
+            <DescriptionSuggestions
+              salonName={form.name}
+              tagline={form.tagline}
               value={form.description}
-              onChange={(e) => set('description', e.target.value)}
-              rows={4}
+              onSelect={(description) => set('description', description)}
             />
-          </Field>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <ImageUploader
               label="Logo"

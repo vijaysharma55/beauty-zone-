@@ -1,28 +1,16 @@
 /**
- * Live-model contract for POST /api/ai/salon-taglines.
+ * Live-model contract for POST /api/ai/salon-taglines: brand taglines for a salon name.
  *
- * Boots the real API with GEMINI_API_KEY set and points the Google GenAI SDK at
- * a local stand-in for the Gemini REST API (GOOGLE_GEMINI_BASE_URL). That
- * exercises the whole path without a real key or network access:
- * request validation → prompt → SDK → HTTP → answer parsing → response.
+ * Runs against the real API with a local stand-in for the Gemini REST API
+ * (see `support/gemini-harness.js`), so no key or network access is needed.
  *
  * Run with: npm run test:ai
  */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { createServer } from 'node:http';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { buildSalonTaglinePrompt, fallbackSalonTaglines } from '../../src/lib/salonTaglines.js';
-
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const MODEL = 'gemini-test-model';
-const API_KEY = 'test-only-gemini-key';
-const OWNER = { email: 'owner@test.local', password: 'Owner@12345' };
+import { API_KEY, MODEL, promptOf, salonNameIn, startGeminiHarness } from './support/gemini-harness.js';
 
 const GOOD_ANSWER = ['Where Velvet Meets Radiance', 'Your Signature Look, Beautifully Crafted', 'Step In. Bloom Out.'];
 
@@ -41,143 +29,20 @@ const SCRIPT = {
   'Offline Studio': { status: 503, error: { code: 503, message: 'The model is overloaded.', status: 'UNAVAILABLE' } },
 };
 
-let api;
-let apiPort;
-let gemini;
-let geminiPort;
-let dataDir;
 let owner;
+let makeClient;
 /** Every request the stand-in model received. */
-const modelCalls = [];
-
-async function freePort() {
-  const server = createServer();
-  await new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', resolve);
-  });
-  const { port } = server.address();
-  await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-  return port;
-}
-
-async function waitForApi() {
-  const deadline = Date.now() + 25_000;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(`http://127.0.0.1:${apiPort}/api/health`);
-      if (response.ok) return;
-    } catch {
-      // The child process may still be starting.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error('AI test API did not start in time.');
-}
-
-/** Minimal cookie-aware JSON client. */
-function makeClient() {
-  let cookie = '';
-  return {
-    async post(endpoint, body) {
-      const response = await fetch(`http://127.0.0.1:${apiPort}${endpoint}`, {
-        method: 'POST',
-        headers: {
-          Origin: `http://127.0.0.1:${apiPort}`,
-          'X-Requested-With': 'beautyzone',
-          'Content-Type': 'application/json',
-          ...(cookie ? { Cookie: cookie } : {}),
-        },
-        body: JSON.stringify(body),
-      });
-      const session = (response.headers.getSetCookie?.() || []).map((entry) => entry.split(';')[0]).find(Boolean);
-      if (session) cookie = session;
-      const raw = await response.text();
-      let data = null;
-      try {
-        data = raw ? JSON.parse(raw) : null;
-      } catch {
-        data = raw;
-      }
-      return { status: response.status, data };
-    },
-  };
-}
-
-const promptOf = (call) => call.body?.contents?.[0]?.parts?.[0]?.text ?? '';
+let modelCalls;
+let stop;
 
 before(async () => {
-  geminiPort = await freePort();
-  apiPort = await freePort();
-  while (apiPort === geminiPort) apiPort = await freePort();
-  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'beautyzone-ai-taglines-'));
-
-  gemini = createServer(async (req, res) => {
-    let raw = '';
-    for await (const chunk of req) raw += chunk;
-    let body = null;
-    try {
-      body = raw ? JSON.parse(raw) : null;
-    } catch {
-      body = raw;
-    }
-    const call = { method: req.method, url: req.url, apiKey: req.headers['x-goog-api-key'], body };
-    modelCalls.push(call);
-
-    const salonName = /Salon Name: "([^"]*)"/.exec(promptOf(call))?.[1];
-    const reply = SCRIPT[salonName] || { text: JSON.stringify(GOOD_ANSWER) };
-    res.setHeader('Content-Type', 'application/json');
-    if (reply.error) {
-      res.writeHead(reply.status);
-      res.end(JSON.stringify({ error: reply.error }));
-      return;
-    }
-    res.writeHead(200);
-    res.end(
-      JSON.stringify({
-        candidates: [{ content: { role: 'model', parts: [{ text: reply.text }] }, finishReason: 'STOP', index: 0 }],
-        usageMetadata: { promptTokenCount: 120, candidatesTokenCount: 40, totalTokenCount: 160 },
-      })
-    );
-  });
-  await new Promise((resolve, reject) => {
-    gemini.once('error', reject);
-    gemini.listen(geminiPort, '127.0.0.1', resolve);
-  });
-
-  api = spawn(process.execPath, ['server/index.js'], {
-    cwd: ROOT,
-    env: {
-      ...process.env,
-      PORT: String(apiPort),
-      DATA_DIR: dataDir,
-      NODE_ENV: 'development',
-      DISABLE_HMR: 'true',
-      SEED_ADMIN_EMAIL: 'admin@test.local',
-      SEED_ADMIN_PASSWORD: 'Admin@12345',
-      SEED_OWNER_EMAIL: OWNER.email,
-      SEED_OWNER_PASSWORD: OWNER.password,
-      GOOGLE_CLIENT_ID: '',
-      SUPABASE_SECRET_KEY: '',
-      SUPABASE_SERVICE_ROLE_KEY: '',
-      GEMINI_API_KEY: API_KEY,
-      GEMINI_MODEL: MODEL,
-      GOOGLE_GEMINI_BASE_URL: `http://127.0.0.1:${geminiPort}`,
-    },
-    stdio: 'ignore',
-  });
-  await waitForApi();
-
-  owner = makeClient();
-  const login = await owner.post('/api/auth/login', OWNER);
-  assert.equal(login.status, 200, `owner login failed: ${JSON.stringify(login.data)}`);
+  ({ owner, makeClient, modelCalls, stop } = await startGeminiHarness(
+    (prompt) => SCRIPT[salonNameIn(prompt)] || { text: JSON.stringify(GOOD_ANSWER) }
+  ));
 });
 
 after(async () => {
-  if (api) api.kill('SIGTERM');
-  if (gemini) await new Promise((resolve) => gemini.close(resolve));
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  if (dataDir) fs.rmSync(dataDir, { recursive: true, force: true });
+  if (stop) await stop();
 });
 
 test('sends the brand-strategist prompt with the salon name filled in', async () => {

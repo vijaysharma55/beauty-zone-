@@ -23,7 +23,7 @@ import {
   isValidSalonTagline,
   normalizeSalonName,
   normalizeTaglineExclusions,
-  normalizeTaglineVariant,
+  normalizeSuggestionVariant,
   parseSalonTaglines,
 } from '../../src/lib/salonTaglines.js';
 
@@ -248,12 +248,12 @@ test('curated suggestions follow the speciality in the salon name', () => {
 });
 
 test('the "more ideas" page number is a whole number from 0 to 9999', () => {
-  assert.equal(normalizeTaglineVariant(3), 3);
-  assert.equal(normalizeTaglineVariant('2'), 2);
-  assert.equal(normalizeTaglineVariant(2.9), 2);
-  assert.equal(normalizeTaglineVariant(1e99), 9999);
+  assert.equal(normalizeSuggestionVariant(3), 3);
+  assert.equal(normalizeSuggestionVariant('2'), 2);
+  assert.equal(normalizeSuggestionVariant(2.9), 2);
+  assert.equal(normalizeSuggestionVariant(1e99), 9999);
   for (const invalid of [-1, 'abc', null, undefined, NaN, Infinity, {}, []]) {
-    assert.equal(normalizeTaglineVariant(invalid), 0, String(invalid));
+    assert.equal(normalizeSuggestionVariant(invalid), 0, String(invalid));
   }
   assertThreeValidTaglines(fallbackSalonTaglines('Beauty Zone', 1e99), 'huge variant');
 });

@@ -1,40 +1,60 @@
 # BeautyZone — Audit Changelog
 
-## PR — AI tagline suggestions for the salon Tagline field (2026-11-11)
+## PR — AI suggestions for the salon Tagline and About fields (2026-11-11)
 
-Salon owners can now ask an AI brand strategist for tagline ideas instead of starting from a blank
-field. A **Suggest taglines** button sits under the Tagline field in owner onboarding and in
-*My Website → Brand identity*; it offers three options based on the salon name, and one click puts
-the chosen line in the field, where it stays editable.
+Salon owners can now ask an AI assistant for ideas instead of starting from a blank field, in owner
+onboarding and in *My Website → Brand identity*:
+
+- **Suggest taglines**, under the Tagline field, offers three taglines based on the salon name.
+- **Suggest descriptions**, under "About your salon", offers three "About Us" drafts based on the
+  salon name and its tagline, one per tone: Elegant & Premium, Modern & Trendy, Warm &
+  Customer-Centric.
+
+One click puts the chosen option in the field, where it stays editable.
 
 ### New files
-- `src/lib/salonTaglines.js` — the rules shared by the API and the browser: the brand-strategist
-  prompt with its `{{Salon_Name}}` placeholder, validation of the model's answer and the curated
-  lines used when no model is reachable.
-- `src/components/dashboard/TaglineSuggestions.tsx` — the button and the list of options, used by
-  `OnboardingPage` and `WebsiteEditor`.
-- `server/tests/salon-taglines-unit.test.js`, `server/tests/ai-salon-taglines.test.js` — unit tests
-  for the rules, and the endpoint tested against a local stand-in for the Gemini API
-  (`npm run test:ai`).
+- `src/lib/salonTaglines.js`, `src/lib/salonDescriptions.js` — the rules shared by the API and the
+  browser: each prompt with its placeholders, validation of the model's answer and the curated
+  texts used when no model is reachable.
+- `src/components/dashboard/SuggestionPicker.tsx` — the button and the list of options, with thin
+  `TaglineSuggestions` and `DescriptionSuggestions` wrappers used by `OnboardingPage` and
+  `WebsiteEditor`.
+- `server/tests/salon-taglines-unit.test.js`, `server/tests/salon-descriptions-unit.test.js` — unit
+  tests for the rules.
+- `server/tests/ai-salon-taglines.test.js`, `server/tests/ai-salon-descriptions.test.js` — both
+  endpoints tested against a local stand-in for the Gemini API, started by
+  `server/tests/support/gemini-harness.js` (`npm run test:ai`).
 
 ### API
-- `POST /api/ai/salon-taglines` (signed-in users, rate limited): body `{ name, variant?, exclude? }`,
-  answer `{ taglines: [3 strings], source, warnings }`. See the README for the full contract.
-- The prompt is sent with the salon name in place of `{{Salon_Name}}`. The name is kept on one line
-  and inside its quotes, so it cannot add lines of its own to the prompt.
+- `POST /api/ai/salon-taglines`: body `{ name, variant?, exclude? }`, answer
+  `{ taglines: [3 strings], source, warnings }`.
+- `POST /api/ai/salon-descriptions`: body `{ name, tagline, variant? }`, answer
+  `{ descriptions: [3 strings], source, warnings }`, always in the tone order above.
+- Both are for signed-in users and share the AI rate limit. See the README for the full contracts.
+- Each prompt is sent with the form's values in place of `{{Salon_Name}}` and
+  `{{Selected_Tagline}}`. A value is kept on one line and inside its quotes, so it cannot add lines
+  of its own to the prompt or fill the other placeholder.
 - The answer must be a JSON array of three strings. Code fences, surrounding prose and cut-off JSON
-  are tolerated; duplicates, non-strings, options over 10 words and echoed "Tagline Option N"
-  examples are dropped, and any gap is filled from the curated lines.
-- Like the other AI routes it always answers `200`: without `GEMINI_API_KEY`, or when the provider
-  fails, the owner gets curated suggestions that follow the speciality in the salon name.
-- `callGemini` takes a `maxOutputTokens` option; this route uses 2048 so reasoning models have room
-  to finish the JSON. The other AI routes keep their 400-token cap.
+  are tolerated; duplicates, non-strings, options of the wrong length and echoed example values are
+  dropped.
+  - Taglines (2–10 words): any gap is filled from the curated lines.
+  - Descriptions (30–90 words accepted, 45–65 asked for): an unusable option is replaced by the
+    curated text for the same tone, so the tones never shift. Markdown and "Option 1:" labels are
+    stripped.
+- Like the other AI routes they always answer `200`: without `GEMINI_API_KEY`, or when the provider
+  fails, the owner gets curated suggestions. Curated taglines follow the speciality in the salon
+  name; curated descriptions name the salon and quote its tagline.
+- `callGemini` takes a `maxOutputTokens` option (2048 for taglines, 4096 for descriptions) so
+  reasoning models have room to finish the JSON. The other AI routes keep their 400-token cap.
 
 ### Dashboard behaviour
-- The button is disabled until the salon name has two characters, and never submits the form.
-- **More ideas** asks again and never repeats an option already shown or the tagline in use.
-- Nothing is saved by a suggestion: the owner still saves the form, and tagline changes still go
-  through super admin approval before they reach the live site.
+- The tagline button is disabled until the salon name has two characters; the description button
+  also needs a tagline, because the drafts are written around it. Neither submits the form.
+- **More ideas** asks again. For taglines it never repeats an option already shown or the tagline
+  in use.
+- Nothing is saved by a suggestion: the owner still saves the form, and changes still go through
+  super admin approval before they reach the live site.
+- If an option replaces text the owner had written, **Undo** brings that text back.
 - Keyboard and screen-reader support: focus stays on the button while ideas load, progress is
   announced through a live region, and the option in use is exposed with `aria-pressed`.
 
