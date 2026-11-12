@@ -8,7 +8,9 @@
    **same Supabase project** used by the application, and deploy the app/API
    together. Refresh the PostgREST schema cache if the new RPCs are not visible.
    The migration is included in the repository; deploying the code alone does
-   **not** apply it to a remote project.
+   **not** apply it to a remote project. If an earlier version of this migration
+   was already applied, reapply the updated, idempotent file so the local-owner
+   availability RPC is installed.
 2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` for the browser,
    and `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` for the API. Both pairs must
    point to the same project. No service-role key is sent to the browser.
@@ -25,6 +27,11 @@
   seven-day opening hours are required. Owner/manager name and phone are optional.
   At least one day must be open and closing must be after opening. A handle must
   be valid, non-reserved and available in both the legacy and Supabase catalogues.
+  A failed Supabase lookup blocks advancement and completion rather than
+  treating the address as free. The old local-only creation endpoint performs
+  the same check. The two stores are independent: these checks cannot make
+  concurrent cross-store creation atomic; a shared authoritative catalogue is
+  needed for a hard global uniqueness guarantee.
 - React Hook Form and the shared Zod schemas validate each step. The current
   section is saved before moving forward or backward; the progress indicator is
   not a navigation control. The API and database also reject forward jumps,
@@ -57,22 +64,33 @@
   owner-scoped SQLite `onboarding_drafts` table. They do not have a Supabase
   `auth.uid()` and their drafts cannot sync across devices unless their SQLite
   database is shared. Supabase identities do not silently fall back to SQLite
-  when their online session or storage is unavailable.
+  when their online session or storage is unavailable. Cookie-only owners use
+  `onboarding_slug_available_for_local`, an anonymous RPC that returns only an
+  availability flag and reason (including for unpublished handles). The API
+  limits its availability endpoint; the RPC can also be called directly with a
+  publishable key, so apply Supabase gateway rate limits where appropriate.
 
 ## Legacy dashboard boundary
 
 The owner dashboard and many other operational routes still use SQLite. On
-successful Supabase onboarding, the API mirrors the completed salon and trial
+successful Supabase onboarding, the API mirrors the completed salon and
 subscription into that existing store. If a fresh API instance has no local
-salon, it can rehydrate this **completed onboarding snapshot** from Supabase
-before serving owner routes. It does not recreate approval/publication state,
-services, staff, bookings, or other operational records, and it does not sync
-later SQLite dashboard edits back to Supabase. Do not treat this bridge as a full
-SQLite-to-Postgres migration or rely on ephemeral server storage for those other
-records. Existing SQLite-only salons are not automatically backfilled.
+salon, it first restores a completed draft; otherwise it can restore a salon
+created by the previous Supabase flow using the verified owner's bearer token.
+Legacy salons are not rejected for missing fields or reserved handles that the
+new wizard requires. An existing subscription is preserved; a missing remote
+subscription does not create a new trial. A remote suspension remains in effect.
+
+This is a **salon-profile snapshot**, not a full migration. It does not recreate
+approval/publication state, services, staff, bookings, or other operational
+records, and it does not sync later SQLite dashboard edits back to Supabase. Do
+not rely on ephemeral server storage for those other records. Existing
+SQLite-only salons are not automatically backfilled.
 
 ## Tests
 
 Run `npm run test:onboarding` for draft/recovery, SQLite API, Supabase/Postgres
 migration, serverless bridge and React wizard/upload tests. `npm run verify`
 includes these checks as well as the existing project suite and production build.
+CI installs the committed Bun lockfile with `bun install --frozen-lockfile` before
+running `npm run verify` under Node.js 22.

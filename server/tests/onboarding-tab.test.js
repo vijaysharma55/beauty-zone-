@@ -2,10 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { acquireOnboardingTab } from '../../src/lib/onboardingTab.js';
 
+/** Create session storage that can be cloned like a browser opener. */
 function storage(initial = {}) {
   const data = new Map(Object.entries(initial));
   return { getItem: (key) => data.get(key) ?? null, setItem: (key, value) => data.set(key, String(value)) };
 }
+/** Model non-blocking Web Locks so tests can detect cloned tab IDs. */
 function locks() {
   const held = new Set();
   return {

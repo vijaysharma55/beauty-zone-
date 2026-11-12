@@ -84,16 +84,13 @@ end;
 $$;
 revoke all on function private.onboarding_step_valid(jsonb, integer) from public, anon, authenticated;
 
--- Reveals only availability, not other owners' unpublished salon records.
-create or replace function public.onboarding_slug_available(p_slug text)
-returns jsonb language plpgsql security definer set search_path = '' as $$
+-- A deliberately narrow lookup: it reveals only whether a handle is occupied,
+-- including unpublished salons, never another owner's profile or salon fields.
+create or replace function private.onboarding_slug_availability(p_slug text)
+returns jsonb language plpgsql stable set search_path = '' as $$
 declare
-  uid uuid := (select auth.uid());
   available boolean;
 begin
-  if uid is null or not exists (select 1 from public.profiles where id = uid and role = 'salon_owner' and status = 'active') then
-    raise exception using errcode = '42501', message = 'Only active salon owners can check an onboarding address';
-  end if;
   if p_slug is null or p_slug !~ '^[a-z0-9][a-z0-9-]{1,58}[a-z0-9]$' or position('--' in p_slug) > 0
      or p_slug = any(array['admin','api','login','logout','register','signup','signin','dashboard','onboarding','preview','publish','settings','billing','account','salon','salons','www','app','assets','static','public','help','support','terms','privacy']) then
     return jsonb_build_object('available', false, 'reason', 'Choose a valid, non-reserved website address.');
@@ -102,8 +99,31 @@ begin
   return jsonb_build_object('available', available, 'reason', case when available then null else 'This address is already in use.' end);
 end;
 $$;
+revoke all on function private.onboarding_slug_availability(text) from public, anon, authenticated;
+
+-- Supabase owners retain the role-checked RPC used by revisioned draft saves.
+create or replace function public.onboarding_slug_available(p_slug text)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  uid uuid := (select auth.uid());
+begin
+  if uid is null or not exists (select 1 from public.profiles where id = uid and role = 'salon_owner' and status = 'active') then
+    raise exception using errcode = '42501', message = 'Only active salon owners can check an onboarding address';
+  end if;
+  return private.onboarding_slug_availability(p_slug);
+end;
+$$;
 revoke all on function public.onboarding_slug_available(text) from public, anon;
 grant execute on function public.onboarding_slug_available(text) to authenticated;
+
+-- Cookie-only legacy owners have no auth.uid(). This anonymous RPC exposes only
+-- availability, not table access or owner data. Limit direct gateway calls too.
+create or replace function public.onboarding_slug_available_for_local(p_slug text)
+returns jsonb language sql stable security definer set search_path = '' as $$
+  select private.onboarding_slug_availability(p_slug);
+$$;
+revoke all on function public.onboarding_slug_available_for_local(text) from public, authenticated;
+grant execute on function public.onboarding_slug_available_for_local(text) to anon;
 
 -- The revision comparison and upsert occur in one transaction. Direct table
 -- writes are not granted, so stale tabs cannot bypass this compare-and-swap.

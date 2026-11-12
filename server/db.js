@@ -522,6 +522,7 @@ export function safeJson(value, fallback) {
   }
 }
 
+/** Serialize a user, exposing private account identifiers only to that user. */
 export function publicUser(row, { includePrivate = false } = {}) {
   if (!row) return null;
   return {

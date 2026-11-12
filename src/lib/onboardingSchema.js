@@ -30,19 +30,23 @@ export const RESERVED_ONBOARDING_SLUGS = new Set([
   'static', 'public', 'help', 'support', 'terms', 'privacy',
 ]);
 
+/** Suggest a canonical, URL-safe salon address from a display name. */
 export function onboardingSlugify(value) {
   return String(value || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
     .replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
     .replace(/-+$/g, '');
 }
 
+/** Build a required string validator that rejects whitespace-only input. */
 const requiredText = (label, max, min = 1) => z.string().max(max, `${label} must be ${max} characters or fewer.`)
   .refine((value) => value.trim().length >= min, `${label} is required${min > 1 ? ` (at least ${min} characters)` : ''}.`);
+/** Accept common phone punctuation only when the number has 8–15 digits. */
 const phoneIsValid = (value) => {
   const text = value.trim();
   const digits = text.replace(/\D/g, '');
   return /^\+?[\d\s()-]+$/.test(text) && digits.length >= 8 && digits.length <= 15;
 };
+/** Allow public HTTP(S) URLs and the application’s local upload paths only. */
 export function isOnboardingImageUrl(value) {
   const url = String(value || '').trim();
   if (/^\/(api\/uploads|images)\/[A-Za-z0-9._-]+$/.test(url)) return true;
@@ -54,12 +58,14 @@ export function isOnboardingImageUrl(value) {
     return false;
   }
 }
+/** Validate a required branding image URL with a field-specific message. */
 const image = (label) => z.string().max(2048, `${label} URL is too long.`)
   .refine(isOnboardingImageUrl, `Upload ${label.toLowerCase()} or enter a valid http(s) image URL.`);
 const timingEntry = z.object({
   day: z.enum(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']),
   open: z.string().max(5), close: z.string().max(5), closed: z.boolean(),
 });
+/** Require unique weekdays, at least one open day, and ordered valid hours. */
 const timings = z.array(timingEntry).length(7, 'Set opening hours for all seven days.').superRefine((entries, ctx) => {
   if (new Set(entries.map((entry) => entry.day)).size !== 7) {
     ctx.addIssue({ code: 'custom', message: 'Each day must appear once.' });
@@ -116,6 +122,7 @@ export const onboardingDraftSchema = z.object({
   slugTouched: z.boolean(),
 });
 
+/** Supply a fresh, incomplete first step and independent default opening hours. */
 export function defaultOnboardingDraft(user = {}) {
   return {
     values: {

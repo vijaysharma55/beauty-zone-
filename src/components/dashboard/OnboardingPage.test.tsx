@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { defaultOnboardingDraft } from '../../lib/onboardingSchema.js';
 import { OnboardingPage } from './OnboardingPage';
 
 const fake = vi.hoisted(() => ({
@@ -10,6 +11,7 @@ const fake = vi.hoisted(() => ({
   failSave: false,
   calls: [] as any[],
   setSession: vi.fn(),
+  upload: vi.fn(),
 }));
 
 vi.mock('../../context/AuthContext', () => ({
@@ -18,6 +20,7 @@ vi.mock('../../context/AuthContext', () => ({
 vi.mock('../../lib/supabase', () => ({
   supabase: { auth: { getSession: vi.fn(async () => null) }, db: { upload: vi.fn() } },
 }));
+vi.mock('../../lib/imageUtils', () => ({ optimizeImageFile: vi.fn(async () => 'data:image/jpeg;base64,YWJj') }));
 vi.mock('../../lib/api', async () => {
   const { checkDraftTransition } = await import('../../lib/onboardingSchema.js');
   class ApiError extends Error {
@@ -29,6 +32,7 @@ vi.mock('../../lib/api', async () => {
     ApiError,
     errorMessage: (error: unknown) => error instanceof Error ? error.message : 'Something went wrong.',
     api: {
+      upload: fake.upload,
       get: async (path: string) => {
         if (path === '/salon/onboarding/draft') return { draft: fake.row ? structuredClone(fake.row) : null };
         if (path === '/public/templates') return { templates: [] };
@@ -61,6 +65,7 @@ vi.mock('../../lib/api', async () => {
   };
 });
 
+/** Mount the wizard with a dashboard destination for navigation assertions. */
 function mount() {
   return render(<MemoryRouter initialEntries={['/dashboard/onboarding']}><Routes>
     <Route path="/dashboard/onboarding" element={<OnboardingPage />} />
@@ -76,6 +81,7 @@ beforeEach(() => {
   fake.calls = [];
   fake.failSave = false;
   fake.setSession.mockReset();
+  fake.upload.mockReset();
   localStorage.clear();
   sessionStorage.clear();
   window.scrollTo = vi.fn();
@@ -161,4 +167,76 @@ describe('salon onboarding wizard', () => {
     fireEvent.click(next());
     await screen.findByRole('heading', { name: 'Location & contact' });
   });
+
+  it('keeps a removed upload from changing a conflict-restored earlier step', async () => {
+    const draft = defaultOnboardingDraft({ name: 'Owner', email: 'owner@example.com' });
+    draft.currentStep = 3;
+    draft.values = { ...draft.values, name: 'Conflict Salon', slug: 'conflict-salon', tagline: 'Glow',
+      description: 'A lovely salon', addressLine: '1 Main Road', city: 'Jaipur', state: 'Rajasthan',
+      phone: '+91 98765 43210', email: 'hello@example.com', logoUrl: 'https://example.com/original.jpg',
+      coverImage: 'https://example.com/hero.jpg' };
+    fake.row = { draft: structuredClone(draft), revision: 1, completed: false, updatedAt: new Date().toISOString() };
+    let finishUpload!: (value: { url: string }) => void;
+    const upload = new Promise<{ url: string }>((resolve) => { finishUpload = resolve; });
+    fake.upload.mockReturnValue(upload);
+    mount();
+    await screen.findByRole('heading', { name: 'Owner & branding' });
+    fireEvent.change(screen.getByLabelText('Choose salon logo file'), {
+      target: { files: [new File(['image'], 'logo.jpg', { type: 'image/jpeg' })] },
+    });
+    await waitFor(() => expect(fake.upload).toHaveBeenCalledOnce());
+    change('Owner / manager name', 'Unsynced owner');
+    const online = structuredClone(draft);
+    online.currentStep = 2;
+    online.values.logoUrl = '';
+    online.values.coverImage = '';
+    fake.row = { draft: online, revision: 2, completed: false, updatedAt: new Date().toISOString() };
+    await screen.findByText('Two different drafts need your attention', {}, { timeout: 4000 });
+    fireEvent.click(screen.getByRole('button', { name: 'Use saved online draft' }));
+    await screen.findByRole('heading', { name: 'Location & contact' });
+    await act(async () => { finishUpload({ url: '/api/uploads/too-late.jpg' }); await upload; });
+    const backup = JSON.parse(localStorage.getItem(localStorage.key(0)!)!);
+    expect(backup.draft.values.logoUrl).toBe('');
+    expect(backup.draft.currentStep).toBe(2);
+    await waitFor(() => expect(next().disabled).toBe(false));
+    fireEvent.click(next());
+    await screen.findByRole('heading', { name: 'Owner & branding' });
+    expect(fake.row.draft.values.logoUrl).toBe('');
+    expect((byLabel('Salon logo URL') as HTMLInputElement).value).toBe('');
+  });
+
+
+  it('ignores an old upload after a same-step draft replacement and accepts a new one', async () => {
+    const draft = defaultOnboardingDraft({ name: 'Owner', email: 'owner@example.com' });
+    draft.currentStep = 3;
+    draft.values = { ...draft.values, name: 'Conflict Salon', slug: 'conflict-salon', tagline: 'Glow',
+      description: 'A lovely salon', addressLine: '1 Main Road', city: 'Jaipur', state: 'Rajasthan',
+      phone: '+91 98765 43210', email: 'hello@example.com', logoUrl: 'https://example.com/original.jpg',
+      coverImage: 'https://example.com/hero.jpg' };
+    fake.row = { draft: structuredClone(draft), revision: 1, completed: false, updatedAt: new Date().toISOString() };
+    let finishOldUpload!: (value: { url: string }) => void;
+    const oldUpload = new Promise<{ url: string }>((resolve) => { finishOldUpload = resolve; });
+    fake.upload.mockReturnValueOnce(oldUpload).mockResolvedValueOnce({ url: '/api/uploads/new.jpg' });
+    mount();
+    await screen.findByRole('heading', { name: 'Owner & branding' });
+    fireEvent.change(screen.getByLabelText('Choose salon logo file'), {
+      target: { files: [new File(['old'], 'old.jpg', { type: 'image/jpeg' })] },
+    });
+    await waitFor(() => expect(fake.upload).toHaveBeenCalledTimes(1));
+    change('Owner / manager name', 'Unsynced owner');
+    const online = structuredClone(draft);
+    online.values.logoUrl = 'https://example.com/restored.jpg';
+    fake.row = { draft: online, revision: 2, completed: false, updatedAt: new Date().toISOString() };
+    await screen.findByText('Two different drafts need your attention', {}, { timeout: 4000 });
+    fireEvent.click(screen.getByRole('button', { name: 'Use saved online draft' }));
+    await waitFor(() => expect((byLabel('Salon logo URL') as HTMLInputElement).value).toBe('https://example.com/restored.jpg'));
+    await act(async () => { finishOldUpload({ url: '/api/uploads/stale.jpg' }); await oldUpload; });
+    expect((byLabel('Salon logo URL') as HTMLInputElement).value).toBe('https://example.com/restored.jpg');
+    fireEvent.change(screen.getByLabelText('Choose salon logo file'), {
+      target: { files: [new File(['new'], 'new.jpg', { type: 'image/jpeg' })] },
+    });
+    await waitFor(() => expect((byLabel('Salon logo URL') as HTMLInputElement).value).toBe('/api/uploads/new.jpg'));
+    expect(fake.upload).toHaveBeenCalledTimes(2);
+  });
+
 });

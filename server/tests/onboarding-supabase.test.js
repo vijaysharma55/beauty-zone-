@@ -18,6 +18,7 @@ before(async () => {
       select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
     $$;
     grant usage on schema auth, public to authenticated;
+    grant usage on schema public to anon;
     grant execute on function auth.uid() to authenticated;
     create table public.profiles(id uuid primary key, email text, name text, role text, status text);
     grant select on public.profiles to authenticated;
@@ -47,10 +48,13 @@ before(async () => {
 });
 after(async () => { await pg?.close(); });
 
+/** Emulate an authenticated PostgREST request for the given owner. */
 async function asUser(user) {
   await pg.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${user}', false);`);
 }
+/** Restore the test database’s privileged setup role. */
 async function root() { await pg.exec('reset role'); }
+/** Invoke the actual revision-checked PostgreSQL save RPC. */
 async function save(draft, revision) {
   const data = { values: draft.values, slugTouched: draft.slugTouched };
   const result = await pg.query('select public.save_onboarding_draft($1::jsonb, $2, $3) as row', [JSON.stringify(data), draft.currentStep, revision]);
@@ -78,6 +82,18 @@ test('Supabase migration enforces owner isolation, linear saved steps and idempo
   await asUser(OWNER);
   const hidden = await pg.query("select public.onboarding_slug_available('hidden-draft') as availability");
   assert.equal(hidden.rows[0].availability.available, false, 'unpublished salons still reserve their slug');
+  await root();
+  await pg.exec("set role anon; select set_config('request.jwt.claim.sub', '', false)");
+  const localHidden = await pg.query("select public.onboarding_slug_available_for_local('hidden-draft') as availability");
+  assert.equal(localHidden.rows[0].availability.available, false, 'cookie-only owners also see unpublished reservations');
+  assert.deepEqual(Object.keys(localHidden.rows[0].availability).sort(), ['available', 'reason']);
+  assert.equal((await pg.query("select public.onboarding_slug_available_for_local('fresh-studio') as availability")).rows[0].availability.available, true);
+  assert.equal((await pg.query("select public.onboarding_slug_available_for_local('admin') as availability")).rows[0].availability.available, false);
+  await assert.rejects(() => pg.query("select public.onboarding_slug_available('hidden-draft')"), /permission denied/i);
+  await assert.rejects(() => pg.query('select * from public.salons'), /permission denied/i);
+  await assert.rejects(() => pg.query("select private.onboarding_slug_availability('hidden-draft')"), /permission denied/i);
+  await root();
+  await asUser(OWNER);
 
   draft = update(draft, { name: 'Rose Studio', slug: 'rose-studio', tagline: 'A little more glow', description: 'A welcoming salon for everyone.' });
   row = await save(draft, 1);

@@ -16,10 +16,12 @@ export function onboardingSupabaseContext(req) {
     : null;
 }
 
+/** Strip transport-only fields before persisting a draft. */
 function storageData(draft) {
   return { values: draft.values, slugTouched: draft.slugTouched };
 }
 
+/** Parse either SQLite or Supabase rows into the shared revisioned contract. */
 function deserialize(row) {
   if (!row) return null;
   let data;
@@ -35,6 +37,7 @@ function deserialize(row) {
   };
 }
 
+/** Map revision conflicts and missing schema objects to actionable API errors. */
 function translateSupabaseError(error) {
   if (error?.code === '40001' || /ONBOARDING_CONFLICT/i.test(error?.message || '')) {
     return new HttpError(409, 'Your saved draft changed in another session.', 'ONBOARDING_CONFLICT');
@@ -48,6 +51,7 @@ function translateSupabaseError(error) {
   return error;
 }
 
+/** Read only the current owner’s draft from the appropriate durable store. */
 export async function readOnboardingDraft(req, context = onboardingSupabaseContext(req)) {
   if (!context) {
     return deserialize(db.prepare('SELECT * FROM onboarding_drafts WHERE owner_id = ?').get(req.user.id));
@@ -67,15 +71,27 @@ export async function onboardingSlugAvailability(req, rawSlug, context = onboard
   catch (error) { return { available: false, reason: error.message }; }
   if (slug !== raw || raw.includes('--')) return { available: false, reason: 'Use lowercase letters, numbers and single hyphens.' };
   if (findSalonBySlug(slug)) return { available: false, reason: 'This address is already in use.' };
-  if (context) {
-    try {
-      const result = await rpc(context, 'onboarding_slug_available', { p_slug: slug });
-      if (!result?.available) return { available: false, reason: result?.reason || 'This address is already in use.' };
-    } catch (error) { throw translateSupabaseError(error); }
+  try {
+    // A cookie-only owner has no Supabase JWT. Use the narrow anonymous RPC,
+    // not an RLS-filtered salon SELECT that would miss unpublished salons.
+    const endpoint = context ? 'onboarding_slug_available' : 'onboarding_slug_available_for_local';
+    const result = await rpc(context, endpoint, { p_slug: slug });
+    if (typeof result?.available !== 'boolean') {
+      throw new HttpError(503, 'Could not check this website address. Please retry.', 'ONBOARDING_CONNECTION');
+    }
+    if (!result.available) return { available: false, reason: result.reason || 'This address is already in use.' };
+  } catch (error) {
+    const translated = translateSupabaseError(error);
+    if (translated !== error || error instanceof HttpError) throw translated;
+    if (!context || !Number.isInteger(error?.status) || error.status >= 500) {
+      throw new HttpError(503, 'Could not check this website address. Please retry.', 'ONBOARDING_CONNECTION');
+    }
+    throw error;
   }
   return { available: true, reason: null };
 }
 
+/** Validate ordered edits and upsert them with an expected revision. */
 export async function saveOnboardingDraft(req, input, context = onboardingSupabaseContext(req)) {
   const parsed = onboardingDraftSchema.safeParse(input?.draft);
   const expectedRevision = input?.expectedRevision;

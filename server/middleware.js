@@ -142,9 +142,9 @@ export function loadSession(req, res, next) {
         req.user = localUser;
         req.authMethod = cookieUser ? 'cookie+bearer' : 'bearer';
         req.supabaseIdentity = verified;
-        // The legacy owner API uses SQLite. A fresh serverless instance can
-        // rebuild its completed onboarding mirror from Supabase before serving
-        // owner routes; incomplete drafts never unlock those routes.
+        // The SQLite owner API can restore a completed onboarding or an
+        // existing legacy Supabase salon on a fresh instance. An incomplete
+        // draft by itself never unlocks owner routes.
         const needsSalon = (req.path === '/api/auth/me' ||
           (req.path.startsWith('/api/salon') && !req.path.startsWith('/api/salon/onboarding')));
         if (needsSalon && verified.role === 'salon_owner' && !findSalonByOwner(localUser.id)) {

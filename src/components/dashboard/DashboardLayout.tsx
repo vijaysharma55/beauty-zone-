@@ -41,6 +41,7 @@ const navItems = [
   { to: '/dashboard/account', label: 'Account & Security', icon: Settings },
 ];
 
+/** Route owners through setup and show the post-onboarding welcome notice. */
 export const DashboardLayout: React.FC = () => {
   const { user, salon, subscription, workflow, logout } = useAuth();
   const navigate = useNavigate();

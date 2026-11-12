@@ -17,6 +17,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { startOnboardingSlugMock } from './support/onboarding-slug-mock.js';
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -31,6 +32,7 @@ const ORIGIN = BASE;
 const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'beautyzone-approval-rbac-'));
 
 let child;
+let supabaseSlug;
 
 async function waitForServer() {
   const deadline = Date.now() + 25_000;
@@ -47,6 +49,7 @@ async function waitForServer() {
 }
 
 before(async () => {
+  supabaseSlug = await startOnboardingSlugMock();
   child = spawn(process.execPath, ['server/index.js'], {
     cwd: ROOT,
     env: {
@@ -60,6 +63,8 @@ before(async () => {
       SEED_OWNER_EMAIL: 'owner@test.local',
       SEED_OWNER_PASSWORD: 'Owner@12345',
       GOOGLE_CLIENT_ID: '',
+      SUPABASE_URL: supabaseSlug.url,
+      SUPABASE_PUBLISHABLE_KEY: 'test-publishable-key',
       SUPABASE_SECRET_KEY: '',
       SUPABASE_SERVICE_ROLE_KEY: '',
     },
@@ -72,6 +77,7 @@ after(async () => {
   if (child) child.kill('SIGTERM');
   await new Promise((resolve) => setTimeout(resolve, 500));
   fs.rmSync(TMP_DATA, { recursive: true, force: true });
+  await supabaseSlug?.close();
 });
 
 function makeClient() {

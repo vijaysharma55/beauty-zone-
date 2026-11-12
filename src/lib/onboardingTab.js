@@ -1,3 +1,4 @@
+/** Generate a per-tab identifier even on browsers without randomUUID. */
 const newId = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 /**
@@ -15,9 +16,11 @@ export async function acquireOnboardingTab(userId) {
     storage = window.sessionStorage;
     existing = storage.getItem(key) || '';
   } catch { /* Per-page IDs still protect other tabs. */ }
+  /** Retain a tab ID across reloads when session storage is available. */
   const remember = (id) => {
     try { storage?.setItem(key, id); } catch { /* Recovery can use the backup scan. */ }
   };
+  /** Use a fresh page ID if a persistent tab lock cannot be acquired. */
   const fallback = () => {
     const id = newId();
     remember(id);

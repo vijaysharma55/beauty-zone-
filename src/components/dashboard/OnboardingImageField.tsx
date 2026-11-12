@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AlertCircle, ImagePlus, Loader2, Upload } from 'lucide-react';
 import type { UseFormRegisterReturn } from 'react-hook-form';
 import { api } from '../../lib/api';
@@ -40,6 +40,7 @@ export async function uploadOnboardingImage(file: File, kind: 'logo' | 'cover', 
   return result.url;
 }
 
+/** Upload a branding image only while its field and draft generation are current. */
 export const OnboardingImageField: React.FC<{
   id: string;
   label: string;
@@ -51,24 +52,40 @@ export const OnboardingImageField: React.FC<{
   error?: string;
   onUploaded: (url: string) => void;
   onUploadingChange: (uploading: boolean) => void;
-}> = ({ id, label, kind, value, ownerEmail, ownerSupabaseId, registration, error, onUploaded, onUploadingChange }) => {
+  isDraftCurrent: () => boolean;
+}> = ({ id, label, kind, value, ownerEmail, ownerSupabaseId, registration, error, onUploaded, onUploadingChange, isDraftCurrent }) => {
   const fileRef = useRef<HTMLInputElement>(null);
+  const uploadId = useRef(0);
+  const uploadingChangeRef = useRef(onUploadingChange);
+  uploadingChangeRef.current = onUploadingChange;
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
 
+  useEffect(() => () => {
+    // A conflict can remove this field while its upload is still in flight.
+    uploadId.current += 1;
+    uploadingChangeRef.current(false);
+  }, []);
+
+  /** Ignore late results from an unmounted field, replaced draft, or newer upload. */
   const upload = async (file?: File) => {
-    if (!file) return;
+    if (!file || !isDraftCurrent()) return;
+    const id = ++uploadId.current;
+    const isCurrent = () => uploadId.current === id && isDraftCurrent();
     setUploadError('');
     setUploading(true);
     onUploadingChange(true);
     try {
-      onUploaded(await uploadOnboardingImage(file, kind, ownerEmail, ownerSupabaseId));
+      const url = await uploadOnboardingImage(file, kind, ownerEmail, ownerSupabaseId);
+      if (isCurrent()) onUploaded(url);
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : 'Could not upload that image. Please try again.');
+      if (isCurrent()) setUploadError(err instanceof Error ? err.message : 'Could not upload that image. Please try again.');
     } finally {
-      setUploading(false);
-      onUploadingChange(false);
-      if (fileRef.current) fileRef.current.value = '';
+      if (isCurrent()) {
+        setUploading(false);
+        onUploadingChange(false);
+        if (fileRef.current) fileRef.current.value = '';
+      }
     }
   };
 

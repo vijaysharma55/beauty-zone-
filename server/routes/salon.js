@@ -272,6 +272,7 @@ salonRouter.post('/onboarding/complete', asyncHandler(async (req, res) => {
 // validated, revisioned /onboarding/complete endpoint above.
 salonRouter.post(
   '/onboarding',
+  onboardingSlugLimiter,
   asyncHandler(async (req, res) => {
     if (req.supabaseIdentity || req.user.supabase_uid) {
       throw new HttpError(409, 'Complete the saved salon setup first.', 'ONBOARDING_REQUIRED');
@@ -283,6 +284,9 @@ salonRouter.post(
     const name = str(req.body?.name, { min: 2, max: 120, field: 'Salon name', required: true });
     const slug = slugFromBody(req.body?.slug || req.body?.name);
     assertSlugAvailable(slug);
+    // The legacy single-submit route must not bypass the cross-store check.
+    const availability = await onboardingSlugAvailability(req, slug, null);
+    if (!availability.available) throw new HttpError(409, availability.reason, 'ONBOARDING_SLUG_TAKEN');
 
     const id = newId();
     const ts = nowIso();

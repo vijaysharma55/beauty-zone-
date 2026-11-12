@@ -177,6 +177,7 @@ export const Badge: React.FC<{ tone?: BadgeTone; children: React.ReactNode; clas
   </span>
 );
 
+/** Present concise feedback using an accessible semantic color tone. */
 export const Alert: React.FC<{ tone?: 'error' | 'success' | 'info' | 'warning'; children: React.ReactNode }> = ({
   tone = 'info',
   children,

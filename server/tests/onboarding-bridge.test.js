@@ -22,7 +22,7 @@ before(async () => {
     for await (const chunk of req) chunks.push(chunk);
     const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : {};
     const url = new URL(req.url, 'http://fake');
-    calls.push({ path: url.pathname, body, authorization: req.headers.authorization });
+    calls.push({ path: url.pathname, query: url.searchParams.toString(), body, authorization: req.headers.authorization });
     res.setHeader('content-type', 'application/json');
     const send = (code, data) => { res.statusCode = code; res.end(JSON.stringify(data)); };
     if (req.headers.authorization !== `Bearer ${token}`) return send(401, { message: 'Bad token' });
@@ -32,6 +32,8 @@ before(async () => {
     });
     if (url.pathname === '/rest/v1/profiles') return send(200, [{ id: uid, email: 'bridge@example.test', name: 'Bridge Owner', role: 'salon_owner', status: 'active', email_verified: true }]);
     if (url.pathname === '/rest/v1/onboarding_profiles') return send(200, row ? [row] : []);
+    if (url.pathname === '/rest/v1/salons') return send(200, salon ? [salon] : []);
+    if (url.pathname === '/rest/v1/subscriptions') return send(200, subscription ? [subscription] : []);
     if (url.pathname === '/rest/v1/rpc/onboarding_slug_available') return send(200, { available: !salon || salon.slug !== body.p_slug, reason: null });
     if (url.pathname === '/rest/v1/rpc/save_onboarding_draft') {
       if ((row?.revision || 0) !== body.p_expected_revision) return send(409, { code: '40001', message: 'ONBOARDING_CONFLICT' });
@@ -66,6 +68,7 @@ after(async () => {
   dirs.forEach((dir) => fs.rmSync(dir, { recursive: true, force: true }));
 });
 
+/** Start a fresh SQLite API instance against the fake Supabase service. */
 async function boot() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bz-bridge-'));
   dirs.push(dir);
@@ -83,6 +86,7 @@ async function boot() {
   }
   throw new Error('Bridge test server failed to start');
 }
+/** Send an authenticated owner request to a bridge test instance. */
 async function request(base, method, route, body) {
   const res = await fetch(`${base}${route}`, {
     method, headers: { Origin: base, 'X-Requested-With': 'beautyzone', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -124,6 +128,8 @@ test('Supabase draft upserts and atomic completion bridge into a fresh owner API
   assert.equal((await withoutToken.json()).code, 'ONBOARDING_CONNECTION');
   const staleToken = await fetch(`${base}/api/salon/onboarding/draft`, { headers: { ...cookieHeaders, Authorization: 'Bearer invalid-token' } });
   assert.equal(staleToken.status, 503);
+  const noSessionSlug = await fetch(`${base}/api/salon/onboarding/slug-available?slug=durable-studio`, { headers: cookieHeaders });
+  assert.equal(noSessionSlug.status, 503, 'a linked owner cannot fall back to anonymous onboarding');
   const localUpload = await fetch(`${base}/api/salon/uploads?kind=logo`, {
     method: 'POST', headers: { ...cookieHeaders, 'Content-Type': 'image/png' },
     body: Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'),
@@ -143,6 +149,7 @@ test('Supabase draft upserts and atomic completion bridge into a fresh owner API
   assert.equal((await oldEndpoint.json()).code, 'ONBOARDING_REQUIRED');
 
   let revision = 0;
+  /** Save the next wizard snapshot and retain its acknowledged revision. */
   async function save() {
     const result = await request(base, 'PUT', '/api/salon/onboarding/draft', { draft, expectedRevision: revision });
     assert.equal(result.status, 200, JSON.stringify(result.data));
@@ -173,4 +180,67 @@ test('Supabase draft upserts and atomic completion bridge into a fresh owner API
   const session = await request(freshBase, 'POST', '/api/auth/supabase-session', { accessToken: token });
   assert.equal(session.status, 200);
   assert.equal(session.data.salon.id, salonId);
+});
+
+test('a previous Supabase salon restores without a completed draft or new wizard fields', async () => {
+  row = null;
+  const now = '2026-01-10T00:00:00.000Z';
+  salon = {
+    id: salonId, owner_id: uid, name: 'Old Studio', slug: 'admin', tagline: '', description: '',
+    logo_url: '', cover_image: '', gallery: ['https://example.test/gallery.jpg'],
+    phone: '', email: 'old@example.test', address_line: '', city: '', state: '',
+    whatsapp: '9876543210', instagram: 'https://example.test/old-studio', hero_title: 'Original headline',
+    theme: { accent: '#123456' }, timings: [], template_id: 'luxe', owner_name: 'Original Owner',
+    onboarding_completed: true, website_published: true, status: 'approved',
+    suspended: true, suspended_reason: 'Review pending', suspended_at: now, created_at: now, updated_at: now,
+  };
+  subscription = { id: subscriptionId, salon_id: salonId, plan: 'pro', status: 'active', current_period_end: '2027-01-10T00:00:00.000Z', created_at: now, updated_at: now };
+  const beforeCalls = calls.length;
+  const base = await boot();
+  const session = await request(base, 'POST', '/api/auth/supabase-session', { accessToken: token });
+  assert.equal(session.status, 200, JSON.stringify(session.data));
+  assert.equal(session.data.onboardingRequired, false);
+  assert.equal(session.data.salon.id, salonId);
+  assert.equal(session.data.salon.slug, 'admin', 'a legacy reserved slug is preserved');
+  assert.equal(session.data.salon.tagline, '', 'old optional fields do not fail new validation');
+  assert.deepEqual(session.data.salon.timings, []);
+  assert.deepEqual(session.data.salon.gallery, ['https://example.test/gallery.jpg']);
+  assert.equal(session.data.salon.whatsapp, '9876543210');
+  assert.equal(session.data.salon.heroTitle, 'Original headline');
+  assert.equal(session.data.salon.status, 'draft');
+  assert.equal(session.data.salon.published, false, 'unreviewed SQLite mirrors cannot be published');
+  assert.equal(session.data.salon.suspended, true, 'a remote suspension is not silently lifted');
+  assert.equal(session.data.subscription.status, 'active');
+  assert.equal(session.data.subscription.plan, 'pro');
+  assert.equal(session.data.subscription.currentPeriodEnd, '2027-01-10T00:00:00.000Z');
+  assert.ok(calls.slice(beforeCalls).some((call) => call.path === '/rest/v1/salons'
+    && new URLSearchParams(call.query).get('owner_id') === `eq.${uid}` && call.authorization === `Bearer ${token}`));
+  assert.ok(!calls.slice(beforeCalls).some((call) => call.path === '/rest/v1/rpc/complete_salon_onboarding'));
+  const normalApi = await request(base, 'GET', '/api/salon');
+  assert.equal(normalApi.data.salon.id, salonId);
+});
+
+test('an incomplete draft does not hide a legacy salon or manufacture a missing subscription', async () => {
+  const initial = defaultOnboardingDraft();
+  row = { user_id: uid, data: { values: initial.values, slugTouched: false }, current_step: 1, revision: 1, completed: false };
+  salon = { id: salonId, owner_id: uid, name: 'Earlier Salon', slug: 'earlier-salon', timings: [], created_at: '2026-01-01T00:00:00Z' };
+  subscription = null;
+  const base = await boot();
+  const response = await request(base, 'GET', '/api/salon');
+  assert.equal(response.status, 200, JSON.stringify(response.data));
+  assert.equal(response.data.salon.id, salonId);
+  assert.equal(response.data.salon.onboardingCompleted, true);
+  assert.equal(response.data.subscription, null);
+  assert.equal(row.completed, false, 'the old salon is restored without rewriting the unfinished draft');
+});
+
+test('a row not owned by the verified Supabase identity is never mirrored', async () => {
+  row = null;
+  subscription = null;
+  // Simulate a misbehaving data service returning another owner despite the filter.
+  salon = { id: salonId, owner_id: '22222222-2222-4222-8222-222222222222', name: 'Other', slug: 'other-salon' };
+  const base = await boot();
+  const response = await request(base, 'GET', '/api/salon');
+  assert.equal(response.status, 503, 'a mismatched row fails closed');
+  assert.equal(response.data.salon, undefined);
 });

@@ -51,6 +51,7 @@ const stepDescriptions = [
   'Choose your starting look and set your weekly hours.',
 ];
 
+/** Guide an owner through validated, revisioned salon setup and recovery. */
 export const OnboardingPage: React.FC = () => {
   const { user, setSession } = useAuth();
   const navigate = useNavigate();
@@ -70,6 +71,8 @@ export const OnboardingPage: React.FC = () => {
   const [slugRetry, setSlugRetry] = useState(0);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState({ logo: false, cover: false });
+  const [draftGeneration, setDraftGeneration] = useState(0);
+  const draftGenerationRef = useRef(0);
   const [restoreError, setRestoreError] = useState('');
   const [toast, setToast] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
   const syncRef = useRef<OnboardingDraftSync | null>(null);
@@ -97,7 +100,9 @@ export const OnboardingPage: React.FC = () => {
     let cancelled = false;
     let releaseTab = () => {};
     let sync: OnboardingDraftSync | null = null;
+    /** Retry saved edits after connectivity returns, without resolving conflicts automatically. */
     const onOnline = () => { if (sync?.ready && !sync.conflict) void sync.flush().catch(() => {}); };
+    /** Flush pending edits when the owner backgrounds the tab. */
     const onVisibility = () => {
       if (document.visibilityState === 'hidden' && sync?.ready && !sync.conflict) void sync.flush().catch(() => {});
     };
@@ -117,6 +122,11 @@ export const OnboardingPage: React.FC = () => {
         remote: remoteDraft,
         onState: (state: SyncState) => setSyncState(state),
         onDraft: (draft: Draft) => {
+          // Invalidate upload results synchronously, before React unmounts or
+          // re-renders fields for the newly restored draft.
+          draftGenerationRef.current += 1;
+          setDraftGeneration(draftGenerationRef.current);
+          setUploading({ logo: false, cover: false });
           applyingRef.current = true;
           stepRef.current = draft.currentStep;
           slugTouchedRef.current = draft.slugTouched;
@@ -175,6 +185,7 @@ export const OnboardingPage: React.FC = () => {
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [slug, slugRetry, syncState.status === 'loading', syncState.status === 'load-error', syncState.status === 'completed']);
 
+  /** Clear the completed backup and carry a one-time notice through redirects. */
   const openDashboard = (result: { salon: Salon; subscription: MembershipPlan | null }) => {
     syncRef.current?.clearBackup();
     // The dashboard guard may redirect while the auth state and router update
@@ -184,6 +195,7 @@ export const OnboardingPage: React.FC = () => {
     setSession({ salon: result.salon, subscription: result.subscription, workflow: null });
   };
 
+  /** Retry idempotent completion when an already-finished draft is reopened. */
   const restoreCompleted = async () => {
     const sync = syncRef.current;
     if (!sync?.completed || restoringRef.current) return;
@@ -211,12 +223,16 @@ export const OnboardingPage: React.FC = () => {
   const slugAvailable = availability.slug === slug && availability.status === 'available';
   const stepValid = Boolean(values && onboardingStepSchemas[step - 1].safeParse(values).success);
   const imageUploading = uploading.logo || uploading.cover;
+  /** Prevent a replaced draft’s image callbacks from updating the new form. */
+  const isImageDraftCurrent = () => draftGenerationRef.current === draftGeneration;
   const canContinue = stepValid && (step !== 1 && step !== 4 || slugAvailable) && !busy && !imageUploading && syncState.status !== 'conflict';
+  /** Extract a displayable validation message for a wizard field. */
   const fieldError = (field: keyof Values) => {
     const error = errors[field];
     return error && typeof error.message === 'string' ? error.message : undefined;
   };
 
+  /** Validate the current section, save it, and transition or complete setup. */
   const goNext = async () => {
     if (busy || imageUploading || syncState.status === 'conflict') return;
     const valid = await trigger(ONBOARDING_STEPS[step - 1].fields as (keyof Values)[]);
@@ -256,6 +272,7 @@ export const OnboardingPage: React.FC = () => {
     }
   };
 
+  /** Save the current section before returning to the preceding one. */
   const goBack = async () => {
     if (busy || imageUploading || step <= 1) return;
     const sync = syncRef.current;
@@ -268,6 +285,7 @@ export const OnboardingPage: React.FC = () => {
     finally { setBusy(false); }
   };
 
+  /** Retry initial loading or an interrupted save without replacing a backup. */
   const retrySave = async () => {
     const sync = syncRef.current;
     if (!sync) return;
@@ -277,6 +295,7 @@ export const OnboardingPage: React.FC = () => {
     } catch (err) { showToast(errorMessage(err), 'error'); }
   };
 
+  /** Apply the owner’s explicit online-versus-device recovery choice. */
   const resolveConflict = async (choice: 'local' | 'remote') => {
     if (!syncRef.current) return;
     setBusy(true);
@@ -395,8 +414,22 @@ export const OnboardingPage: React.FC = () => {
                   <Field label="Owner contact number" htmlFor="ownerPhone" hint="Optional" error={fieldError('ownerPhone')}><Input {...register('ownerPhone')} id="ownerPhone" maxLength={40} placeholder="+91 98000 12345" inputMode="tel" aria-invalid={Boolean(fieldError('ownerPhone'))} /></Field>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <OnboardingImageField id="logoUrl" label="Salon logo" kind="logo" value={values.logoUrl} ownerEmail={user?.email || ''} ownerSupabaseId={user?.supabaseUserId} registration={register('logoUrl')} error={fieldError('logoUrl')} onUploaded={(url) => setValue('logoUrl', url, { shouldDirty: true, shouldTouch: true, shouldValidate: true })} onUploadingChange={(value) => setUploading((prev) => ({ ...prev, logo: value }))} />
-                  <OnboardingImageField id="coverImage" label="Hero image" kind="cover" value={values.coverImage} ownerEmail={user?.email || ''} ownerSupabaseId={user?.supabaseUserId} registration={register('coverImage')} error={fieldError('coverImage')} onUploaded={(url) => setValue('coverImage', url, { shouldDirty: true, shouldTouch: true, shouldValidate: true })} onUploadingChange={(value) => setUploading((prev) => ({ ...prev, cover: value }))} />
+                  <OnboardingImageField
+                    key={`logo:${draftGeneration}`} id="logoUrl" label="Salon logo" kind="logo"
+                    value={values.logoUrl} ownerEmail={user?.email || ''} ownerSupabaseId={user?.supabaseUserId}
+                    registration={register('logoUrl')} error={fieldError('logoUrl')}
+                    isDraftCurrent={isImageDraftCurrent}
+                    onUploaded={(url) => setValue('logoUrl', url, { shouldDirty: true, shouldTouch: true, shouldValidate: true })}
+                    onUploadingChange={(value) => { if (isImageDraftCurrent()) setUploading((prev) => ({ ...prev, logo: value })); }}
+                  />
+                  <OnboardingImageField
+                    key={`cover:${draftGeneration}`} id="coverImage" label="Hero image" kind="cover"
+                    value={values.coverImage} ownerEmail={user?.email || ''} ownerSupabaseId={user?.supabaseUserId}
+                    registration={register('coverImage')} error={fieldError('coverImage')}
+                    isDraftCurrent={isImageDraftCurrent}
+                    onUploaded={(url) => setValue('coverImage', url, { shouldDirty: true, shouldTouch: true, shouldValidate: true })}
+                    onUploadingChange={(value) => { if (isImageDraftCurrent()) setUploading((prev) => ({ ...prev, cover: value })); }}
+                  />
                 </div>
               </>}
 
