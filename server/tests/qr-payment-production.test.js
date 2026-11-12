@@ -2,6 +2,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { startOnboardingSlugMock } from './support/onboarding-slug-mock.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -9,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 let instance;
+let supabaseSlug;
 let ownerA;
 let ownerB;
 let admin;
@@ -61,11 +63,12 @@ async function login(email, password) {
 }
 
 before(async () => {
+  supabaseSlug = await startOnboardingSlugMock();
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'beautyzone-qr-production-'));
   const port = 7000 + Math.floor(Math.random() * 500);
   const child = spawn(process.execPath, ['server/index.js'], {
     cwd: ROOT,
-    env: { ...process.env, PORT: String(port), DATA_DIR: dataDir, DISABLE_HMR: 'true', NODE_ENV: 'development', PAYMENT_MODE: 'mock', GOOGLE_CLIENT_ID: '', GEMINI_API_KEY: '', SEED_ADMIN_EMAIL: 'admin@qr.test', SEED_ADMIN_PASSWORD: 'Admin@12345', SEED_OWNER_EMAIL: 'a@qr.test', SEED_OWNER_PASSWORD: 'Owner@12345' },
+    env: { ...process.env, SUPABASE_URL: supabaseSlug.url, SUPABASE_PUBLISHABLE_KEY: 'test-publishable-key', PORT: String(port), DATA_DIR: dataDir, DISABLE_HMR: 'true', NODE_ENV: 'development', PAYMENT_MODE: 'mock', GOOGLE_CLIENT_ID: '', GEMINI_API_KEY: '', SEED_ADMIN_EMAIL: 'admin@qr.test', SEED_ADMIN_PASSWORD: 'Admin@12345', SEED_OWNER_EMAIL: 'a@qr.test', SEED_OWNER_PASSWORD: 'Owner@12345' },
     stdio: 'ignore',
   });
   instance = { child, dataDir, port };
@@ -88,6 +91,7 @@ after(async () => {
   instance?.child.kill('SIGTERM');
   await new Promise((r) => setTimeout(r, 300));
   if (instance?.dataDir) fs.rmSync(instance.dataDir, { recursive: true, force: true });
+  await supabaseSlug?.close();
 });
 
 test('QR upload validates content and activation requires explicit confirmation', async () => {

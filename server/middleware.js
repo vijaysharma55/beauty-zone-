@@ -1,6 +1,7 @@
 import { db, findUserById, findSalonByOwner, nowIso } from './db.js';
 import { parseCookies, hashToken, SESSION_COOKIE, HttpError } from './security.js';
 import { verifySupabaseAccessToken, syncLocalUser } from './supabase-auth.js';
+import { restoreOnboardingMirror } from './onboarding-mirror.js';
 import { isAdminRole } from './roles.js';
 
 /* Security headers applied to every response. */
@@ -141,6 +142,19 @@ export function loadSession(req, res, next) {
         req.user = localUser;
         req.authMethod = cookieUser ? 'cookie+bearer' : 'bearer';
         req.supabaseIdentity = verified;
+        // The SQLite owner API can restore a completed onboarding or an
+        // existing legacy Supabase salon on a fresh instance. An incomplete
+        // draft by itself never unlocks owner routes.
+        const needsSalon = (req.path === '/api/auth/me' ||
+          (req.path.startsWith('/api/salon') && !req.path.startsWith('/api/salon/onboarding')));
+        if (needsSalon && verified.role === 'salon_owner' && !findSalonByOwner(localUser.id)) {
+          try {
+            await restoreOnboardingMirror(req, { token: bearer, id: verified.identityId });
+          } catch (error) {
+            req.onboardingRestoreError = error;
+            console.warn('[onboarding] could not restore salon mirror:', error.message);
+          }
+        }
       } else {
         // Phone-only customer session: keep any existing cookie identity.
         req.user = cookieUser;

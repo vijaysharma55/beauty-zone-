@@ -37,6 +37,7 @@ import { verifyGoogleIdToken, googleConfigured } from '../google.js';
 import { sendMail, verificationEmail, passwordResetEmail } from '../mailer.js';
 import { workflowInfo } from '../workflow.js';
 import { verifySupabaseAccessToken, syncLocalUser, forgetVerifiedToken } from '../supabase-auth.js';
+import { restoreOnboardingMirror } from '../onboarding-mirror.js';
 import { SUPER_ADMIN, ADMIN } from '../roles.js';
 
 export const authRouter = Router();
@@ -114,6 +115,7 @@ const MAX_FAILED_LOGINS = 5;
 const LOCK_MS = 15 * 60_000;
 
 
+/** Build the signed-in user, salon, subscription and onboarding status payload. */
 function userPayload(userRow) {
   // includePrivate: the session owner may see their own DOB; admin/public
   // serializers never include it.
@@ -126,6 +128,18 @@ function userPayload(userRow) {
     subscription: salonRow ? serializeSubscription(getSubscriptionForSalon(salonRow.id)) : null,
     onboardingRequired: user.role === 'salon_owner' && !salonRow,
   };
+}
+
+/** Restore a verified owner’s existing salon before constructing the sign-in payload. */
+async function restoreSalonAtSignIn(req, localUser, verified, token) {
+  if (verified.role !== 'salon_owner' || findSalonByOwner(localUser.id)) return;
+  try {
+    await restoreOnboardingMirror({ ...req, user: localUser }, { token, id: verified.identityId });
+  } catch (error) {
+    // Sign-in remains possible during a storage outage. The onboarding page
+    // will show a retry instead of replacing an existing remote draft.
+    console.warn('[onboarding] sign-in restore unavailable:', error.message);
+  }
 }
 
 function createSession(req, res, userId) {
@@ -170,6 +184,7 @@ authRouter.post(
       throw new HttpError(401, 'Phone sign-ins are for customer appointments only. Use an email admin account.');
     }
     const localUser = syncLocalUser(verified, { touchLogin: true });
+    await restoreSalonAtSignIn(req, localUser, verified, accessToken);
 
     // The HttpOnly cookie remains a convenience for warm serverless instances;
     // protected routes also accept the verified bearer token directly, so a
@@ -195,7 +210,9 @@ authRouter.post(
  * never from the request body, user metadata or a local SQLite row.
  */
 
-/** @param {{ adminAllowed?: boolean }} [options] */
+/** Build a portal-specific sign-in bridge with trusted-role checks.
+ * @param {{ adminAllowed?: boolean }} [options]
+ */
 function portalSessionHandler(portal, { adminAllowed }) {
   return asyncHandler(async (req, res) => {
     const accessToken = typeof req.body?.accessToken === 'string' ? req.body.accessToken.trim() : '';
@@ -224,6 +241,7 @@ function portalSessionHandler(portal, { adminAllowed }) {
     }
 
     const localUser = syncLocalUser(verified, { touchLogin: true });
+    await restoreSalonAtSignIn(req, localUser, verified, accessToken);
     createSession(req, res, localUser.id);
     req.user = findUserById(localUser.id);
     audit(req, 'auth.supabase_session', 'user', localUser.id, {

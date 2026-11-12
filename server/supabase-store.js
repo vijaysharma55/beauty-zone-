@@ -31,6 +31,7 @@ function parseErrorStatus(status, code) {
   return status >= 400 && status < 600 ? status : 500;
 }
 
+/** Issue a bounded Supabase request and translate PostgREST errors for API callers. */
 export async function requestSupabase(path, token, options = {}) {
   const url = path.startsWith('http') ? path : SUPABASE_URL + path;
   const headers = new Headers(options.headers || {});
@@ -44,6 +45,7 @@ export async function requestSupabase(path, token, options = {}) {
     method: options.method || 'GET',
     headers,
     body: options.body === undefined ? undefined : options.body instanceof Blob ? options.body : JSON.stringify(options.body),
+    signal: options.signal || AbortSignal.timeout(12_000),
   });
   const text = await response.text();
   let data = null;
@@ -291,6 +293,7 @@ export function mapVersion(row) {
   };
 }
 
+/** Read the verified owner’s salon under their Supabase token and RLS. */
 export async function getSalonForOwner(ctx) {
   const rows = await rest(ctx, 'salons', 'owner_id=eq.' + encodeURIComponent(ctx.id) + '&select=*&limit=1');
   return rows[0] || null;

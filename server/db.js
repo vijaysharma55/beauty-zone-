@@ -69,6 +69,17 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 
+  -- Legacy/local accounts use the same revisioned draft contract as Supabase.
+  -- Supabase identities store their drafts in public.onboarding_profiles instead.
+  CREATE TABLE IF NOT EXISTS onboarding_drafts (
+    owner_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    data_json TEXT NOT NULL,
+    current_step INTEGER NOT NULL CHECK (current_step BETWEEN 1 AND 4),
+    revision INTEGER NOT NULL CHECK (revision > 0),
+    completed INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS salons (
     id TEXT PRIMARY KEY,
     owner_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
@@ -511,6 +522,7 @@ export function safeJson(value, fallback) {
   }
 }
 
+/** Serialize a user, exposing private account identifiers only to that user. */
 export function publicUser(row, { includePrivate = false } = {}) {
   if (!row) return null;
   return {
@@ -523,9 +535,10 @@ export function publicUser(row, { includePrivate = false } = {}) {
     emailVerified: !!row.email_verified,
     lastLoginAt: row.last_login_at,
     createdAt: row.created_at,
-    // Date of birth is private PII: it is only ever returned to the account
-    // owner (includePrivate), never in admin lists or public payloads.
-    ...(includePrivate ? { dateOfBirth: row.date_of_birth || null } : {}),
+    // Account-only fields are never included in admin lists or public payloads.
+    // The stable Supabase ID lets this owner find the same device backup even
+    // when a fresh SQLite instance assigns a different local user ID.
+    ...(includePrivate ? { dateOfBirth: row.date_of_birth || null, supabaseUserId: row.supabase_uid || null } : {}),
   };
 }
 
