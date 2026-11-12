@@ -1,0 +1,32 @@
+{
+  // Placeholder — DO NOT USE. Obtain the real file from Firebase Console >
+  // Project settings > Your apps > Android app > google-services.json, then
+  // place it at mobile/app/google-services.json (gitignored, never committed).
+  "project_info": {
+    "project_number": "PLACEHOLDER",
+    "project_id": "beautyzone-mobile-placeholder",
+    "firebase_url": "https://beautyzone-mobile-placeholder.firebaseio.com",
+    "storage_bucket": "beautyzone-mobile-placeholder.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:PLACEHOLDER:android:PLACEHOLDER",
+        "android_client_info": {
+          "package_name": "com.beautyzone.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "PLACEHOLDER"
+        }
+      ],
+      "services": {
+        "appinvite_service": { "status": "OPTIONAL" },
+        "analytics_service": { "status": "ENABLED" }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Authentication tokens and FCM tokens must never be backed up. -->
+    <exclude domain="sharedpref" path="beautyzone.preferences" />
+    <exclude domain="sharedpref" path="beautyzone.preferences.xml" />
+</full-backup-content>
