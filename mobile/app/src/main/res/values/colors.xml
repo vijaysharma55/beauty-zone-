@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand palette — BeautyZone (luxury salon / spa). Used via Material 3 theme. -->
+    <color name="brand_primary">#FF7B522D</color>      <!-- deep terracotta -->
+    <color name="brand_primary_container">#FFFFDDBE</color>
+    <color name="brand_secondary">#FF8A6D45</color>
+    <color name="brand_tertiary">#FFB7794F</color>
+    <color name="brand_surface">#FFFDF9F3</color>
+    <color name="brand_on_surface">#FF211E1B</color>
+    <color name="brand_error">#FFB3261E</color>
+    <color name="brand_success">#FF2E7D32</color>
+    <color name="divider_light">#1A000000</color>
+</resources>

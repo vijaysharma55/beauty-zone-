@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.BeautyZone" parent="android:Theme.Material3.DayNight.NoActionBar">
+        <!-- Primary window background / surface colors are resolved by Material 3
+             dynamic color; we seed brand colors through Compose instead. -->
+        <item name="android:windowBackground">@color/brand_surface</item>
+    </style>
+
+    <!-- Splash screen theme shown while the app process starts. -->
+    <style name="Theme.BeautyZone.Splash" parent="Theme.BeautyZone">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_icon</item>
+        <item name="windowSplashScreenBackground">@color/brand_surface</item>
+        <item name="windowSplashScreenAnimationDuration">400</item>
+        <item name="postSplashScreenTheme">@theme/Theme.BeautyZone</item>
+    </style>
+</resources>

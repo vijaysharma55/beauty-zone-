@@ -1,0 +1,20 @@
+# ---------------------------------------------------------------------------
+# BeautyZone Mobile — local environment configuration
+# ---------------------------------------------------------------------------
+# Copy this file to `local.properties` and fill in your own values.
+# `local.properties` is gitignored and must NEVER be committed.
+#
+# Values here are read by app/build.gradle.kts and injected into the app via
+# BuildConfig fields and manifest placeholders — they never appear in source.
+
+# Path to your Android SDK (Android Studio sets this automatically).
+# sdk.dir=/Users/you/Library/Android/sdk
+
+# Google Maps SDK for Android key (Android-restricted key from Google Cloud Console).
+# Obtain it from https://console.cloud.google.com/ and restrict it to your app's
+# package name + SHA-1 certificate fingerprint.
+GOOGLE_MAPS_API_KEY=AIzaExamplePlaceholderNotARealKey
+
+# BeautyZone backend base URL (your own API — calls Google Directions server-side,
+# so the Directions key never reaches the client).
+BEAUTYZONE_API_BASE_URL=https://api.beautyzone.app

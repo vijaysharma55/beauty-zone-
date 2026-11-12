@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BeautyZone</string>
+
+    <!-- Auth -->
+    <string name="auth_welcome">Welcome to BeautyZone</string>
+    <string name="auth_subtitle">Book your salon, spa and bridal appointments</string>
+    <string name="auth_hint_phone">Phone number</string>
+    <string name="auth_button_send_otp">Send verification code</string>
+    <string name="auth_otp_hint">6-digit code</string>
+    <string name="auth_button_verify">Verify &amp; continue</string>
+    <string name="auth_resend">Didn\'t receive the code? Resend</string>
+    <string name="auth_resend_in">Resend code in %d s</string>
+    <string name="auth_error_invalid_phone">Please enter a valid phone number</string>
+    <string name="auth_error_otp_required">Please enter the 6-digit code</string>
+    <string name="auth_error_invalid_otp">Invalid verification code. Try again.</string>
+    <string name="auth_error_unknown">Authentication failed. Please try again.</string>
+
+    <!-- Home -->
+    <string name="home_tab">Home</string>
+    <string name="home_search">Find a salon, studio or spa</string>
+    <string name="home_nearby">Nearby salons</string>
+    <string name="home_top_rated">Top rated</string>
+    <string name="home_book_now">Book now</string>
+
+    <!-- Salon detail -->
+    <string name="salon_services">Services</string>
+    <string name="salon_staff">Our specialists</string>
+    <string name="salon_reviews">Reviews</string>
+    <string name="salon_location">Location</string>
+    <string name="salon_get_directions">Get directions</string>
+    <string name="salon_call">Call salon</string>
+    <string name="salon_open">Open now</string>
+    <string name="salon_closed">Closed</string>
+    <string name="salon_opens_at">Opens at %s</string>
+
+    <!-- Booking -->
+    <string name="booking_tab">Bookings</string>
+    <string name="booking_select_service">Choose a service</string>
+    <string name="booking_select_staff">Choose a specialist</string>
+    <string name="booking_select_date">Choose a date</string>
+    <string name="booking_select_time">Choose a time</string>
+    <string name="booking_book_appointment">Book appointment</string>
+    <string name="booking_confirm_title">Confirm your booking</string>
+    <string name="booking_payment_advance">Advance due (25%%):</string>
+    <string name="booking_status_confirmed">Confirmed</string>
+    <string name="booking_status_pending">Pending</string>
+    <string name="booking_status_completed">Completed</string>
+    <string name="booking_status_cancelled">Cancelled</string>
+    <string name="booking_status_declined">Declined</string>
+    <string name="booking_cancel">Cancel booking</string>
+    <string name="booking_no_bookings">No appointments yet</string>
+    <string name="booking_no_bookings_sub">Your upcoming and past appointments will appear here.</string>
+
+    <!-- Map -->
+    <string name="map_tab">Map</string>
+    <string name="map_my_location">My location</string>
+    <string name="map_show_route">Show route</string>
+    <string name="map_permission_denied">Location permission is required to show salons near you.</string>
+    <string name="map_permission_rationale">BeautyZone needs location access to find nearby salons and show routes.</string>
+
+    <!-- Profile -->
+    <string name="profile_tab">Profile</string>
+    <string name="profile_edit">Edit profile</string>
+    <string name="profile_upload_document">Upload ID / document</string>
+    <string name="profile_notifications">Push notifications</string>
+    <string name="profile_sign_out">Sign out</string>
+    <string name="profile_phone">Phone</string>
+    <string name="profile_name">Name</string>
+
+    <!-- Common -->
+    <string name="common_continue">Continue</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_save">Save</string>
+    <string name="common_close">Close</string>
+    <string name="common_retry">Retry</string>
+    <string name="common_loading">Loading…</string>
+    <string name="common_error">Something went wrong</string>
+    <string name="common_internet_error">No internet connection. Please try again.</string>
+    <string name="common_notification_channel_name">BeautyZone Notifications</string>
+    <string name="common_notification_channel_description">Booking reminders, OTP updates and salon offers.</string>
+    <string name="common_booking_reminder_channel">Booking Reminders</string>
+    <string name="common_booking_reminder_description">Timely reminders before your appointments.</string>
+
+    <!-- Notifications -->
+    <string name="booking_reminder_title">Upcoming appointment</string>
+</resources>

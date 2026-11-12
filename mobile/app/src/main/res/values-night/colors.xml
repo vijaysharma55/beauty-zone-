@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark theme brand overrides -->
+    <color name="brand_primary">#FFFF9F75</color>
+    <color name="brand_primary_container">#FF4A2E1D</color>
+    <color name="brand_secondary">#FFC48F5D</color>
+    <color name="brand_tertiary">#FFE1A36E</color>
+    <color name="brand_surface">#FF1C1917</color>
+    <color name="brand_on_surface">#FFFFF9F1</color>
+    <color name="brand_error">#FFFF8A72</color>
+    <color name="brand_success">#FF69BB6B</color>
+    <color name="divider_light">#1AFFFFFF</color>
+</resources>

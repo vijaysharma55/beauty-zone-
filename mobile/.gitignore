@@ -1,0 +1,39 @@
+# Android / Gradle
+*.iml
+*.gradle
+*.gradle.kts
+/build/
+/.gradle/
+/local.properties
+/local.properties.keystore
+/app/google-services.json
+/app/google-services-debug.json
+/app/google-services-release.json
+*.keystore
+*.jks
+*.pkix
+*.key
+*.enc
+captures/
+.externalNativeBuild/
+.cxx/
+.idea/
+*.iws
+*.ipr
+*.iws
+*.hprof
+
+# Secrets / environment (never commit real values)
+.env
+.env.*
+!.env.example
+*.secrets
+secrets.properties
+
+# macOS / editors
+.DS_Store
+*~
+.idea/
+
+# Kotlin
+*.class
