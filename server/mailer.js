@@ -10,19 +10,38 @@ fs.mkdirSync(OUTBOX, { recursive: true });
  * Minimal transactional mailer.
  *
  * No SMTP provider is bundled with this sandbox, so messages are persisted to
- * `data/outbox/*.json` (and logged) and the verification URL is returned to the
+ * `data/outbox/*.json` (bodies of reset/verify mail are redacted in production;
+ * logs carry metadata only) and the verification URL is returned to the
  * client in non-production so the flow is usable end to end. Wire `sendMail`
  * to your provider (Resend, SES, Postmark…) for real delivery.
  */
+// Mail that carries a one-time secret (reset/verify link or token). Its body must
+// never reach logs or disk in production.
+const SENSITIVE_TAGS = new Set(['reset-password', 'verify-email']);
+const isProduction = () => process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
+const REDACTED = '[redacted: one-time link/token not stored]';
+
 export async function sendMail({ to, subject, text, html, tag = 'mail' }) {
   const id = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
-  const message = { id, to, subject, text, html: html || null, tag, sentAt: new Date().toISOString() };
+  const redact = isProduction() && SENSITIVE_TAGS.has(tag);
+  const message = {
+    id,
+    to,
+    subject,
+    text: redact ? REDACTED : text,
+    html: redact ? null : html || null,
+    tag,
+    sentAt: new Date().toISOString(),
+  };
   try {
     fs.writeFileSync(path.join(OUTBOX, `${id}.json`), JSON.stringify(message, null, 2));
   } catch (err) {
     console.error('[mail] could not persist message', err.message);
   }
-  console.log(`\n[mail] ${subject} → ${to}\n${text}\n`);
+  // Metadata only: message bodies can contain reset tokens and verification URLs.
+  // In development the link is returned in the API response (devResetUrl /
+  // devVerificationUrl) and the full text is in data/outbox/<id>.json.
+  console.log(`[mail] id=${id} tag=${tag} to=${to} subject=${JSON.stringify(subject)}`);
   return { delivered: false, stored: true, id };
 }
 

@@ -58,7 +58,7 @@ The application is not a single-database Supabase application. The README and `d
 | A-06 | P1 | Production Vercel environment lacks `SUPABASE_SECRET_KEY`; preview variables from an older branch are not production configuration. | External configuration required. |
 | A-07 | P1 | Rate limits use a process-local in-memory Map. | Unresolved; needs shared storage or managed rate-limit service. |
 | A-08 | P1 | Legacy mailer persists JSON locally and returns `delivered:false`. | Unresolved; configure a real provider and durable delivery queue. |
-| A-09 | P1 | Password-reset email includes the raw reset token; the legacy mailer logs full message text. | Raw reset tokens can appear in application logs; redact and stop logging message bodies before enabling production reset delivery. |
+| A-09 | P1 | Password-reset email includes the raw reset token; the legacy mailer logs full message text. | Fixed: mailer logs metadata only, and in production reset/verify mail bodies are redacted in the outbox file. Covered by `server/tests/mailer-redaction.test.js`. Real delivery via an email provider (A-08) is still required. |
 | A-09 | P1/P2 | CSP exists but allows broad HTTPS sources, `unsafe-inline` and `unsafe-eval`. | Hardening/review required; no untested strict policy enforced. |
 | A-10 | P2 | Homepage OG title/description described Lumina Luxe instead of Beauty Zone. | Fixed in branch. |
 | A-11 | P2 | Viewport disabled user zoom. | Fixed in branch. |
