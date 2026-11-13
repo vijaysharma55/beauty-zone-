@@ -744,8 +744,8 @@ export const ServicesPage: React.FC = () => {
             category={draft.category}
             subcategory={draft.subcategory}
             options={options}
-            recommendedCategoryValues={recommendedCategoryValues}
-            categoryOrder={categoryOrder}
+            recommendedCategoryValues={editing ? [] : recommendedCategoryValues}
+            categoryOrder={editing ? [] : categoryOrder}
             showAllCategories={editing ? true : showAllCategories}
             onToggleAllCategories={setShowAllCategories}
             onChange={({ category, subcategory }) => {
