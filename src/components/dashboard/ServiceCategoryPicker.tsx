@@ -28,7 +28,11 @@ export const ServiceCategoryPicker: React.FC<{
   disabled?: boolean;
   categoryError?: string;
   subcategoryError?: string;
-}> = ({ category, subcategory, options, onChange, disabled = false, categoryError, subcategoryError }) => {
+  recommendedCategoryValues?: string[];
+  categoryOrder?: string[];
+  showAllCategories?: boolean;
+  onToggleAllCategories?: (showAll: boolean) => void;
+}> = ({ category, subcategory, options, onChange, disabled = false, categoryError, subcategoryError, recommendedCategoryValues = [], categoryOrder = [], showAllCategories = false, onToggleAllCategories }) => {
   const [addingCategory, setAddingCategory] = useState(false);
   const [addingSubcategory, setAddingSubcategory] = useState(false);
   const [categoryDraft, setCategoryDraft] = useState('');
@@ -39,6 +43,27 @@ export const ServiceCategoryPicker: React.FC<{
     () => Boolean(category) && !options.some((option) => option.value === category && !option.custom),
     [category, options]
   );
+
+  const orderedOptions = useMemo(() => {
+    if (!categoryOrder.length) return options;
+    const rank = new Map<string, number>(categoryOrder.map((value, index) => [value, index] as const));
+    return [...options].sort((a, b) => {
+      const aRank = rank.get(a.value) ?? Number.MAX_SAFE_INTEGER;
+      const bRank = rank.get(b.value) ?? Number.MAX_SAFE_INTEGER;
+      return aRank - bRank || a.label.localeCompare(b.label);
+    });
+  }, [options, categoryOrder]);
+
+  const recommendedOptions = useMemo(
+    () => orderedOptions.filter((option) => recommendedCategoryValues.includes(option.value)),
+    [orderedOptions, recommendedCategoryValues]
+  );
+
+  const visibleOptions = useMemo(() => {
+    if (showAllCategories || !recommendedOptions.length) return orderedOptions;
+    const selected = orderedOptions.find((option) => option.value === normalizeServiceCategory(category));
+    return [...recommendedOptions, ...(selected && !recommendedOptions.some((option) => option.value === selected.value) ? [selected] : [])];
+  }, [orderedOptions, recommendedOptions, showAllCategories, category]);
 
   const activeOption = useMemo(
     () => options.find((option) => option.value === normalizeServiceCategory(category)) || null,
@@ -92,6 +117,23 @@ export const ServiceCategoryPicker: React.FC<{
 
   return (
     <div className="space-y-3">
+      {recommendedOptions.length > 0 && (
+        <div className="rounded-xl border border-[#D09A40]/25 bg-[#D09A40]/5 p-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-[#8a641f]">Recommended categories</p>
+            <button type="button" onClick={() => onToggleAllCategories?.(!showAllCategories)} className="text-xs font-semibold text-slate-600 underline underline-offset-2 hover:text-slate-900">
+              {showAllCategories ? 'Show recommended only' : 'Show all categories'}
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {recommendedOptions.map((option) => (
+              <button key={option.value} type="button" disabled={disabled} onClick={() => onChange({ category: option.value, subcategory: '' })} aria-pressed={normalizeServiceCategory(category) === option.value} className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${normalizeServiceCategory(category) === option.value ? 'border-[#D09A40] bg-[#D09A40]/15 text-[#76551f]' : 'border-[#D09A40]/30 bg-white text-slate-700 hover:bg-[#D09A40]/10'} disabled:opacity-50`}>
+                {option.label}<span className="ml-1.5 text-[9px] uppercase tracking-wide text-[#98702d]">Recommended</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Main category" htmlFor="service-category" required error={categoryError}>
           {addingCategory ? (
@@ -142,7 +184,7 @@ export const ServiceCategoryPicker: React.FC<{
               }}
             >
               <option value="">Select a category…</option>
-              {options.map((option) => (
+              {visibleOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                   {option.custom ? ' (custom)' : ''}
