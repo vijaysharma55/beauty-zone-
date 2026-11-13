@@ -45,7 +45,7 @@ export const ServiceCategoryPicker: React.FC<{
   );
 
   const orderedOptions = useMemo(() => {
-    const rank = new Map(categoryOrder.map((value, index) => [value, index]));
+    const rank = new Map<string, number>(categoryOrder.map((value, index) => [value, index] as const));
     return [...options].sort((a, b) => {
       const aRank = rank.get(a.value) ?? Number.MAX_SAFE_INTEGER;
       const bRank = rank.get(b.value) ?? Number.MAX_SAFE_INTEGER;
