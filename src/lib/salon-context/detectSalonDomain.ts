@@ -29,15 +29,15 @@ export interface SalonDomainResult {
 }
 
 const DOMAIN_KEYWORDS: Record<Exclude<DomainKey, 'unisex_general'>, string[]> = {
-  nails: ['nail', 'nails', 'manicure', 'pedicure', 'gel polish', 'acrylic', 'polygel', 'nail art', 'nail extension', 'extension nails', 'chrome nails', 'cat eye'],
-  hair: ['hair', 'haircut', 'hair cut', 'hair color', 'hair colour', 'keratin', 'smoothening', 'rebonding', 'balayage', 'highlights', 'blow dry', 'hair spa', 'scalp', 'hairstyle'],
-  skin: ['skin', 'facial', 'cleanup', 'clean up', 'glow', 'derma', 'hydrafacial', 'hydra facial', 'detan', 'de tan', 'bleach', 'peel', 'pigmentation', 'acne', 'skin care', 'beauty'],
-  makeup: ['makeup', 'make up', 'makeup artist', 'hd makeup', 'airbrush', 'party makeup', 'saree draping', 'draping'],
-  spa_massage: ['spa', 'massage', 'therapy', 'aroma', 'aromatherapy', 'reflexology', 'body polish', 'wellness', 'head massage'],
-  barber: ['barber', 'barbershop', 'gents', 'gent salon', 'men salon', 'mens salon', 'men\'s salon', 'beard', 'shave', 'shaving', 'mens grooming', 'male grooming'],
-  bridal: ['bridal', 'bride', 'wedding', 'pre bridal', 'engagement', 'bridal studio', 'bridal makeup'],
-  waxing_threading: ['wax', 'waxing', 'threading', 'eyebrow', 'upperlip', 'upper lip', 'full arms', 'full legs', 'underarms'],
-  mehendi: ['mehendi', 'mehandi', 'henna', 'mehndi', 'bridal henna'],
+  nails: ['nail', 'nails', 'manicure', 'pedicure', 'gel polish', 'acrylic', 'polygel', 'nail art', 'nail extension', 'extension nails', 'chrome nails', 'cat eye', 'nakhun', 'नाखून'],
+  hair: ['hair', 'haircut', 'hair cut', 'hair cutting', 'hair color', 'hair colour', 'keratin', 'smoothening', 'rebonding', 'balayage', 'highlights', 'blow dry', 'hair spa', 'scalp', 'hairstyle', 'baal', 'baal katna', 'बाल', 'बाल कटना'],
+  skin: ['skin', 'facial', 'cleanup', 'clean up', 'glow', 'derma', 'hydrafacial', 'hydra facial', 'detan', 'de tan', 'bleach', 'peel', 'pigmentation', 'acne', 'skin care', 'beauty', 'twacha', 'chehra', 'त्वचा', 'चेहरा', 'उबटन'],
+  makeup: ['makeup', 'make up', 'makeup artist', 'hd makeup', 'airbrush', 'party makeup', 'saree draping', 'draping', 'shringar', 'श्रृंगार'],
+  spa_massage: ['spa', 'massage', 'therapy', 'aroma', 'aromatherapy', 'reflexology', 'body polish', 'wellness', 'head massage', 'malish', 'maalish', 'मालिश'],
+  barber: ['barber', 'barbershop', 'gents', 'gent salon', 'men salon', 'mens salon', 'men\'s salon', 'beard', 'shave', 'shaving', 'mens grooming', 'male grooming', 'daadhi', 'dari', 'hajamat', 'दाढ़ी', 'हजामत'],
+  bridal: ['bridal', 'bride', 'wedding', 'pre bridal', 'engagement', 'bridal studio', 'bridal makeup', 'dulhan', 'shaadi', 'दुल्हन', 'शादी'],
+  waxing_threading: ['wax', 'waxing', 'threading', 'eyebrow', 'upperlip', 'upper lip', 'full arms', 'full legs', 'underarms', 'वैक्सिंग', 'थ्रेडिंग', 'dhaaga'],
+  mehendi: ['mehendi', 'mehandi', 'henna', 'mehndi', 'bridal henna', 'मेहंदी', 'मेहन्दी'],
 };
 
 const DOMAIN_ORDER: DomainKey[] = [
@@ -46,8 +46,8 @@ const DOMAIN_ORDER: DomainKey[] = [
 ];
 
 const emptyScores = (): Record<DomainKey, number> => ({
-  nails: 0, hair: 0, skin: 0, makeup: 0, spa_massage: 0,
-  barber: 0, bridal: 0, waxing_threading: 0, mehendi: 0, unisex_general: 0,
+  nails: ['nail', 'nails', 'manicure', 'pedicure', 'gel polish', 'acrylic', 'polygel', 'nail art', 'nail extension', 'extension nails', 'chrome nails', 'cat eye', 'nakhun', 'नाखून'],
+  barber: ['barber', 'barbershop', 'gents', 'gent salon', 'men salon', 'mens salon', 'men\'s salon', 'beard', 'shave', 'shaving', 'mens grooming', 'male grooming', 'daadhi', 'dari', 'hajamat', 'दाढ़ी', 'हजामत'],
 });
 
 function normalizeText(value: unknown): string {
