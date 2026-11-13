@@ -1,5 +1,11 @@
 # BeautyZone — Audit Changelog
 
+## Security — stop logging password-reset / verification secrets (A-09, 2026-11-12)
+
+- `server/mailer.js` now logs message metadata only (id, tag, recipient, subject), never the body.
+- In production, `reset-password` and `verify-email` mail bodies are redacted before the outbox file is written. Development keeps the full file so the local flow still works.
+- New test: `server/tests/mailer-redaction.test.js` (added to `npm test`).
+
 ## PR — Full service-catalogue management (2026-11-11)
 
 *Services & Prices* in the owner dashboard is now a complete catalogue manager
