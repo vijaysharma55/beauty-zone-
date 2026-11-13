@@ -28,6 +28,7 @@ HTML_ROUTES=(
   "/dashboard/website"
   "/dashboard/services"
   "/dashboard/staff"
+  "/dashboard/promotion-studio"
   "/dashboard/approval"
   "/dashboard/preview"
   "/dashboard/bookings"
