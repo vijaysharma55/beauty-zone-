@@ -1,4 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import { detectSalonDomain } from '../../lib/salon-context/detectSalonDomain';
+import { buildTemplatePrefill, rankCategories, rankTemplates } from '../../lib/salon-context/rankServices';
+import type { RankedTemplate } from '../../lib/salon-context/rankServices';
 import {
   ChevronDown,
   ChevronRight,
@@ -11,6 +15,7 @@ import {
   RefreshCw,
   Scissors,
   StickyNote,
+  Sparkles,
   Tag,
   Trash2,
 } from 'lucide-react';
@@ -86,6 +91,7 @@ function parseRupeesToPaise(value: string): number | null {
 }
 
 export const ServicesPage: React.FC = () => {
+  const { salon } = useAuth();
   const [services, setServices] = useState<SalonService[]>([]);
   const [sessionCategories, setSessionCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -108,6 +114,9 @@ export const ServicesPage: React.FC = () => {
   const [notesDraft, setNotesDraft] = useState<NotesDraft>(null);
   const [busyServiceId, setBusyServiceId] = useState<string | null>(null);
   const [imageTarget, setImageTarget] = useState<SalonService | null>(null);
+  const [templateQuery, setTemplateQuery] = useState('');
+  const [showAllCategories, setShowAllCategories] = useState(false);
+  const [priceIsSuggested, setPriceIsSuggested] = useState(false);
 
   const flash = useCallback((text: string) => {
     setNotice(text);
@@ -150,15 +159,55 @@ export const ServicesPage: React.FC = () => {
     void load();
   }, [load]);
 
+  // Profile and service history are local inputs: no extra request is made
+  // while the owner types or opens the service modal.
+  const salonContext = useMemo(() => {
+    const existingServices = services.map((service) => ({
+      name: service.name,
+      category: service.category,
+      subcategory: service.subcategory,
+      description: service.description,
+      durationMinutes: service.durationMinutes,
+      pricePaise: service.pricePaise,
+    }));
+    const profile = {
+      name: salon?.name || '',
+      tagline: salon?.tagline || '',
+      about: salon?.description || '',
+      existingServices,
+    };
+    return { ...profile, detection: detectSalonDomain(profile) };
+  }, [salon?.name, salon?.tagline, salon?.description, services]);
+
+  const rankedCategories = useMemo(() => rankCategories(salonContext), [salonContext]);
+  const recommendedCategoryValues = useMemo(
+    () => rankedCategories.filter((category) => category.recommended).map((category) => category.category),
+    [rankedCategories]
+  );
+  const categoryOrder = useMemo(
+    () => rankedCategories.map((category) => category.category),
+    [rankedCategories]
+  );
+
   /**
-   * Picker vocabulary: presets + every category/subcategory already used by a
-   * saved service + anything the owner created earlier in this session. The
-   * server sends the same list; deriving it here keeps the modal in sync the
-   * instant a service is saved, renamed or deleted.
+   * Picker vocabulary: presets + used categories + all catalog categories.
+   * This keeps specialist categories (e.g. Barber / Mehendi) selectable even
+   * before the salon has saved its first service in that category.
    */
   const options = useMemo(
-    () => serviceCategoryOptions(services, sessionCategories) as ServiceCategoryOption[],
-    [services, sessionCategories]
+    () => serviceCategoryOptions(
+      services,
+      [...sessionCategories, ...rankedCategories.map((category) => category.category)]
+    ) as ServiceCategoryOption[],
+    [services, sessionCategories, rankedCategories]
+  );
+
+  const rankedTemplates = useMemo(
+    () => rankTemplates(salonContext, {
+      query: templateQuery,
+      limit: templateQuery.trim() ? undefined : 8,
+    }),
+    [salonContext, templateQuery]
   );
 
   const groups = useMemo<ServiceCategoryGroup[]>(() => {
@@ -199,6 +248,9 @@ export const ServicesPage: React.FC = () => {
 
   const openCreate = (preset?: { category?: string; subcategory?: string }) => {
     setEditing(null);
+    setTemplateQuery('');
+    setShowAllCategories(false);
+    setPriceIsSuggested(false);
     setDraft({
       ...emptyDraft,
       category: preset?.category ? normalizeServiceCategory(preset.category) : '',
@@ -211,6 +263,8 @@ export const ServicesPage: React.FC = () => {
 
   const openEdit = (service: SalonService) => {
     setEditing(service);
+    setTemplateQuery('');
+    setPriceIsSuggested(false);
     setDraft({
       name: service.name,
       category: normalizeServiceCategory(service.category),
@@ -224,6 +278,23 @@ export const ServicesPage: React.FC = () => {
     });
     setFormError('');
     setModalOpen(true);
+  };
+
+  const applyTemplate = (template: RankedTemplate) => {
+    const values = buildTemplatePrefill(template, salonContext);
+    rememberCategory(values.category);
+    setDraft((current) => ({
+      ...current,
+      name: values.name,
+      category: values.category,
+      subcategory: values.subcategory,
+      description: values.description,
+      durationMinutes: String(values.durationMinutes),
+      price: values.price > 0 ? String(values.price) : '',
+    }));
+    setPriceIsSuggested(true);
+    setFormError('');
+    setTemplateQuery('');
   };
 
   const patchService = async (id: string, payload: Record<string, unknown>) => {
@@ -594,6 +665,60 @@ export const ServicesPage: React.FC = () => {
         <form onSubmit={save} className="space-y-4">
           {formError && <Alert tone="error">{formError}</Alert>}
 
+          {!editing && (
+            <section className="space-y-3 rounded-2xl border border-[#D09A40]/25 bg-gradient-to-br from-[#D09A40]/[0.07] to-white p-3 sm:p-4" aria-label="Smart service suggestions">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <Sparkles className="h-4 w-4 text-[#B58432]" />
+                    Suggested for {salon?.name || 'your salon'}
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Suggestions based on your salon profile · <a href="/dashboard/website" className="font-semibold text-[#8a641f] underline underline-offset-2">Edit profile</a>
+                  </p>
+                </div>
+                <button type="button" onClick={() => setShowAllCategories(true)} className="text-xs font-semibold text-slate-600 underline underline-offset-2 hover:text-slate-900">
+                  Not relevant? Show all
+                </button>
+              </div>
+              <Input
+                value={templateQuery}
+                onChange={(event) => setTemplateQuery(event.target.value)}
+                placeholder="Search all services and categories…"
+                aria-label="Search service templates across all categories"
+              />
+              {rankedTemplates.length > 0 ? (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {rankedTemplates.slice(0, templateQuery.trim() ? 12 : 8).map((template) => (
+                    <button
+                      key={template.id}
+                      type="button"
+                      onClick={() => applyTemplate(template)}
+                      className="group rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-[#D09A40] hover:bg-[#fffdf8] focus:outline-none focus:ring-2 focus:ring-[#D09A40]/40"
+                    >
+                      <span className="flex items-start justify-between gap-2">
+                        <span className="text-sm font-semibold text-slate-900 group-hover:text-[#76551f]">{template.name}</span>
+                        <span className="shrink-0 rounded-full bg-[#D09A40]/10 px-2 py-0.5 text-[10px] font-semibold text-[#8a641f]">{template.defaultDurationMin} min</span>
+                      </span>
+                      <span className="mt-1 block text-xs leading-relaxed text-slate-500">{template.description}</span>
+                      <span className="mt-2 block text-[11px] font-medium text-slate-600">
+                        {template.suggestedPriceRange ? `Suggested ₹${template.suggestedPriceRange[0].toLocaleString('en-IN')}–₹${template.suggestedPriceRange[1].toLocaleString('en-IN')}` : 'Price can be added'}
+                        <span className="ml-2 text-[#98702d]">· {template.categoryLabel} / {template.subcategory}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-lg border border-dashed border-slate-200 bg-white p-3 text-xs text-slate-500">
+                  No matching templates. Try another search or show all categories to add a custom service.
+                </p>
+              )}
+              {salonContext.detection.primaryDomain === 'unisex_general' && (
+                <p className="text-[11px] text-slate-500">We couldn’t confidently identify one specialty, so these suggestions use a balanced service mix.</p>
+              )}
+            </section>
+          )}
+
           <Field label="Service name" htmlFor="service-name" required>
             <Input
               id="service-name"
@@ -609,6 +734,10 @@ export const ServicesPage: React.FC = () => {
             category={draft.category}
             subcategory={draft.subcategory}
             options={options}
+            recommendedCategoryValues={recommendedCategoryValues}
+            categoryOrder={categoryOrder}
+            showAllCategories={showAllCategories}
+            onToggleAllCategories={setShowAllCategories}
             onChange={({ category, subcategory }) => {
               rememberCategory(category);
               setDraft((prev) => ({ ...prev, category, subcategory }));
@@ -616,7 +745,7 @@ export const ServicesPage: React.FC = () => {
           />
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Rate / Price (₹)" htmlFor="service-price" required hint="Full price in rupees.">
+            <Field label="Rate / Price (₹)" htmlFor="service-price" required hint={priceIsSuggested ? "Suggested price based on your salon catalogue or typical market range · editable." : "Full price in rupees."}>
               <Input
                 id="service-price"
                 type="number"
@@ -624,7 +753,7 @@ export const ServicesPage: React.FC = () => {
                 step="1"
                 inputMode="numeric"
                 value={draft.price}
-                onChange={(e) => setDraft({ ...draft, price: e.target.value })}
+                onChange={(e) => { setPriceIsSuggested(false); setDraft({ ...draft, price: e.target.value }); }}
                 placeholder="4999"
                 required
               />
