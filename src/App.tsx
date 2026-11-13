@@ -65,6 +65,7 @@ const OnboardingPage = React.lazy(() => import('./components/dashboard/Onboardin
 const WebsiteEditor = React.lazy(() => import('./components/dashboard/WebsiteEditor').then((module) => ({ default: module.WebsiteEditor })));
 const ServicesPage = React.lazy(() => import('./components/dashboard/ServicesPage').then((module) => ({ default: module.ServicesPage })));
 const StaffPage = React.lazy(() => import('./components/dashboard/StaffPage').then((module) => ({ default: module.StaffPage })));
+const PromotionStudio = React.lazy(() => import('./components/sections/PromotionStudio').then((module) => ({ default: module.PromotionStudio })));
 const BillingPage = React.lazy(() => import('./components/dashboard/BillingPage').then((module) => ({ default: module.BillingPage })));
 const PaymentSettingsPage = React.lazy(() => import('./components/dashboard/PaymentSettingsPage').then((module) => ({ default: module.PaymentSettingsPage })));
 const MyPaymentsPage = React.lazy(() => import('./components/dashboard/MyPaymentsPage').then((module) => ({ default: module.MyPaymentsPage })));
@@ -656,6 +657,7 @@ export function App() {
         <Route path="website" element={<WebsiteEditor />} />
         <Route path="services" element={<ServicesPage />} />
         <Route path="staff" element={<StaffPage />} />
+        <Route path="promotion-studio" element={<PromotionStudio />} />
         <Route path="approval" element={<ApprovalPage />} />
         <Route path="preview" element={<PreviewPage />} />
         <Route path="bookings" element={<BookingsPage />} />
