@@ -137,18 +137,28 @@ export function detectSalonDomain(input: SalonDomainInput = {}): SalonDomainResu
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score || DOMAIN_ORDER.indexOf(a.domain) - DOMAIN_ORDER.indexOf(b.domain));
 
-  if (!ranked.length || ranked[0].score < 4) {
+  if (!ranked.length) {
     return { primaryDomain: 'unisex_general', secondaryDomains: [], confidence: 0, signals, scores };
   }
 
   const top = ranked[0];
+  const hasDirectProfileSignal =
+    explicitDomains.includes(top.domain) ||
+    nameMatches.includes(top.domain) ||
+    taglineMatches.includes(top.domain);
+  // A specific name/tagline match can stand alone; one historical service or
+  // a broad "beauty/glow" brand word cannot force a specialty by itself.
+  if (top.score < 3 || (top.score === 3 && !hasDirectProfileSignal)) {
+    return { primaryDomain: 'unisex_general', secondaryDomains: [], confidence: 0, signals, scores };
+  }
+
   const runnerUp = ranked[1];
   // Ambiguous signals should not force a specialty. Keep the generic ordering.
   if (runnerUp && !explicitDomains.includes(top.domain) && top.score - runnerUp.score <= Math.max(1.25, top.score * 0.12)) {
     return {
       primaryDomain: 'unisex_general',
       secondaryDomains: ranked.slice(0, 4).map((item) => item.domain),
-      confidence: Math.min(1, top.score / 16),
+      confidence: Math.min(1, top.score / 12),
       signals: [...signals, 'multiple salon domains have nearly equal evidence'],
       scores,
     };
