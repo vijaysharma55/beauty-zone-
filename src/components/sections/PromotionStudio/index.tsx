@@ -137,7 +137,7 @@ interface PosterArtworkProps {
 const PosterArtwork: React.FC<PosterArtworkProps> = ({ draft, salonName, bookingUrl, svgRef }) => {
   const template = findTemplate(draft.templateId);
   const height = draft.format === 'story' ? 1920 : 1350;
-  const titleLines = wrapText(draft.headline || 'Your next beauty moment', 24, 3);
+  const titleLines = wrapText(draft.headline || 'Your next beauty moment', draft.format === 'story' ? 24 : 27, draft.format === 'story' ? 3 : 2);
   const subtitleLines = wrapText(draft.subheadline || 'A little care goes a long way.', 38, 2);
   const titleY = draft.format === 'story' ? 560 : 370;
   const subtitleY = titleY + titleLines.length * 88 + 42;
