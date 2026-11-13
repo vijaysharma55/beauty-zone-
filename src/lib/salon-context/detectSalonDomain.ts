@@ -30,7 +30,7 @@ export interface SalonDomainResult {
 
 const DOMAIN_KEYWORDS: Record<Exclude<DomainKey, 'unisex_general'>, string[]> = {
   nails: ['nail', 'nails', 'manicure', 'pedicure', 'gel polish', 'acrylic', 'polygel', 'nail art', 'nail extension', 'extension nails', 'chrome nails', 'cat eye'],
-  hair: ['hair', 'haircut', 'hair cut', 'hair color', 'hair colour', 'keratin', 'smoothening', 'rebonding', 'balayage', 'highlights', 'blow dry', 'hair spa', 'scalp', 'hairstyle', 'salon'],
+  hair: ['hair', 'haircut', 'hair cut', 'hair color', 'hair colour', 'keratin', 'smoothening', 'rebonding', 'balayage', 'highlights', 'blow dry', 'hair spa', 'scalp', 'hairstyle'],
   skin: ['skin', 'facial', 'cleanup', 'clean up', 'glow', 'derma', 'hydrafacial', 'hydra facial', 'detan', 'de tan', 'bleach', 'peel', 'pigmentation', 'acne', 'skin care', 'beauty'],
   makeup: ['makeup', 'make up', 'makeup artist', 'hd makeup', 'airbrush', 'party makeup', 'saree draping', 'draping'],
   spa_massage: ['spa', 'massage', 'therapy', 'aroma', 'aromatherapy', 'reflexology', 'body polish', 'wellness', 'head massage'],
@@ -89,8 +89,9 @@ export function detectSalonDomain(input: SalonDomainInput = {}): SalonDomainResu
   };
 
   const explicit = normalizeText(input.primaryCategory);
+  const explicitDomains = explicit ? detectMatches(explicit) : [];
   if (explicit) {
-    const matches = detectMatches(explicit);
+    const matches = explicitDomains;
     for (const domain of matches) add(domain, 5, `primary category indicates ${domain.replace('_', ' ')}`);
   }
 
@@ -132,7 +133,7 @@ export function detectSalonDomain(input: SalonDomainInput = {}): SalonDomainResu
   const top = ranked[0];
   const runnerUp = ranked[1];
   // Ambiguous signals should not force a specialty. Keep the generic ordering.
-  if (runnerUp && top.score - runnerUp.score <= Math.max(1.25, top.score * 0.12)) {
+  if (runnerUp && !explicitDomains.includes(top.domain) && top.score - runnerUp.score <= Math.max(1.25, top.score * 0.12)) {
     return {
       primaryDomain: 'unisex_general',
       secondaryDomains: ranked.slice(0, 4).map((item) => item.domain),
