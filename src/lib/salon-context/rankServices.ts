@@ -34,7 +34,7 @@ export interface TemplatePrefill {
 }
 
 function normalized(value: unknown): string {
-  return normalizeSalonContextText(value).replace(/s\b/g, '');
+  return normalizeSalonContextText(value);
 }
 
 function domainOrder(context: SalonSuggestionContext): DomainKey[] {
@@ -48,7 +48,7 @@ function domainOrder(context: SalonSuggestionContext): DomainKey[] {
 function getGenderFocus(context: SalonSuggestionContext): 'women' | 'men' | 'unisex' {
   const profile = normalized([context.name, context.tagline, context.about].filter(Boolean).join(' '));
   if (/\b(ladies only|women only|female only|ladies salon|women salon)\b/.test(profile)) return 'women';
-  if (/\b(gents only|men only|mens salon|men salon|barber shop|barbershop)\b/.test(profile)) return 'men';
+  if (/\\b(gents only|gents salon|men only|mens salon|men salon|barber shop|barbershop)\\b/.test(profile)) return 'men';
   return 'unisex';
 }
 
