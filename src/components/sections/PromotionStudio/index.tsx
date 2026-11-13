@@ -46,10 +46,21 @@ const TEMPLATES: PosterTemplate[] = [
 
 const STORAGE_PREFIX = 'beautyzone.promotion-studio.draft:';
 
+function dateInputValue(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return year + '-' + month + '-' + day;
+}
+
+function todayInputValue(): string {
+  return dateInputValue(new Date());
+}
+
 function dateAfterDays(days: number): string {
   const date = new Date();
   date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
+  return dateInputValue(date);
 }
 
 function initialDraft(): CampaignDraft {
@@ -324,7 +335,7 @@ export const PromotionStudio: React.FC = () => {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       if (forInstagram) {
         try {
           await navigator.clipboard.writeText(caption);
@@ -374,7 +385,7 @@ export const PromotionStudio: React.FC = () => {
       } else if (navigator.share) {
         await navigator.share({ title: salonName + ' promotion', text });
       } else {
-        shareWhatsApp();
+        setNotice('This browser does not support native sharing. Use WhatsApp or Facebook below.');
       }
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') return;
@@ -519,7 +530,7 @@ export const PromotionStudio: React.FC = () => {
                   <input className={inputClass} maxLength={24} value={draft.promoCode} onChange={(event) => updateDraft('promoCode', event.target.value.toUpperCase())} placeholder="e.g. GLOW20" />
                 </label>
                 <label className="block text-sm font-medium text-slate-700">Offer valid until
-                  <input className={inputClass} type="date" min={new Date().toISOString().slice(0, 10)} value={draft.validUntil} onChange={(event) => updateDraft('validUntil', event.target.value)} />
+                  <input className={inputClass} type="date" min={todayInputValue()} value={draft.validUntil} onChange={(event) => updateDraft('validUntil', event.target.value)} />
                 </label>
                 <label className="block text-sm font-medium text-slate-700 sm:col-span-2">Button / call to action
                   <input className={inputClass} maxLength={28} value={draft.ctaText} onChange={(event) => updateDraft('ctaText', event.target.value)} placeholder="BOOK YOUR APPOINTMENT" />
