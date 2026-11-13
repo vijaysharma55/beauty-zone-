@@ -28,8 +28,7 @@ export const SALON_TAGLINE_EXCLUDE_LIMIT = 30;
  * filled by `buildSalonTaglinePrompt()` — never send this template as-is.
  */
 export const SALON_TAGLINE_PROMPT = `You are an expert brand strategist for beauty and wellness businesses.
-
-Salon Name: "{{Salon_Name}}"
+Generate 3 catchy, professional wellness taglines for a salon named "{{Salon_Name}}".
 
 Tasks:
 1. Generate 3 distinct, professional, and catchy taglines suitable for this salon.

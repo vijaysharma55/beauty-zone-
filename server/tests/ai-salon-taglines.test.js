@@ -59,7 +59,7 @@ test('sends the brand-strategist prompt with the salon name filled in', async ()
 
   const prompt = promptOf(call);
   assert.equal(prompt, buildSalonTaglinePrompt('Velvet Rose Atelier'));
-  assert.ok(prompt.includes('Salon Name: "Velvet Rose Atelier"'));
+  assert.ok(prompt.includes('Generate 3 catchy, professional wellness taglines for a salon named "Velvet Rose Atelier".'));
   assert.doesNotMatch(prompt, /\{\{|\}\}/, 'no unfilled placeholder reaches the model');
   // Head-room for reasoning models, whose thinking tokens share this budget.
   assert.equal(call.body.generationConfig.maxOutputTokens, 2048);
@@ -77,7 +77,7 @@ test('keeps a salon name on one line and inside its quotes', async () => {
   assert.equal(res.status, 200);
   assert.equal(res.data.source, 'ai');
   assert.equal(modelCalls.length, 1);
-  assert.ok(promptOf(modelCalls[0]).includes(`Salon Name: "Glow 'Up' Studio"\n`), promptOf(modelCalls[0]));
+  assert.ok(promptOf(modelCalls[0]).includes(`salon named "Glow 'Up' Studio".`), promptOf(modelCalls[0]));
 });
 
 test('tops up an incomplete model answer with curated suggestions', async () => {

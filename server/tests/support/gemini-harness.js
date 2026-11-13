@@ -27,7 +27,7 @@ export const API_KEY = 'test-only-gemini-key';
 export const promptOf = (call) => call.body?.contents?.[0]?.parts?.[0]?.text ?? '';
 
 /** The salon name a suggestion prompt was written for. */
-export const salonNameIn = (prompt) => /Salon Name: "([^"]*)"/.exec(prompt)?.[1];
+export const salonNameIn = (prompt) => /(?:salon named|Salon Name:) "([^"]*)"/i.exec(prompt)?.[1];
 
 async function freePort() {
   const server = createServer();

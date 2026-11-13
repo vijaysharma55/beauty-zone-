@@ -12,6 +12,8 @@ const fake = vi.hoisted(() => ({
   calls: [] as any[],
   setSession: vi.fn(),
   upload: vi.fn(),
+  suggestTaglines: vi.fn(),
+  suggestDescriptions: vi.fn(),
 }));
 
 vi.mock('../../context/AuthContext', () => ({
@@ -21,6 +23,10 @@ vi.mock('../../lib/supabase', () => ({
   supabase: { auth: { getSession: vi.fn(async () => null) }, db: { upload: vi.fn() } },
 }));
 vi.mock('../../lib/imageUtils', () => ({ optimizeImageFile: vi.fn(async () => 'data:image/jpeg;base64,YWJj') }));
+vi.mock('../../lib/ai', () => ({
+  suggestSalonTaglines: fake.suggestTaglines,
+  suggestSalonDescriptions: fake.suggestDescriptions,
+}));
 vi.mock('../../lib/api', async () => {
   const { checkDraftTransition } = await import('../../lib/onboardingSchema.js');
   class ApiError extends Error {
@@ -82,6 +88,8 @@ beforeEach(() => {
   fake.failSave = false;
   fake.setSession.mockReset();
   fake.upload.mockReset();
+  fake.suggestTaglines.mockReset().mockResolvedValue({ value: ['Radiance for Every Day', 'Beauty, Thoughtfully Yours', 'Your Moment to Shine'], source: 'ai', warnings: [] });
+  fake.suggestDescriptions.mockReset().mockResolvedValue({ value: [], source: 'fallback', warnings: [] });
   localStorage.clear();
   sessionStorage.clear();
   window.scrollTo = vi.fn();
@@ -89,6 +97,42 @@ beforeEach(() => {
 afterEach(() => { cleanup(); });
 
 describe('salon onboarding wizard', () => {
+  it('prefills the owner profile name and email into the onboarding form', async () => {
+    mount();
+    await screen.findByRole('heading', { name: 'Salon identity' });
+    change('Salon name', 'Rose Studio');
+    change('Tagline', 'Glow every day');
+    change('About your salon', 'A welcoming salon for everyone.');
+    await waitFor(() => expect(next().disabled).toBe(false), { timeout: 3000 });
+    fireEvent.click(next());
+    await screen.findByRole('heading', { name: 'Location & contact' });
+    expect((byLabel('Business email') as HTMLInputElement).value).toBe('owner@example.com');
+    change('Street address', '1 Main Road');
+    change('City', 'Jaipur');
+    change('State / region', 'Rajasthan');
+    change('Business phone', '+91 98765 43210');
+    await waitFor(() => expect(next().disabled).toBe(false));
+    fireEvent.click(next());
+    await screen.findByRole('heading', { name: 'Owner & branding' });
+    expect((byLabel('Owner / manager name') as HTMLInputElement).value).toBe('Owner');
+  });
+
+  it('routes a remotely completed onboarding directly to the dashboard without rendering the form', async () => {
+    const draft = defaultOnboardingDraft({ name: 'Owner', email: 'owner@example.com' });
+    draft.currentStep = 4;
+    draft.values = {
+      ...draft.values, name: 'Rose Studio', slug: 'rose-studio', tagline: 'Glow every day',
+      description: 'A welcoming salon for everyone.', addressLine: '1 Main Road', city: 'Jaipur',
+      state: 'Rajasthan', phone: '+91 98765 43210', email: 'hello@example.com',
+      logoUrl: 'https://example.com/logo.png', coverImage: 'https://example.com/cover.png',
+    };
+    fake.row = { draft, revision: 8, completed: true, updatedAt: new Date().toISOString() };
+    mount();
+    await screen.findByText('Dashboard reached');
+    expect(screen.queryByRole('heading', { name: 'Salon identity' })).toBeNull();
+    expect(fake.setSession).toHaveBeenCalledOnce();
+  });
+
   it('validates every step, resumes a typed device backup, and completes into the dashboard', async () => {
     let view = mount();
     await screen.findByRole('heading', { name: 'Salon identity' });
@@ -148,6 +192,36 @@ describe('salon onboarding wizard', () => {
     view.unmount();
   });
 
+  it('requests tagline ideas using the live salon name and applies a selected option', async () => {
+    mount();
+    await screen.findByRole('heading', { name: 'Salon identity' });
+    change('Salon name', 'Bright Jaipur');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Suggest taglines' }));
+    const option = await screen.findByRole('button', { name: 'Radiance for Every Day' });
+    expect(fake.suggestTaglines).toHaveBeenCalledWith('Bright Jaipur', 0, []);
+    fireEvent.click(option);
+    expect((document.getElementById('tagline') as HTMLInputElement).value).toBe('Radiance for Every Day');
+  });
+
+  it('backs up every edit immediately and shows the automatic-save status after remote sync', async () => {
+    mount();
+    await screen.findByRole('heading', { name: 'Salon identity' });
+
+    change('Salon name', 'Draft Salon');
+    await waitFor(() => {
+      const keys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index) || '');
+      const draftKey = keys.find((key) => key.startsWith('beautyzone.onboarding.v1:owner-1:'));
+      expect(draftKey).toBeTruthy();
+      const backup = JSON.parse(localStorage.getItem(draftKey!)!);
+      expect(backup.draft.values.name).toBe('Draft Salon');
+      expect(backup.dirty).toBe(true);
+    });
+
+    await screen.findByText('Draft saved automatically', {}, { timeout: 4000 });
+    expect(fake.row?.draft.values.name).toBe('Draft Salon');
+  });
+
   it('keeps the user on the current step when saving fails and retries safely', async () => {
     mount();
     await screen.findByRole('heading', { name: 'Salon identity' });
@@ -163,7 +237,7 @@ describe('salon onboarding wizard', () => {
     expect(localStorage.length).toBeGreaterThan(0);
     fake.failSave = false;
     fireEvent.click(screen.getByRole('button', { name: 'Retry saving' }));
-    await screen.findByText('All changes saved');
+    await screen.findByText('Draft saved automatically');
     fireEvent.click(next());
     await screen.findByRole('heading', { name: 'Location & contact' });
   });
