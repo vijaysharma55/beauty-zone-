@@ -687,7 +687,17 @@ export const ServicesPage: React.FC = () => {
                 placeholder="Search all services and categories…"
                 aria-label="Search service templates across all categories"
               />
-              {rankedTemplates.length > 0 ? (
+              {loading ? (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-label="Loading service suggestions">
+                  {Array.from({ length: 6 }, (_, index) => (
+                    <div key={index} className="animate-pulse rounded-xl border border-slate-200 bg-white p-3">
+                      <div className="h-4 w-2/3 rounded bg-slate-100" />
+                      <div className="mt-2 h-3 w-full rounded bg-slate-100" />
+                      <div className="mt-2 h-3 w-1/2 rounded bg-slate-100" />
+                    </div>
+                  ))}
+                </div>
+              ) : rankedTemplates.length > 0 ? (
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {rankedTemplates.slice(0, templateQuery.trim() ? 12 : 8).map((template) => (
                     <button
