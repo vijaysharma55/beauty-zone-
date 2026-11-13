@@ -70,9 +70,9 @@ function keywordMatches(text: string, keyword: string): boolean {
   return new RegExp(`(?:^|\\s)${escaped}(?:$|\\s)`, 'i').test(text);
 }
 
-function detectMatches(value: unknown): string[] {
+function detectMatches(value: unknown): Array<Exclude<DomainKey, 'unisex_general'>> {
   const text = normalizeText(value);
-  const found: string[] = [];
+  const found: Array<Exclude<DomainKey, 'unisex_general'>> = [];
   for (const [domain, keywords] of Object.entries(DOMAIN_KEYWORDS) as [Exclude<DomainKey, 'unisex_general'>, string[]][]) {
     const matches = keywords.filter((keyword) => keywordMatches(text, keyword));
     if (matches.length) found.push(domain);
@@ -111,9 +111,12 @@ export function detectSalonDomain(input: SalonDomainInput = {}): SalonDomainResu
     ]);
     for (const domain of matches) serviceCounts[domain] += 1;
   }
-  for (const domain of DOMAIN_ORDER) {
-    if (domain === 'unisex_general' || serviceCounts[domain] === 0) continue;
+  const specialtyDomains = DOMAIN_ORDER.filter(
+    (domain): domain is Exclude<DomainKey, 'unisex_general'> => domain !== 'unisex_general'
+  );
+  for (const domain of specialtyDomains) {
     const count = serviceCounts[domain];
+    if (count === 0) continue;
     add(domain, 3 * Math.min(count, 5), `${count} existing service${count === 1 ? '' : 's'} in ${domain.replace('_', ' ')}`);
   }
 
