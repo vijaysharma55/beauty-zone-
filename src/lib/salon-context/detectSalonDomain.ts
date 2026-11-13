@@ -95,8 +95,16 @@ export function detectSalonDomain(input: SalonDomainInput = {}): SalonDomainResu
     for (const domain of matches) add(domain, 5, `primary category indicates ${domain.replace('_', ' ')}`);
   }
 
+  const normalizedName = normalizeText(input.name);
   const nameMatches = detectMatches(input.name);
-  for (const domain of nameMatches) add(domain, 4, `salon name contains ${domain.replace('_', ' ')} signal`);
+  const hasStrongSkinNameSignal = DOMAIN_KEYWORDS.skin
+    .filter((keyword) => keyword !== 'beauty' && keyword !== 'glow')
+    .some((keyword) => keywordMatches(normalizedName, keyword));
+  for (const domain of nameMatches) {
+    // "Beauty" and "Glow" are broad brand words, not proof of a skin specialty.
+    const points = domain === 'skin' && !hasStrongSkinNameSignal ? 1.5 : 4;
+    add(domain, points, `salon name contains ${domain.replace('_', ' ')} signal`);
+  }
 
   const taglineMatches = detectMatches(input.tagline);
   for (const domain of taglineMatches) add(domain, 3, `tagline contains ${domain.replace('_', ' ')} signal`);
