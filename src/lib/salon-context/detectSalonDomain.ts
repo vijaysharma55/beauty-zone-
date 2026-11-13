@@ -126,7 +126,7 @@ export function detectSalonDomain(input: SalonDomainInput = {}): SalonDomainResu
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score || DOMAIN_ORDER.indexOf(a.domain) - DOMAIN_ORDER.indexOf(b.domain));
 
-  if (!ranked.length || ranked[0].score < 3) {
+  if (!ranked.length || ranked[0].score < 4) {
     return { primaryDomain: 'unisex_general', secondaryDomains: [], confidence: 0, signals, scores };
   }
 
