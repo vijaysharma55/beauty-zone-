@@ -1,7 +1,9 @@
 import { Router } from 'express';
-import { db, findSalonBySlug, getStaffForSalon, serializeSalon, serializeStaff, newId, nowIso } from '../db.js';
+import { db, findSalonBySlug, serializeSalon, newId, nowIso } from '../db.js';
+import { getPublicStaff, getPublicStaffById } from '../supabase-store.js';
 import { getLiveContent, hasLiveApproval } from '../workflow.js';
 import { rateLimit } from '../security.js';
+import { asyncHandler } from '../middleware.js';
 import { tenantInfoFromReq } from '../subdomain.js';
 import { listLiveSalonSlugs } from '../sitemap.js';
 import {
@@ -20,13 +22,9 @@ export const publicRouter = Router();
  * Weekly roster stored on the staff row, normalised to the shared shape.
  * Existing rows default to an empty list → the platform default week applies.
  */
-function safeStaffSchedule(staffRow) {
-  try {
-    const raw = JSON.parse(staffRow?.weekly_schedule_json || '[]');
-    return Array.isArray(raw) && raw.length > 0 ? raw : undefined;
-  } catch {
-    return undefined;
-  }
+function safeStaffSchedule(staffMember) {
+  const raw = staffMember?.weeklySchedule;
+  return Array.isArray(raw) && raw.length > 0 ? raw : undefined;
 }
 
 const slugLimiter = rateLimit({ windowMs: 60_000, max: 60, key: 'slug-check' });
@@ -46,7 +44,7 @@ export function findLiveSalon(slug) {
   return salon;
 }
 
-function livePayload(salon) {
+async function livePayload(salon) {
   const live = getLiveContent(salon);
   if (!live) return null;
   const base = serializeSalon(salon, { publicView: true });
@@ -107,12 +105,33 @@ function livePayload(salon) {
       advancePercent: service.advancePercent ?? null,
       advanceFixedPaise: service.advanceFixedPaise ?? null,
     }));
-  // Staff roster is read live from the owning salon's database scope so
-  // dashboard additions, edits, consent changes and removals appear
-  // automatically across all booking templates without manual template edits.
-  const staff = getStaffForSalon(salon.id, { onlyActive: true }).map((row) =>
-    serializeStaff(row, { publicView: true })
-  );
+  // Public staff reads come directly from Supabase. The RLS policy exposes
+  // active staff at published salons; anon column grants exclude private data.
+  const staffRows = await getPublicStaff(salon.id, { activeOnly: true });
+  const staff = staffRows.map((member) => ({
+    id: member.id,
+    salonId: member.salonId,
+    name: member.name,
+    roleTitle: member.roleTitle,
+    bio: member.bio,
+    photoUrl: member.photoUrl,
+    mobileNumber: '',
+    hideMobileNumber: member.hideMobileNumber,
+    specialties: member.specialties,
+    qualifications: member.qualifications,
+    workPhotos: member.workPhotosConsent ? member.workPhotos : [],
+    workPhotosConsent: member.workPhotosConsent,
+    rating: member.rating,
+    reviewCount: member.reviewCount,
+    experience: member.experience,
+    active: member.active,
+    bookingEnabled: member.bookingEnabled && member.availabilityStatus === 'available',
+    availabilityStatus: member.availabilityStatus,
+    weeklySchedule: member.weeklySchedule,
+    sortOrder: member.sortOrder,
+    createdAt: member.createdAt,
+    updatedAt: member.updatedAt,
+  }));
   return { salon: merged, services, staff };
 }
 
@@ -215,13 +234,13 @@ publicRouter.get(
 publicRouter.get(
   '/salons/:slug',
   rateLimit({ windowMs: 60_000, max: 120, key: 'public-site' }),
-  (req, res) => {
+  asyncHandler(async (req, res) => {
     const salon = findLiveSalon(req.params.slug);
     if (!salon) return res.status(404).json({ error: 'This salon website is not available.' });
-    const payload = livePayload(salon);
+    const payload = await livePayload(salon);
     if (!payload) return res.status(404).json({ error: 'This salon website is not available.' });
     return res.json(payload);
-  }
+  })
 );
 
 /**
@@ -236,7 +255,7 @@ publicRouter.get(
 publicRouter.get(
   '/availability',
   rateLimit({ windowMs: 60_000, max: 180, key: 'availability' }),
-  (req, res) => {
+  asyncHandler(async (req, res) => {
     res.set('Cache-Control', 'no-store');
     const date = String(req.query.date || '').trim();
     const slug = typeof req.query.slug === 'string' ? req.query.slug.trim() : '';
@@ -283,7 +302,7 @@ publicRouter.get(
       try {
         const salon = findLiveSalon(candidateSlug);
         const staffRow = salon
-          ? db.prepare('SELECT * FROM staff WHERE id = ? AND salon_id = ?').get(staffId, salon.id)
+          ? (await getPublicStaff(salon.id, { activeOnly: true })).find((member) => member.id === staffId)
           : null;
         if (staffRow) {
           const schedule = parseWeeklySchedule(safeStaffSchedule(staffRow));
@@ -342,9 +361,8 @@ publicRouter.get(
       degraded: source === 'default',
       staffScheduleApplied: rosterNote,
     });
-  }
+   })
 );
-
 /**
  * Tenant resolution for the current hostname.
  *
@@ -428,11 +446,10 @@ export function isSalonLive(row) {
 publicRouter.post(
   '/stylist-inquiry',
   rateLimit({ windowMs: 60_000, max: 10, key: 'stylist-inquiry' }),
-  (req, res) => {
+  asyncHandler(async (req, res) => {
     const body = req.body || {};
     const salonId = body.salonId;
     const stylistId = body.stylistId;
-    const stylistName = body.stylistName;
     const userName = body.userName ?? body.senderName;
     const userPhone = body.userPhone ?? body.senderPhone;
     const message = body.message;
@@ -444,38 +461,46 @@ publicRouter.post(
       });
     }
 
-    if (salonId) {
-      const salonCheck =
-        db.prepare('SELECT * FROM salons WHERE id = ?').get(String(salonId)) ||
-        db.prepare('SELECT * FROM salons WHERE slug = ? COLLATE NOCASE').get(String(salonId));
-      if (salonCheck && (!salonCheck.website_published || !hasLiveApproval(salonCheck))) {
-        return res.status(403).json({
-          error: 'Inquiries are disabled until this salon website is published.',
-          code: 'WEBSITE_NOT_PUBLISHED',
-        });
-      }
-    }
-
-    if (!salonId || !stylistId || !stylistName || !userName || !userPhone || !message) {
+    if (!salonId || !stylistId || !userName || !userPhone || !message) {
       return res.status(400).json({ error: 'All fields are required.' });
     }
 
+    const staffMember = await getPublicStaffById(String(stylistId));
+    if (!staffMember) {
+      return res.status(404).json({
+        error: 'This specialist is not available for inquiries.',
+        code: 'STAFF_NOT_AVAILABLE',
+      });
+    }
+
+    const requestedSalon =
+      db.prepare('SELECT * FROM salons WHERE id = ?').get(String(salonId)) ||
+      db.prepare('SELECT * FROM salons WHERE slug = ? COLLATE NOCASE').get(String(salonId));
+    if (requestedSalon && requestedSalon.id !== staffMember.salonId) {
+      return res.status(400).json({
+        error: 'The selected specialist does not belong to this salon.',
+        code: 'INVALID_SALON_STAFF',
+      });
+    }
+
+    const salon = db.prepare('SELECT * FROM salons WHERE id = ?').get(staffMember.salonId);
+    if (!salon || !salon.website_published || !hasLiveApproval(salon)) {
+      return res.status(403).json({
+        error: 'Inquiries are disabled until this salon website is published.',
+        code: 'WEBSITE_NOT_PUBLISHED',
+      });
+    }
+
     try {
-      const salon =
-        db.prepare('SELECT * FROM salons WHERE id = ?').get(String(salonId)) ||
-        db.prepare('SELECT * FROM salons WHERE slug = ? COLLATE NOCASE').get(String(salonId));
-
-      const actualSalonId = salon ? salon.id : null;
-
       db.prepare(
         `INSERT INTO stylist_inquiries (id, salon_id, stylist_id, stylist_name, user_name, user_phone, message, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(newId(), actualSalonId, String(stylistId), String(stylistName), String(userName), String(userPhone), String(message), nowIso());
+      ).run(newId(), staffMember.salonId, staffMember.id, staffMember.name, String(userName), String(userPhone), String(message), nowIso());
 
-      res.status(201).json({ success: true, message: 'Inquiry sent successfully.' });
+      return res.status(201).json({ success: true, message: 'Inquiry sent successfully.' });
     } catch (err) {
       console.error('[stylist-inquiry] failed', err.message);
-      res.status(500).json({ error: 'Failed to send inquiry. Please try again.' });
+      return res.status(500).json({ error: 'Failed to send inquiry. Please try again.' });
     }
-  }
+   })
 );

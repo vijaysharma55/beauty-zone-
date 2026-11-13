@@ -66,7 +66,7 @@ async function callServerAwardRpc(params) {
   if (!serverKey) {
     throw new HttpError(
       503,
-      'Server loyalty awards are not configured. Set SUPABASE_SECRET_KEY (or SUPABASE_SERVICE_ROLE_KEY) in the server environment.',
+      'Server loyalty awards are not configured; the Supabase owner identity cannot be verified for this award. Set SUPABASE_SECRET_KEY (or SUPABASE_SERVICE_ROLE_KEY) in the server environment.',
       'LOYALTY_SERVER_KEY_MISSING'
     );
   }

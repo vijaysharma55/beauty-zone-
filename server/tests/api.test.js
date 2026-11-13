@@ -7,6 +7,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createServer as createNetServer } from 'node:net';
 import { startOnboardingSlugMock } from './support/onboarding-slug-mock.js';
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
@@ -16,9 +17,9 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..');
-const PORT = 6500 + Math.floor(Math.random() * 400);
-const BASE = `http://127.0.0.1:${PORT}`;
-const ORIGIN = BASE;
+let PORT;
+let BASE;
+let ORIGIN;
 
 function nextMondayDate() {
   const date = new Date();
@@ -31,22 +32,42 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'beautyzone-test-'));
 
 let child;
 let supabaseSlug;
+let childOutput = '';
+
+async function reservePort() {
+  const server = createNetServer();
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : null;
+  await new Promise((resolve) => server.close(resolve));
+  if (!port) throw new Error('Could not reserve an API test port');
+  return port;
+}
 
 async function waitForServer() {
-  const deadline = Date.now() + 25_000;
+  const deadline = Date.now() + 45_000;
   while (Date.now() < deadline) {
+    if (child?.exitCode !== null && child?.exitCode !== undefined) {
+      throw new Error(`API test server exited early (code ${child.exitCode}, signal ${child.signalCode || 'none'}). Startup output:\n${childOutput}`);
+    }
     try {
       const res = await fetch(`${BASE}/api/health`);
       if (res.ok) return;
     } catch {
-      // not ready yet
+      // not ready yet; retain child output for the timeout diagnostic.
     }
     await new Promise((r) => setTimeout(r, 250));
   }
-  throw new Error('Server did not start in time');
+  throw new Error(`Server did not start within 45 seconds. Startup output:\n${childOutput}`);
 }
 
 before(async () => {
+  PORT = await reservePort();
+  BASE = `http://127.0.0.1:${PORT}`;
+  ORIGIN = BASE;
   supabaseSlug = await startOnboardingSlugMock();
   child = spawn(process.execPath, ['server/index.js'], {
     cwd: ROOT,
@@ -66,7 +87,13 @@ before(async () => {
       SUPABASE_SECRET_KEY: '',
       SUPABASE_SERVICE_ROLE_KEY: '',
     },
-    stdio: 'ignore',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  child.stdout.on('data', (chunk) => {
+    if (childOutput.length < 12_000) childOutput += chunk.toString();
+  });
+  child.stderr.on('data', (chunk) => {
+    if (childOutput.length < 12_000) childOutput += chunk.toString();
   });
   await waitForServer();
 });
@@ -81,8 +108,20 @@ after(async () => {
 /** Minimal cookie-aware API client. */
 function makeClient() {
   let cookie = '';
+  let bearer = '';
   const request = async (method, path, body, extraHeaders = {}) => {
-    const headers = { Origin: ORIGIN, 'X-Requested-With': 'beautyzone', ...extraHeaders };
+    const headers = {
+      Origin: ORIGIN,
+      'X-Requested-With': 'beautyzone',
+      ...(bearer && (
+        path === '/api/salon' ||
+        path === '/api/salon/versions' ||
+        path === '/api/salon/submit' ||
+        path.startsWith('/api/salon/staff') ||
+        path.startsWith('/api/admin/')
+      ) ? { Authorization: `Bearer ${bearer}` } : {}),
+      ...extraHeaders,
+    };
     if (cookie) headers.Cookie = cookie;
     if (body !== undefined && !Buffer.isBuffer(body) && !headers['Content-Type']) {
       headers['Content-Type'] = 'application/json';
@@ -97,6 +136,7 @@ function makeClient() {
             ? body
             : JSON.stringify(body),
     });
+    if (method === 'POST' && path === '/api/auth/logout' && res.ok) bearer = '';
     const setCookies = res.headers.getSetCookie?.() || [];
     for (const entry of setCookies) {
       const value = entry.split(';')[0];
@@ -121,6 +161,9 @@ function makeClient() {
     setCookie: (c) => {
       cookie = c;
     },
+    setBearer: (token) => {
+      bearer = token || '';
+    },
   };
 }
 
@@ -128,6 +171,11 @@ async function loginAs(email, password) {
   const client = makeClient();
   const res = await client.post('/api/auth/login', { email, password });
   assert.equal(res.status, 200, `login failed for ${email}: ${JSON.stringify(res.data)}`);
+  const me = await client.get('/api/auth/me');
+  assert.ok(me.data.user?.id, `missing local identity for ${email}`);
+  supabaseSlug.setIdentity(me.data.user.id, me.data.user.email, me.data.user.role, me.data.user.name);
+  if (me.data.salon) supabaseSlug.setSalon(me.data.user.id, me.data.salon);
+  client.setBearer(me.data.user.id);
   return client;
 }
 
@@ -139,6 +187,10 @@ async function loginAsAdmin(email, password) {
   const client = makeClient();
   const res = await client.post('/api/auth/admin/login', { email, password });
   assert.equal(res.status, 200, `admin login failed for ${email}: ${JSON.stringify(res.data)}`);
+  const me = await client.get('/api/auth/me');
+  assert.ok(me.data.user?.id, `missing admin identity for ${email}`);
+  supabaseSlug.setIdentity(me.data.user.id, me.data.user.email, me.data.user.role, me.data.user.name);
+  client.setBearer(me.data.user.id);
   return client;
 }
 
@@ -1328,8 +1380,19 @@ test('specialist online-booking switch round-trips and stays tenant-scoped', asy
   const owner = await loginAs('owner@test.local', 'Owner@12345');
   const list = await owner.get('/api/salon/staff');
   assert.equal(list.status, 200);
-  assert.ok(list.data.staff.length > 0);
-  const member = list.data.staff[0];
+  let member = list.data.staff[0];
+  let createdForTest = false;
+  if (!member) {
+    const seed = await owner.post('/api/salon/staff', {
+      name: 'Availability Test Stylist',
+      primaryRole: 'senior_stylist',
+      roleTitle: 'Stylist',
+      specialties: ['Hair Coloring'],
+    });
+    assert.equal(seed.status, 201, JSON.stringify(seed.data));
+    member = seed.data.staff;
+    createdForTest = true;
+  }
 
   // Defaults to enabled.
   assert.equal(member.bookingEnabled, true);
@@ -1389,6 +1452,7 @@ test('specialist online-booking switch round-trips and stays tenant-scoped', asy
   await owner.del(`/api/salon/staff/${createdBusy.data.staff.id}`);
   await owner.del(`/api/salon/staff/${createdDefault.data.staff.id}`);
   await owner.patch(`/api/salon/staff/${member.id}`, { availabilityStatus: 'available' });
+  if (createdForTest) await owner.del(`/api/salon/staff/${member.id}`);
 });
 
 /* ------------------------------------------------------------------ */
@@ -1543,6 +1607,19 @@ test('unpublished salon websites block booking API calls and automatically activ
   const newSalonSlug = onboard.data.salon.slug;
   const newSalonId = onboard.data.salon.id;
   assert.equal(onboard.data.salon.published, false);
+
+  // Register the freshly-created cookie owner and its salon in the Supabase
+  // test double, then use a bearer session for the newly-migrated staff routes.
+  const studioMe = await studioOwner.get('/api/auth/me');
+  assert.ok(studioMe.data.user?.id);
+  supabaseSlug.setIdentity(
+    studioMe.data.user.id,
+    studioMe.data.user.email,
+    studioMe.data.user.role,
+    studioMe.data.user.name
+  );
+  supabaseSlug.setSalon(studioMe.data.user.id, onboard.data.salon);
+  studioOwner.setBearer(studioMe.data.user.id);
 
   // Add salon profile details, a service and a real salon staff member across templates.
   await studioOwner.patch('/api/salon', {

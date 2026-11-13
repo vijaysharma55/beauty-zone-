@@ -6,9 +6,7 @@ import {
   newId,
   serializeSalon,
   serializeService,
-  serializeStaff,
   getServicesForSalon,
-  getStaffForSalon,
   safeJson,
 } from './db.js';
 import { HttpError, ValidationError } from './security.js';
@@ -17,8 +15,10 @@ import { SUPER_ADMIN } from './roles.js';
 /**
  * Approval workflow helpers.
  *
- * The `salons` / `services` / `staff` tables hold the salon's *working copy*.
- * Every submission freezes a snapshot in `salon_versions`. The public website
+ * The salon profile and service catalogue are still sourced from SQLite;
+ * operational staff rows are sourced from Supabase `public.staff` and passed
+ * into snapshot builders by the route layer. Every submission freezes a
+ * snapshot in `salon_versions`. The public website
  * always renders the latest **approved** snapshot, so unpublished edits and
  * rejected submissions can never leak to visitors.
  */
@@ -54,10 +54,28 @@ export const PUBLIC_SALON_FIELDS = [
 ];
 
 /** Builds the canonical snapshot of a salon's current working content. */
-export function buildSalonSnapshot(salonRow) {
+export function buildSalonSnapshot(salonRow, staffRows = []) {
   const salon = serializeSalon(salonRow);
   const services = getServicesForSalon(salonRow.id).map(serializeService);
-  const staff = getStaffForSalon(salonRow.id).map(serializeStaff);
+  // Operational staff rows are provided by Supabase by the route layer.
+  // This module must never fall back to the retired SQLite staff table.
+  const staff = (Array.isArray(staffRows) ? staffRows : []).map((member) => ({
+    id: member.id,
+    name: member.name,
+    roleTitle: member.roleTitle || '',
+    bio: member.bio || '',
+    photoUrl: member.photoUrl || '',
+    specialties: Array.isArray(member.specialties) ? member.specialties : [],
+    qualifications: Array.isArray(member.qualifications) ? member.qualifications : [],
+    workPhotos: member.workPhotosConsent ? member.workPhotos || [] : [],
+    workPhotosConsent: Boolean(member.workPhotosConsent),
+    rating: member.rating ?? null,
+    reviewCount: member.reviewCount ?? 0,
+    experience: member.experience || '',
+    active: Boolean(member.active),
+    bookingEnabled: member.bookingEnabled !== false,
+    sortOrder: member.sortOrder ?? 0,
+  }));
 
   const salonContent = {
     name: salon.name,
@@ -213,10 +231,10 @@ export function publicState(salonRow) {
 }
 
 /** Extra workflow fields attached to owner/admin salon payloads. */
-export function workflowInfo(salonRow, userRow) {
+export function workflowInfo(salonRow, userRow, staffRows = []) {
   const pending = getPendingVersion(salonRow.id);
   const approved = getApprovedVersion(salonRow.id);
-  const currentHash = hashSnapshot(buildSalonSnapshot(salonRow));
+  const currentHash = hashSnapshot(buildSalonSnapshot(salonRow, staffRows));
   const hasUnpublishedChanges = !!approved && approved.content_hash !== currentHash;
   const problems = reviewReadiness(salonRow, userRow);
 
@@ -253,7 +271,7 @@ export function workflowInfo(salonRow, userRow) {
  * `website_published`, never sets `status = 'approved'` and never writes an
  * approved version. Those require reviewSubmission() by a super admin below.
  */
-export function submitForApproval(salonRow, userId) {
+export function submitForApproval(salonRow, userId, staffRows = []) {
   const existing = getPendingVersion(salonRow.id);
   if (existing) {
     throw new HttpError(409, 'This website is already awaiting review. You will be notified once it is reviewed.');
@@ -263,7 +281,7 @@ export function submitForApproval(salonRow, userId) {
   }
   // Defence in depth: an approved salon is already publishable. Resubmitting the
   // identical content must not reset its status to pending.
-  const snapshot = buildSalonSnapshot(salonRow);
+  const snapshot = buildSalonSnapshot(salonRow, staffRows);
   const hash = hashSnapshot(snapshot);
   const approved = getApprovedVersion(salonRow.id);
   if (approved && approved.content_hash === hash && salonRow.status === 'approved') {

@@ -21,6 +21,7 @@
 
 import { Router } from 'express';
 import { db, newId, nowIso, audit, findSalonById, findSalonByOwner, findSalonBySlug } from '../db.js';
+import { getPublicStaffById } from '../supabase-store.js';
 import { str, int, bool, ValidationError, HttpError, rateLimit, sanitizeText } from '../security.js';
 import { asyncHandler } from '../middleware.js';
 import { findLiveSalon } from './public.js';
@@ -170,45 +171,42 @@ function parsePayload(body) {
  * - Unknown non-database strings (e.g. legacy free-text catalogue ids) return
  *   null so the booking keeps the free-text name without mis-assigning.
  */
-function resolveBookableStaff(salonId, staffId) {
+async function resolveBookableStaff(salonId, staffId) {
   if (!salonId || !staffId) return null;
-  const anyStaffRow = db.prepare('SELECT * FROM staff WHERE id = ?').get(staffId);
-  if (!anyStaffRow) return null;
-  if (anyStaffRow.salon_id !== salonId) {
+  // Public RLS only exposes staff attached to a published salon. The row is
+  // fetched from Supabase, never from the legacy SQLite staff table.
+  const staffMember = await getPublicStaffById(staffId);
+  if (!staffMember) return null;
+  if (staffMember.salonId !== salonId) {
     throw new HttpError(
       400,
       'Selected specialist does not belong to this salon.',
       'INVALID_SALON_STAFF'
     );
   }
-  if (!anyStaffRow.active || (anyStaffRow.booking_enabled !== undefined && anyStaffRow.booking_enabled !== null && !anyStaffRow.booking_enabled)) {
+  if (!staffMember.active || staffMember.bookingEnabled === false) {
     throw new HttpError(
       409,
       'This specialist is not currently accepting online bookings.',
       'STAFF_NOT_BOOKABLE'
     );
   }
-  // Owner-managed availability: only 'available' specialists can be booked online.
-  if (anyStaffRow.availability_status && anyStaffRow.availability_status !== 'available') {
+  if (staffMember.availabilityStatus !== 'available') {
     const message =
-      anyStaffRow.availability_status === 'on_leave'
+      staffMember.availabilityStatus === 'on_leave'
         ? 'This specialist is currently on leave.'
-        : anyStaffRow.availability_status === 'off_duty'
+        : staffMember.availabilityStatus === 'off_duty'
           ? 'This specialist is off duty right now.'
           : 'This specialist is currently busy and not taking online bookings.';
     throw new HttpError(409, message, 'STAFF_NOT_BOOKABLE');
   }
-  return anyStaffRow;
+  return staffMember;
 }
 
 /** Service ids a staff member is assigned to deliver (empty = whole catalogue). */
 function assignedServiceIds(staffRow) {
-  try {
-    const parsed = JSON.parse(staffRow?.service_ids_json || '[]');
-    return Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string' && id) : [];
-  } catch {
-    return [];
-  }
+  const parsed = staffRow?.serviceIds;
+  return Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string' && id) : [];
 }
 
 /**
@@ -505,7 +503,7 @@ bookingsRouter.post(
     // Preferred specialist: verify the id against the salon roster and keep the
     // canonical staff name so the owner dashboard always shows a real person.
     if (data.stylistId) {
-      const staffRow = resolveBookableStaff(salon ? salon.id : null, data.stylistId);
+      const staffRow = await resolveBookableStaff(salon ? salon.id : null, data.stylistId);
       if (staffRow) {
         assertStaffMappedToService(salon, staffRow, data.service);
         if (!data.stylist) data.stylist = staffRow.name;

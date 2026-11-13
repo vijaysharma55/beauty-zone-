@@ -520,15 +520,18 @@ settings and audit records. RLS is enabled and workflow triggers prevent
 self-approval / privilege escalation. Security Advisor was rechecked after
 hardening and returned no security lints.
 
-**Migration boundary — do not treat this as a completed SQLite-to-Postgres
-migration.** Existing operational salon, booking, subscription, staff,
-admin and audit endpoints still read/write the legacy SQLite database through
-server/routes/*.js. Existing SQLite rows have not been copied into the
-Supabase tables, and those legacy endpoints are not yet backed by Postgres.
-The content bridge above is an initial rollout, not evidence that every page
-or dashboard CRUD path has moved to Supabase. Do not deploy this as a
-Supabase-only persistent backend on a platform where the /tmp SQLite volume
-is ephemeral until the remaining route migration and data backfill are complete.
+**Migration boundary — this is a staged SQLite-to-Postgres migration.** The
+operational staff roster is now read and written exclusively through Supabase
+`public.staff`. The first authenticated owner staff read performs an idempotent
+one-time import of that salon's legacy SQLite roster and records
+`salons.staff_migrated_at` so deleted Supabase staff are not re-imported.
+
+Other operational salon, booking, subscription, admin and audit endpoints still
+use the legacy SQLite database through `server/routes/*.js`; their complete
+data migration is not part of this staff change. Do not treat the staff change
+as evidence that every dashboard route is Postgres-backed, and do not deploy
+the whole application as a Supabase-only persistent backend until the remaining
+route migrations and data backfills are complete.
 
 ### First super-admin setup
 

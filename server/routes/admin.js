@@ -6,10 +6,8 @@ import {
   publicUser,
   serializeSalon,
   serializeService,
-  serializeStaff,
   serializeSubscription,
   getServicesForSalon,
-  getStaffForSalon,
   getSettings,
   saveSettings,
   audit,
@@ -40,6 +38,7 @@ import {
   buildSalonSnapshot,
 } from '../workflow.js';
 import { sendMail, reviewNotificationEmail } from '../mailer.js';
+import { getSupabaseContext, getStaff } from '../supabase-store.js';
 
 export const adminRouter = Router();
 
@@ -52,6 +51,13 @@ adminRouter.use(requireRole(SUPER_ADMIN, ADMIN));
 
 const PLANS = new Set(['trial', 'starter', 'pro', 'elite']);
 const SUB_STATUS = new Set(['trialing', 'active', 'past_due', 'canceled']);
+
+async function supabaseStaffForAdmin(req, salonId) {
+  const context = await getSupabaseContext(req, { required: false });
+  // RLS intentionally grants cross-tenant staff visibility only to super admins.
+  if (!context || context.role !== 'super_admin') return [];
+  return getStaff(context, salonId);
+}
 
 /* ------------------------------------------------------------------ */
 /* Overview                                                            */
@@ -279,7 +285,7 @@ adminRouter.get('/salons', (req, res) => {
   });
 });
 
-adminRouter.get('/salons/:salonId', (req, res) => {
+adminRouter.get('/salons/:salonId', asyncHandler(async (req, res) => {
   const row = db
     .prepare(
       `SELECT s.*, u.name AS owner_name, u.email AS owner_email, u.status AS owner_status,
@@ -292,16 +298,17 @@ adminRouter.get('/salons/:salonId', (req, res) => {
     .get(req.params.salonId);
   if (!row) return res.status(404).json({ error: 'Salon not found' });
   const owner = db.prepare('SELECT * FROM users WHERE id = ?').get(row.owner_id);
-  res.json({
+  const staffRows = await supabaseStaffForAdmin(req, row.id);
+  return res.json({
     salon: serializeSalon(row, { includeOwner: true }),
-    workflow: workflowInfo(row, owner).workflow,
+    workflow: workflowInfo(row, owner, staffRows).workflow,
     services: getServicesForSalon(row.id).map(serializeService),
-    staff: getStaffForSalon(row.id).map(serializeStaff),
+    staff: staffRows,
     subscription: serializeSubscription(
       db.prepare('SELECT * FROM subscriptions WHERE salon_id = ?').get(row.id)
     ),
   });
-});
+}));
 
 adminRouter.patch('/salons/:salonId', (req, res) => {
   const salon = db.prepare('SELECT * FROM salons WHERE id = ?').get(req.params.salonId);
@@ -393,24 +400,26 @@ adminRouter.patch('/salons/:salonId', (req, res) => {
 /* Publish / unpublish (super admin only)                              */
 /* ------------------------------------------------------------------ */
 
-adminRouter.post('/salons/:salonId/publish', requireSuperAdmin, (req, res) => {
+adminRouter.post('/salons/:salonId/publish', requireSuperAdmin, asyncHandler(async (req, res) => {
   const updated = publishSalon({ salonId: req.params.salonId, reviewer: req.user });
   audit(req, 'admin.salon_published', 'salon', updated.id, { slug: updated.slug });
-  res.json({
+  const staffRows = await supabaseStaffForAdmin(req, updated.id);
+  return res.json({
     salon: serializeSalon(updated),
-    workflow: workflowInfo(updated, db.prepare('SELECT * FROM users WHERE id = ?').get(updated.owner_id)).workflow,
+    workflow: workflowInfo(updated, db.prepare('SELECT * FROM users WHERE id = ?').get(updated.owner_id), staffRows).workflow,
     url: `/salon/${updated.slug}`,
   });
-});
+}));
 
-adminRouter.post('/salons/:salonId/unpublish', requireSuperAdmin, (req, res) => {
+adminRouter.post('/salons/:salonId/unpublish', requireSuperAdmin, asyncHandler(async (req, res) => {
   const updated = unpublishSalon({ salonId: req.params.salonId, reviewer: req.user });
   audit(req, 'admin.salon_unpublished', 'salon', updated.id, { slug: updated.slug });
-  res.json({
+  const staffRows = await supabaseStaffForAdmin(req, updated.id);
+  return res.json({
     salon: serializeSalon(updated),
-    workflow: workflowInfo(updated, db.prepare('SELECT * FROM users WHERE id = ?').get(updated.owner_id)).workflow,
+    workflow: workflowInfo(updated, db.prepare('SELECT * FROM users WHERE id = ?').get(updated.owner_id), staffRows).workflow,
   });
-});
+}));
 
 /* ------------------------------------------------------------------ */
 /* Subscriptions                                                       */
@@ -528,7 +537,7 @@ adminRouter.get('/approvals', requireSuperAdmin, (req, res) => {
   });
 });
 
-adminRouter.get('/approvals/:versionId', requireSuperAdmin, (req, res) => {
+adminRouter.get('/approvals/:versionId', requireSuperAdmin, asyncHandler(async (req, res) => {
   const version = db.prepare('SELECT * FROM salon_versions WHERE id = ?').get(req.params.versionId);
   if (!version) return res.status(404).json({ error: 'Submission not found' });
   const salon = db.prepare('SELECT * FROM salons WHERE id = ?').get(version.salon_id);
@@ -539,14 +548,15 @@ adminRouter.get('/approvals/:versionId', requireSuperAdmin, (req, res) => {
   } catch {
     snapshot = null;
   }
-  res.json({
+  const staffRows = await supabaseStaffForAdmin(req, salon.id);
+  return res.json({
     version: serializeVersion(version),
     snapshot,
     salon: serializeSalon(salon, { includeOwner: true }),
-    workflow: workflowInfo(salon, owner).workflow,
+    workflow: workflowInfo(salon, owner, staffRows).workflow,
     isLiveVersion: getApprovedVersion(salon.id)?.id === version.id,
   });
-});
+}));
 
 /**
  * Approve / reject / request changes.
@@ -603,7 +613,7 @@ adminRouter.post(
   })
 );
 
-adminRouter.get('/salons/:salonId/versions', (req, res) => {
+adminRouter.get('/salons/:salonId/versions', asyncHandler(async (req, res) => {
   const salon = db.prepare('SELECT * FROM salons WHERE id = ?').get(req.params.salonId);
   if (!salon) return res.status(404).json({ error: 'Salon not found' });
   const owner = db.prepare('SELECT * FROM users WHERE id = ?').get(salon.owner_id);
@@ -611,14 +621,15 @@ adminRouter.get('/salons/:salonId/versions', (req, res) => {
     .prepare('SELECT * FROM salon_versions WHERE salon_id = ? ORDER BY version DESC')
     .all(salon.id);
   const approved = getApprovedVersion(salon.id);
-  const currentHash = hashSnapshot(buildSalonSnapshot(salon));
-  res.json({
+  const staffRows = await supabaseStaffForAdmin(req, salon.id);
+  const currentHash = hashSnapshot(buildSalonSnapshot(salon, staffRows));
+  return res.json({
     versions: rows.map(serializeVersion),
-    workflow: workflowInfo(salon, owner).workflow,
+    workflow: workflowInfo(salon, owner, staffRows).workflow,
     hasUnpublishedChanges: !!approved && approved.content_hash !== currentHash,
     pending: serializeVersion(getPendingVersion(salon.id)),
   });
-});
+}));
 
 /* ------------------------------------------------------------------ */
 /* Platform settings                                                   */

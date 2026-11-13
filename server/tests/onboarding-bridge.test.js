@@ -32,7 +32,18 @@ before(async () => {
     });
     if (url.pathname === '/rest/v1/profiles') return send(200, [{ id: uid, email: 'bridge@example.test', name: 'Bridge Owner', role: 'salon_owner', status: 'active', email_verified: true }]);
     if (url.pathname === '/rest/v1/onboarding_profiles') return send(200, row ? [row] : []);
-    if (url.pathname === '/rest/v1/salons') return send(200, salon ? [salon] : []);
+    if (url.pathname === '/rest/v1/salons') {
+      if (req.method === 'PATCH') {
+        if (!salon || salon.id !== url.searchParams.get('id')?.replace('eq.', '')) return send(200, []);
+        salon = { ...salon, ...body };
+        return send(200, [salon]);
+      }
+      return send(200, salon ? [salon] : []);
+    }
+    if (url.pathname === '/rest/v1/staff') {
+      if (req.method === 'GET') return send(200, []);
+      if (req.method === 'POST') return send(201, [{ id: '99999999-9999-4999-8999-999999999999', ...body }]);
+    }
     if (url.pathname === '/rest/v1/subscriptions') return send(200, subscription ? [subscription] : []);
     if (url.pathname === '/rest/v1/rpc/onboarding_slug_available') return send(200, { available: !salon || salon.slug !== body.p_slug, reason: null });
     if (url.pathname === '/rest/v1/rpc/save_onboarding_draft') {

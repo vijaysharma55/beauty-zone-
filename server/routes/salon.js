@@ -34,6 +34,16 @@ import {
 } from '../security.js';
 import { requireAuth, requireRole, asyncHandler } from '../middleware.js';
 import { workflowInfo, submitForApproval, listVersions, serializeVersion } from '../workflow.js';
+import {
+  SupabaseApiError,
+  getSupabaseContext,
+  getSalonForOwner,
+  getStaff,
+  markStaffBackfillComplete,
+  insertStaff,
+  updateStaff,
+  deleteStaff,
+} from '../supabase-store.js';
 import { ownerBookingsRouter } from './bookings.js';
 import { salonPaymentsRouter } from './salon-payments.js';
 import { serviceAdvanceFields } from '../payments/salon-settings.js';
@@ -99,6 +109,199 @@ function requireOwnSalon(req) {
   const salon = findSalonByOwner(req.user.id);
   if (!salon) throw new HttpError(409, 'Complete salon onboarding first.');
   return salon;
+}
+
+/**
+ * Staff is stored only in Supabase. The owner identity and salon foreign key
+ * are resolved from the verified bearer token; neither is accepted from JSON.
+ * The local salon mirror is checked only because service assignment validation
+ * and the rest of the still-legacy dashboard currently use that same id.
+ */
+async function requireSupabaseStaffSalon(req) {
+  const context = await getSupabaseContext(req);
+  if (context.role !== 'salon_owner') {
+    throw new HttpError(403, 'Only the authenticated salon owner can manage this staff roster.', 'STAFF_OWNER_REQUIRED');
+  }
+  if (req.user?.supabase_uid && req.user.supabase_uid !== context.id) {
+    throw new HttpError(403, 'Your signed-in identity does not match this salon session.', 'STAFF_IDENTITY_MISMATCH');
+  }
+  const salon = await getSalonForOwner(context);
+  if (!salon?.id) throw new HttpError(409, 'Complete salon onboarding before managing staff.', 'ONBOARDING_REQUIRED');
+  const localSalon = findSalonByOwner(req.user.id);
+  if (!localSalon || localSalon.id !== salon.id) {
+    throw new HttpError(409, 'Your salon workspace is still syncing. Refresh your session and try again.', 'SALON_MIRROR_MISMATCH');
+  }
+  return { context, salon };
+}
+
+const LEGACY_STAFF_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function legacyStaffUuid(salonId, legacyId) {
+  const value = String(legacyId || '');
+  if (LEGACY_STAFF_UUID_RE.test(value)) return value.toLowerCase();
+  const bytes = crypto.createHash('sha256').update(`beautyzone-staff:${salonId}:${value}`).digest().subarray(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/**
+ * Import legacy SQLite staff once per salon. The completion marker lives in
+ * Supabase, so deleted Postgres rows are never resurrected from stale SQLite.
+ */
+async function getStaffWithLegacyBackfill(context, salon) {
+  let staff = await getStaff(context, salon.id);
+  if (salon.staff_migrated_at) return staff;
+
+  const legacyRows = getStaffForSalon(salon.id);
+  const existingIds = new Set(staff.map((member) => member.id));
+
+  for (const legacyRow of legacyRows) {
+    const member = serializeStaff(legacyRow);
+    const id = legacyStaffUuid(salon.id, legacyRow.id);
+    if (existingIds.has(id)) continue;
+
+    const normalizedMobile = normalizeIndianMobile(member.mobileNumber || '');
+    const normalizedSchedule = normalizeWeeklySchedule(member.weeklySchedule).schedule;
+    const payload = {
+      id,
+      name: member.name,
+      role_title: member.roleTitle || '',
+      primary_role: member.primaryRole || '',
+      app_access_role: isStaffAppAccessRole(member.appAccessRole) ? member.appAccessRole : DEFAULT_STAFF_APP_ACCESS_ROLE,
+      commission_percent: member.commissionPercent ?? DEFAULT_COMMISSION_PERCENT,
+      mobile_number: normalizedMobile.ok ? normalizedMobile.value : '',
+      hide_mobile_number: Boolean(member.hideMobileNumber),
+      bio: member.bio || '',
+      photo_url: member.photoUrl || '',
+      specialties: Array.isArray(member.specialties) ? member.specialties : [],
+      qualifications: Array.isArray(member.qualifications) ? member.qualifications : [],
+      work_photos: Array.isArray(member.workPhotos) ? member.workPhotos : [],
+      work_photos_consent: Boolean(member.workPhotosConsent),
+      rating: member.rating ?? null,
+      review_count: Number(member.reviewCount || 0),
+      experience: member.experience || '',
+      active: Boolean(member.active),
+      booking_enabled: member.bookingEnabled !== false,
+      availability_status: isStaffAvailabilityStatus(member.availabilityStatus) ? member.availabilityStatus : 'available',
+      service_ids: Array.isArray(member.serviceIds) ? member.serviceIds : [],
+      weekly_schedule: normalizedSchedule.every((entry) => entry.closed)
+        ? defaultWeeklySchedule()
+        : normalizedSchedule,
+      sort_order: Number(member.sortOrder || 0),
+    };
+
+    try {
+      await insertStaff(context, salon.id, payload);
+      existingIds.add(id);
+    } catch (error) {
+      // Two first dashboard requests may race on the deterministic staff UUID.
+      if (String(error?.code || '') !== '23505') throw error;
+      existingIds.add(id);
+    }
+  }
+
+  await markStaffBackfillComplete(context, salon.id);
+  return getStaff(context, salon.id);
+}
+
+/**
+ * Workflow routes retain support for legacy cookie-only accounts that have
+ * not linked a Supabase identity. Such users have no Supabase staff records
+ * available; staff CRUD itself remains bearer-session-only and fails closed.
+ */
+async function getWorkflowStaffRows(req, localSalon) {
+  const context = await getSupabaseContext(req, { required: false });
+  if (!context) {
+    if (req.user?.supabase_uid) {
+      throw new HttpError(401, 'Your Supabase session expired. Sign in again and retry.', 'STAFF_SESSION_EXPIRED');
+    }
+    return [];
+  }
+  if (context.role !== 'salon_owner' || (req.user?.supabase_uid && req.user.supabase_uid !== context.id)) {
+    throw new HttpError(403, 'Your signed-in identity does not match this salon owner.', 'STAFF_IDENTITY_MISMATCH');
+  }
+  const remoteSalon = await getSalonForOwner(context);
+  if (!remoteSalon?.id || remoteSalon.id !== localSalon.id) {
+    throw new HttpError(409, 'Your salon identity is not synchronized with Supabase. Please refresh your session.', 'SALON_ID_MISMATCH');
+  }
+  return getStaffWithLegacyBackfill(context, remoteSalon);
+}
+
+const STAFF_SQLITE_TO_POSTGRES = Object.freeze({
+  role_title: 'role_title',
+  primary_role: 'primary_role',
+  app_access_role: 'app_access_role',
+  commission_percent: 'commission_percent',
+  mobile_number: 'mobile_number',
+  hide_mobile_number: 'hide_mobile_number',
+  bio: 'bio',
+  photo_url: 'photo_url',
+  specialties_json: 'specialties',
+  qualifications_json: 'qualifications',
+  work_photos_json: 'work_photos',
+  work_photos_consent: 'work_photos_consent',
+  rating: 'rating',
+  review_count: 'review_count',
+  experience: 'experience',
+  active: 'active',
+  booking_enabled: 'booking_enabled',
+  availability_status: 'availability_status',
+  service_ids_json: 'service_ids',
+  weekly_schedule_json: 'weekly_schedule',
+  sort_order: 'sort_order',
+  updated_at: 'updated_at',
+});
+
+const STAFF_JSON_FIELDS = new Set([
+  'specialties_json', 'qualifications_json', 'work_photos_json',
+  'service_ids_json', 'weekly_schedule_json',
+]);
+const STAFF_BOOLEAN_FIELDS = new Set([
+  'hide_mobile_number', 'work_photos_consent', 'active', 'booking_enabled',
+]);
+
+function staffPayloadForPostgres(values) {
+  const payload = { name: values.name };
+  for (const [source, target] of Object.entries(STAFF_SQLITE_TO_POSTGRES)) {
+    if (values[source] === undefined) continue;
+    let value = values[source];
+    if (STAFF_JSON_FIELDS.has(source)) {
+      try { value = JSON.parse(value); }
+      catch { throw new ValidationError('Staff profile contains invalid list or schedule data.'); }
+    } else if (STAFF_BOOLEAN_FIELDS.has(source)) {
+      value = Boolean(value);
+    }
+    payload[target] = value;
+  }
+  return payload;
+}
+
+function translateStaffStoreError(error) {
+  const code = String(error?.code || '');
+  const message = String(error?.message || '');
+  if (code === '42501' || /row-level security|permission denied/i.test(message)) {
+    return new HttpError(403, 'Supabase denied this staff operation. Confirm the staff owner RLS policy is applied and your salon is linked to your signed-in account.', 'STAFF_PERMISSION_DENIED');
+  }
+  if (code === '23503' || /foreign key/i.test(message)) {
+    return new HttpError(409, 'The linked salon record could not be found. Refresh salon onboarding before saving staff.', 'STAFF_SALON_LINK_INVALID');
+  }
+  if (code === '23514') {
+    return new HttpError(400, 'One or more staff fields do not match the database rules. Check the role, status, commission and schedule values.', 'STAFF_CONSTRAINT_FAILED');
+  }
+  if (code === '22P02') {
+    return new HttpError(400, 'A staff field has an invalid data type or identifier.', 'STAFF_INVALID_VALUE');
+  }
+  if (error instanceof SupabaseApiError && error.status === 401) {
+    return new HttpError(401, 'Your Supabase session expired. Sign in again and retry.', 'STAFF_SESSION_EXPIRED');
+  }
+  return error;
+}
+
+async function withStaffStoreErrors(operation) {
+  try { return await operation(); }
+  catch (error) { throw translateStaffStoreError(error); }
 }
 
 const SALON_FIELD_MAP = {
@@ -194,17 +397,18 @@ function urlField(label) {
 /* Salon profile + onboarding                                          */
 /* ------------------------------------------------------------------ */
 
-salonRouter.get('/', (req, res) => {
+salonRouter.get('/', asyncHandler(async (req, res) => {
   const salon = findSalonByOwner(req.user.id);
+  const staffRows = salon
+    ? await withStaffStoreErrors(() => getWorkflowStaffRows(req, salon))
+    : [];
   return res.json({
     salon: salon ? serializeSalon(salon) : null,
-    workflow: salon ? workflowInfo(salon, req.user).workflow : null,
-    versions: salon
-      ? listVersions(salon.id).map(serializeVersion)
-      : [],
+    workflow: salon ? workflowInfo(salon, req.user, staffRows).workflow : null,
+    versions: salon ? listVersions(salon.id).map(serializeVersion) : [],
     subscription: salon ? serializeSubscription(getSubscriptionForSalon(salon.id)) : null,
   });
-});
+}));
 
 // In-progress data is stored separately from salons: a partial draft must not
 // unlock dashboard routes or create a public-facing salon.
@@ -332,7 +536,7 @@ salonRouter.post(
   })
 );
 
-salonRouter.patch('/', (req, res) => {
+salonRouter.patch('/', asyncHandler(async (req, res) => {
   const salon = requireOwnSalon(req);
   const updates = collectSalonFields(req.body, { includeEmpty: false });
   const slugRaw = req.body?.slug;
@@ -364,11 +568,12 @@ salonRouter.patch('/', (req, res) => {
   );
   audit(req, 'salon.updated', 'salon', salon.id, { fields: cols.filter((c) => c !== 'updated_at') });
   const updated = findSalonByOwner(req.user.id);
+  const staffRows = await withStaffStoreErrors(() => getWorkflowStaffRows(req, updated));
   return res.json({
     salon: serializeSalon(updated),
-    workflow: workflowInfo(updated, req.user).workflow,
+    workflow: workflowInfo(updated, req.user, staffRows).workflow,
   });
-});
+}));
 
 /* ------------------------------------------------------------------ */
 /* Approval workflow                                                   */
@@ -398,32 +603,34 @@ salonRouter.post(
   '/submit',
   asyncHandler(async (req, res) => {
     const salon = requireOwnSalon(req);
-    const { workflow } = workflowInfo(salon, req.user);
+    const staffRows = await withStaffStoreErrors(() => getWorkflowStaffRows(req, salon));
+    const { workflow } = workflowInfo(salon, req.user, staffRows);
     if (workflow.blockers.length > 0) {
       const blocker = workflow.blockers[0];
       return res.status(400).json({ error: blocker.message, code: blocker.code, blockers: workflow.blockers });
     }
-    const version = submitForApproval(salon, req.user.id);
+    const version = submitForApproval(salon, req.user.id, staffRows);
     audit(req, 'salon.submitted_for_review', 'salon', salon.id, { version: version.version });
     const updated = findSalonByOwner(req.user.id);
     return res.status(201).json({
       salon: serializeSalon(updated),
-      workflow: workflowInfo(updated, req.user).workflow,
+      workflow: workflowInfo(updated, req.user, staffRows).workflow,
       version: serializeVersion(version),
     });
   })
 );
 
-salonRouter.get('/versions', (req, res) => {
+salonRouter.get('/versions', asyncHandler(async (req, res) => {
   const salon = requireOwnSalon(req);
-  res.json({
+  const staffRows = await withStaffStoreErrors(() => getWorkflowStaffRows(req, salon));
+  return res.json({
     versions: listVersions(salon.id).map((row) => ({
       ...serializeVersion(row),
       pendingChanges: row.status === 'pending',
     })),
-    workflow: workflowInfo(salon, req.user).workflow,
+    workflow: workflowInfo(salon, req.user, staffRows).workflow,
   });
-});
+}));
 
 salonRouter.get('/subscription', (req, res) => {
   const salon = requireOwnSalon(req);
@@ -805,6 +1012,9 @@ function staffPayload(body, { partial = false, salonId = null } = {}) {
   if (body.weeklySchedule !== undefined || body.schedule !== undefined) {
     const { schedule, errors } = normalizeWeeklySchedule(body.weeklySchedule ?? body.schedule);
     if (errors.length > 0) throw new ValidationError(errors[0]);
+    if (schedule.every((entry) => entry.closed)) {
+      throw new ValidationError('Set at least one working day in the weekly schedule.');
+    }
     out.weekly_schedule_json = JSON.stringify(schedule);
   } else if (!partial) {
     out.weekly_schedule_json = JSON.stringify(defaultWeeklySchedule());
@@ -864,25 +1074,26 @@ function staffPayload(body, { partial = false, salonId = null } = {}) {
   // website but is not offered in the booking picker.
   if (body.bookingEnabled !== undefined) out.booking_enabled = bool(body.bookingEnabled, true) ? 1 : 0;
   // Availability status — only 'available' staff are offered for online booking.
-  if (body.availabilityStatus !== undefined) {
-    if (!isStaffAvailabilityStatus(body.availabilityStatus)) {
+  const rawAvailabilityStatus = body.availabilityStatus ?? body.status;
+  if (rawAvailabilityStatus !== undefined) {
+    if (!isStaffAvailabilityStatus(rawAvailabilityStatus)) {
       throw new ValidationError(
         `Availability must be one of: ${STAFF_AVAILABILITY_STATUSES.join(', ')}`
       );
     }
-    out.availability_status = body.availabilityStatus;
+    out.availability_status = rawAvailabilityStatus;
   }
   if (body.sortOrder !== undefined) out.sort_order = int(body.sortOrder, { min: 0, max: 10_000, field: 'Sort order' });
   return out;
 }
 
-salonRouter.get('/staff', (req, res) => {
-  const salon = requireOwnSalon(req);
-  res.json({ staff: getStaffForSalon(salon.id).map(serializeStaff) });
-});
+salonRouter.get('/staff', asyncHandler(async (req, res) => {
+  const { context, salon } = await withStaffStoreErrors(() => requireSupabaseStaffSalon(req));
+  const staff = await withStaffStoreErrors(() => getStaffWithLegacyBackfill(context, salon));
+  return res.json({ staff });
+}));
 
-salonRouter.post('/staff', (req, res) => {
-  const salon = requireOwnSalon(req);
+salonRouter.post('/staff', asyncHandler(async (req, res) => {
   if (
     req.body?.isDemo === true ||
     (typeof req.body?.id === 'string' && /^demo[-_:]/i.test(req.body.id.trim()))
@@ -892,10 +1103,12 @@ salonRouter.post('/staff', (req, res) => {
       code: 'DEMO_STAFF_NOT_SAVEABLE',
     });
   }
+
+  const { context, salon } = await withStaffStoreErrors(() => requireSupabaseStaffSalon(req));
   const data = staffPayload(req.body || {}, { salonId: salon.id });
-  const id = newId();
-  const ts = nowIso();
+  const currentStaff = await withStaffStoreErrors(() => getStaffWithLegacyBackfill(context, salon));
   const fullPayload = {
+    name: data.name,
     role_title: '',
     bio: '',
     photo_url: '',
@@ -916,46 +1129,41 @@ salonRouter.post('/staff', (req, res) => {
     hide_mobile_number: 0,
     service_ids_json: '[]',
     weekly_schedule_json: JSON.stringify(defaultWeeklySchedule()),
-    sort_order: getStaffForSalon(salon.id).length,
+    sort_order: currentStaff.length,
     ...data,
   };
-  const columns = Object.keys(fullPayload);
-  db.prepare(
-    `INSERT INTO staff (id, salon_id, ${columns.join(', ')}, created_at, updated_at)
-     VALUES (?, ?, ${columns.map(() => '?').join(', ')}, ?, ?)`
-  ).run(id, salon.id, ...columns.map((column) => fullPayload[column]), ts, ts);
-  audit(req, 'staff.created', 'staff', id);
-  const row = db.prepare('SELECT * FROM staff WHERE id = ? AND salon_id = ?').get(id, salon.id);
-  res.status(201).json({ staff: serializeStaff(row) });
-});
-
-salonRouter.patch('/staff/:staffId', (req, res) => {
-  const salon = requireOwnSalon(req);
-  const existing = db
-    .prepare('SELECT * FROM staff WHERE id = ? AND salon_id = ?')
-    .get(req.params.staffId, salon.id);
-  if (!existing) return res.status(404).json({ error: 'Staff member not found' });
-  const data = staffPayload(req.body || {}, { partial: true, salonId: salon.id });
-  if (Object.keys(data).length === 0) return res.json({ staff: serializeStaff(existing) });
-  data.updated_at = nowIso();
-  const cols = Object.keys(data);
-  db.prepare(`UPDATE staff SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ? AND salon_id = ?`).run(
-    ...cols.map((c) => data[c]),
-    existing.id,
-    salon.id
+  const saved = await withStaffStoreErrors(() =>
+    insertStaff(context, salon.id, staffPayloadForPostgres(fullPayload))
   );
-  audit(req, 'staff.updated', 'staff', existing.id);
-  const row = db.prepare('SELECT * FROM staff WHERE id = ? AND salon_id = ?').get(existing.id, salon.id);
-  res.json({ staff: serializeStaff(row) });
-});
+  audit(req, 'staff.created', 'staff', saved.id);
+  return res.status(201).json({ staff: saved });
+}));
 
-salonRouter.delete('/staff/:staffId', (req, res) => {
-  const salon = requireOwnSalon(req);
-  const result = db.prepare('DELETE FROM staff WHERE id = ? AND salon_id = ?').run(req.params.staffId, salon.id);
-  if (result.changes === 0) return res.status(404).json({ error: 'Staff member not found' });
+salonRouter.patch('/staff/:staffId', asyncHandler(async (req, res) => {
+  const { context, salon } = await withStaffStoreErrors(() => requireSupabaseStaffSalon(req));
+  const data = staffPayload(req.body || {}, { partial: true, salonId: salon.id });
+  if (Object.keys(data).length === 0) {
+    const current = await withStaffStoreErrors(() => getStaffWithLegacyBackfill(context, salon));
+    const unchanged = current.find((member) => member.id === req.params.staffId);
+    if (!unchanged) return res.status(404).json({ error: 'Staff member not found', code: 'STAFF_NOT_FOUND' });
+    return res.json({ staff: unchanged });
+  }
+  data.updated_at = nowIso();
+  const saved = await withStaffStoreErrors(() =>
+    updateStaff(context, salon.id, req.params.staffId, staffPayloadForPostgres(data))
+  );
+  if (!saved) return res.status(404).json({ error: 'Staff member not found', code: 'STAFF_NOT_FOUND' });
+  audit(req, 'staff.updated', 'staff', saved.id);
+  return res.json({ staff: saved });
+}));
+
+salonRouter.delete('/staff/:staffId', asyncHandler(async (req, res) => {
+  const { context, salon } = await withStaffStoreErrors(() => requireSupabaseStaffSalon(req));
+  const deleted = await withStaffStoreErrors(() => deleteStaff(context, salon.id, req.params.staffId));
+  if (!deleted) return res.status(404).json({ error: 'Staff member not found', code: 'STAFF_NOT_FOUND' });
   audit(req, 'staff.deleted', 'staff', req.params.staffId);
-  res.json({ ok: true });
-});
+  return res.json({ ok: true });
+}));
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
