@@ -159,6 +159,7 @@ export const StaffPage: React.FC = () => {
   const [editing, setEditing] = useState<SalonStaff | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [uploadingWorkPhotos, setUploadingWorkPhotos] = useState(false);
   const [workPhotoUrlInput, setWorkPhotoUrlInput] = useState('');
   const [showWorkPhotoUrl, setShowWorkPhotoUrl] = useState(false);
@@ -295,9 +296,12 @@ export const StaffPage: React.FC = () => {
 
   const save = async (e?: React.FormEvent) => {
     e?.preventDefault();
+    // The ref closes the double-click / Enter-key race before React rerenders.
+    if (savingRef.current) return;
     setFormError('');
     const validationError = validateDraft();
     if (validationError) return setFormError(validationError);
+    savingRef.current = true;
     setSaving(true);
     try {
       const parsedRating = draft.rating.trim() === '' ? null : Number(draft.rating);
@@ -342,11 +346,17 @@ export const StaffPage: React.FC = () => {
       };
       if (editing) {
         const res = await api.patch<{ staff: SalonStaff }>(`/salon/staff/${editing.id}`, payload);
+        if (!res.staff?.id) throw new Error('The server did not confirm the updated staff record.');
         setStaff((prev) => prev.map((s) => (s.id === editing.id ? res.staff : s)));
         setNotice('Team member updated across your website and booking templates.');
       } else {
         const res = await api.post<{ staff: SalonStaff }>('/salon/staff', payload);
-        setStaff((prev) => [...prev, res.staff]);
+        if (!res.staff?.id) throw new Error('The server did not confirm the saved staff record.');
+        setStaff((prev) =>
+          prev.some((member) => member.id === res.staff.id)
+            ? prev.map((member) => (member.id === res.staff.id ? res.staff : member))
+            : [...prev, res.staff]
+        );
         setNotice('Team member added and synced to your booking templates.');
       }
       setModalOpen(false);
@@ -354,6 +364,7 @@ export const StaffPage: React.FC = () => {
     } catch (err) {
       setFormError(errorMessage(err));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -705,15 +716,17 @@ export const StaffPage: React.FC = () => {
       {/* ---------------------------------------------------------------- */}
       <Modal
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={() => {
+          if (!savingRef.current) setModalOpen(false);
+        }}
         title={editing ? 'Edit team member' : 'Add New Staff Member'}
         maxWidth="max-w-3xl"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setModalOpen(false)}>
+            <Button variant="ghost" onClick={() => setModalOpen(false)} disabled={saving}>
               Cancel
             </Button>
-            <Button variant="gold" onClick={() => save()} loading={saving}>
+            <Button variant="gold" onClick={() => save()} loading={saving} disabled={saving || uploadingWorkPhotos}>
               {editing ? 'Save changes' : 'Add staff member'}
             </Button>
           </>

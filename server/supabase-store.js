@@ -36,6 +36,8 @@ export async function requestSupabase(path, token, options = {}) {
   const url = path.startsWith('http') ? path : SUPABASE_URL + path;
   const headers = new Headers(options.headers || {});
   headers.set('apikey', SUPABASE_KEY);
+  // Match the Supabase client contract: an anonymous request carries the
+  // publishable key as Bearer; authenticated requests carry the verified user JWT.
   headers.set('Authorization', 'Bearer ' + (token || SUPABASE_KEY));
   if (options.body !== undefined && !(options.body instanceof Blob) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
@@ -96,16 +98,19 @@ export const SERVICE_SELECT_VARIANTS = [
   },
 ];
 
-export const STAFF_SELECT_VARIANTS = [
-  {
-    select:
-      'id,salon_id,name,role_title,bio,photo_url,specialties,active,booking_enabled,availability_status,sort_order,created_at,updated_at,' +
-      'primary_role,app_access_role,commission_percent,mobile_number,hide_mobile_number,service_ids,weekly_schedule',
-  },
-  { select: 'id,salon_id,name,role_title,bio,photo_url,specialties,active,booking_enabled,availability_status,sort_order,created_at,updated_at' },
-  { select: 'id,salon_id,name,role_title,bio,photo_url,specialties,active,sort_order,created_at,updated_at', defaults: { booking_enabled: true, availability_status: 'available' } },
-  { select: '*', defaults: { booking_enabled: true, availability_status: 'available', sort_order: 0 } },
-];
+export const STAFF_FULL_SELECT =
+  'id,salon_id,name,role_title,primary_role,app_access_role,commission_percent,mobile_number,hide_mobile_number,' +
+  'bio,photo_url,specialties,qualifications,work_photos,work_photos_consent,rating,review_count,experience,' +
+  'active,booking_enabled,availability_status,service_ids,weekly_schedule,sort_order,created_at,updated_at';
+
+export const STAFF_PUBLIC_SELECT =
+  'id,salon_id,name,role_title,bio,photo_url,specialties,qualifications,work_photos,work_photos_consent,hide_mobile_number,' +
+  'rating,review_count,experience,active,booking_enabled,availability_status,service_ids,weekly_schedule,' +
+  'sort_order,created_at,updated_at';
+
+// Kept for compatibility with non-staff legacy callers. Staff CRUD below uses
+// the full, migrated contract and never silently falls back to a partial row.
+export const STAFF_SELECT_VARIANTS = [{ select: STAFF_FULL_SELECT }];
 
 /** Resilient single-row read (used for profiles and any future metadata). */
 export async function selectProfileRows(basePath, token, { label = 'public.profiles' } = {}) {
@@ -258,13 +263,20 @@ export function mapService(row) {
 export function mapStaff(row) {
   if (!row) return null;
   const commission = Number(row.commission_percent);
+  const specialties = Array.isArray(row.specialties) ? row.specialties : [];
+  const qualifications = Array.isArray(row.qualifications) ? row.qualifications : [];
+  const workPhotos = Array.isArray(row.work_photos) ? row.work_photos : [];
   return {
     id: row.id, salonId: row.salon_id, name: row.name, roleTitle: row.role_title || '',
     primaryRole: isStaffPrimaryRole(row.primary_role) ? row.primary_role : '',
     appAccessRole: isStaffAppAccessRole(row.app_access_role) ? row.app_access_role : DEFAULT_STAFF_APP_ACCESS_ROLE,
     commissionPercent: Number.isFinite(commission) ? Math.round(Math.min(100, Math.max(0, commission)) * 10) / 10 : DEFAULT_COMMISSION_PERCENT,
     bio: row.bio || '', photoUrl: row.photo_url || '',
-    specialties: Array.isArray(row.specialties) ? row.specialties : [],
+    specialties, qualifications, workPhotos,
+    workPhotosConsent: Boolean(row.work_photos_consent),
+    rating: row.rating === null || row.rating === undefined ? null : Number(row.rating),
+    reviewCount: Number(row.review_count || 0),
+    experience: row.experience || '',
     active: Boolean(row.active), bookingEnabled: row.booking_enabled !== false,
     availabilityStatus: ['available', 'busy', 'on_leave', 'off_duty'].includes(row.availability_status) ? row.availability_status : 'available',
     mobileNumber: row.mobile_number || '',
@@ -299,6 +311,20 @@ export async function getSalonForOwner(ctx) {
   return rows[0] || null;
 }
 
+export async function markStaffBackfillComplete(ctx, salonId) {
+  if (!ctx?.token || !salonId) throw new SupabaseApiError(401, 'A verified salon session is required to complete staff migration.');
+  const query = 'id=eq.' + encodeURIComponent(salonId) + '&select=id,staff_migrated_at';
+  const rows = await rest(ctx, 'salons', query, {
+    method: 'PATCH',
+    body: { staff_migrated_at: isoNow() },
+    prefer: 'return=representation',
+  });
+  if (!Array.isArray(rows) || !rows[0]) {
+    throw new SupabaseApiError(403, 'Could not record the one-time staff migration for this salon.');
+  }
+  return rows[0];
+}
+
 export async function getSalonById(ctx, salonId) {
   const rows = await rest(ctx, 'salons', 'id=eq.' + encodeURIComponent(salonId) + '&select=*&limit=1');
   return rows[0] || null;
@@ -311,9 +337,68 @@ export async function getServices(ctx, salonId, { activeOnly = false } = {}) {
 }
 
 export async function getStaff(ctx, salonId, { activeOnly = false } = {}) {
-  const q = 'salon_id=eq.' + encodeURIComponent(salonId) + '&order=sort_order.asc,created_at.asc' + (activeOnly ? '&active=eq.true' : '');
-  const rows = await selectTableRows('staff', q, ctx?.token, STAFF_SELECT_VARIANTS);
+  if (!ctx?.token || !salonId) throw new SupabaseApiError(401, 'A verified salon session is required to read staff.');
+  const q = 'salon_id=eq.' + encodeURIComponent(salonId) +
+    (activeOnly ? '&active=eq.true' : '') +
+    '&order=sort_order.asc,created_at.asc&select=' + encodeURIComponent(STAFF_FULL_SELECT);
+  const rows = await rest(ctx, 'staff', q);
   return rows.map(mapStaff);
+}
+
+/** Public roster reads use only the column allowlist granted to the anon role. */
+export async function getPublicStaff(salonId, { activeOnly = true } = {}) {
+  if (!salonId) return [];
+  const q = 'salon_id=eq.' + encodeURIComponent(salonId) +
+    (activeOnly ? '&active=eq.true' : '') +
+    '&order=sort_order.asc,created_at.asc&select=' + encodeURIComponent(STAFF_PUBLIC_SELECT);
+  const rows = await rest(null, 'staff_public_profiles', q);
+  return rows.map(mapStaff);
+}
+
+/** Find one currently public staff row; the anon RLS policy remains authoritative. */
+export async function getPublicStaffById(staffId) {
+  if (!staffId || /^demo[-_:]/i.test(String(staffId))) return null;
+  const q = 'id=eq.' + encodeURIComponent(staffId) +
+    '&active=eq.true&limit=1&select=' + encodeURIComponent(STAFF_PUBLIC_SELECT);
+  const rows = await rest(null, 'staff_public_profiles', q);
+  return mapStaff(rows[0] || null);
+}
+
+export async function insertStaff(ctx, salonId, values) {
+  if (!ctx?.token || !salonId) throw new SupabaseApiError(401, 'A verified salon session is required to create staff.');
+  const rows = await rest(ctx, 'staff', 'select=' + encodeURIComponent(STAFF_FULL_SELECT), {
+    method: 'POST',
+    body: { ...values, salon_id: salonId },
+    prefer: 'return=representation',
+  });
+  if (!Array.isArray(rows) || !rows[0]?.id) {
+    throw new SupabaseApiError(500, 'Supabase did not return the saved staff record.');
+  }
+  return mapStaff(rows[0]);
+}
+
+export async function updateStaff(ctx, salonId, staffId, values) {
+  if (!ctx?.token || !salonId) throw new SupabaseApiError(401, 'A verified salon session is required to update staff.');
+  const query = 'id=eq.' + encodeURIComponent(staffId) +
+    '&salon_id=eq.' + encodeURIComponent(salonId) +
+    '&select=' + encodeURIComponent(STAFF_FULL_SELECT);
+  const rows = await rest(ctx, 'staff', query, {
+    method: 'PATCH',
+    body: values,
+    prefer: 'return=representation',
+  });
+  return Array.isArray(rows) && rows[0] ? mapStaff(rows[0]) : null;
+}
+
+export async function deleteStaff(ctx, salonId, staffId) {
+  if (!ctx?.token || !salonId) throw new SupabaseApiError(401, 'A verified salon session is required to delete staff.');
+  const query = 'id=eq.' + encodeURIComponent(staffId) +
+    '&salon_id=eq.' + encodeURIComponent(salonId) + '&select=id';
+  const rows = await rest(ctx, 'staff', query, {
+    method: 'DELETE',
+    prefer: 'return=representation',
+  });
+  return Array.isArray(rows) && rows.length > 0;
 }
 
 export async function getSubscription(ctx, salonId) {
