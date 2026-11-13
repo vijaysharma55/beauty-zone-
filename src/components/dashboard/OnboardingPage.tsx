@@ -55,7 +55,10 @@ const stepDescriptions = [
 export const OnboardingPage: React.FC = () => {
   const { user, setSession } = useAuth();
   const navigate = useNavigate();
-  const defaults = useMemo(() => defaultOnboardingDraft({ email: user?.email || '', name: user?.name || '' }) as Draft, [user?.id]);
+  const defaults = useMemo(
+    () => defaultOnboardingDraft({ email: user?.email || '', name: user?.name || '' }) as Draft,
+    [user?.id, user?.email, user?.name]
+  );
   const { register, control, getValues, setValue, reset, trigger, watch, formState: { errors } } = useForm<Values>({
     defaultValues: defaults.values,
     resolver: zodResolver(onboardingValuesSchema),
@@ -318,7 +321,7 @@ export const OnboardingPage: React.FC = () => {
 
   const statusLabel = syncState.status === 'saving' ? 'Saving...'
     : syncState.status === 'pending' ? 'Changes waiting to save'
-      : syncState.status === 'saved' ? 'All changes saved'
+      : syncState.status === 'saved' ? 'Draft saved automatically'
         : syncState.status === 'error' ? (syncState.backupAvailable ? 'Saved on this device only' : 'Save failed')
           : syncState.status === 'conflict' ? 'Sync needs attention' : 'Changes save automatically';
   const nameRegistration = register('name');

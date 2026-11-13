@@ -45,6 +45,7 @@ before(async () => {
   const migration = fs.readFileSync(new URL('../../supabase/migrations/20261111_beautyzone_onboarding_persistence.sql', import.meta.url), 'utf8');
   await pg.exec(migration);
   await pg.exec(migration); // Safe to apply again.
+  await pg.exec(fs.readFileSync(new URL('../../supabase/migrations/20261112_beautyzone_onboarding_validation_regex.sql', import.meta.url), 'utf8'));
 });
 after(async () => { await pg?.close(); });
 
@@ -63,6 +64,16 @@ async function save(draft, revision) {
 const update = (draft, fields) => ({ ...draft, values: { ...draft.values, ...fields } });
 
 test('Supabase migration enforces owner isolation, linear saved steps and idempotent completion', async () => {
+  const validation = await pg.query(`
+    select private.onboarding_step_valid(
+      '{"addressLine":"1 Main Road","city":"Jaipur","state":"Rajasthan","phone":"+91 98765 43210","email":"hello@example.com"}'::jsonb, 2
+    ) as contact_valid,
+    private.onboarding_step_valid(
+      '{"ownerName":"Owner","ownerPhone":"+91 98765 43210","logoUrl":"https://example.com/logo.png","coverImage":"https://example.com/cover.png"}'::jsonb, 3
+    ) as owner_valid
+  `);
+  assert.equal(validation.rows[0].contact_valid, true, 'valid +91 phone and email pass PostgreSQL validation');
+  assert.equal(validation.rows[0].owner_valid, true, 'valid owner phone and salon image URLs pass PostgreSQL validation');
   await asUser(OWNER);
   let draft = defaultOnboardingDraft({ email: 'owner@example.com', name: 'Owner' });
   await assert.rejects(() => save({ ...draft, currentStep: 2 }, 0), /Start with salon identity/i);
