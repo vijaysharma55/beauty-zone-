@@ -57,7 +57,7 @@ function isSeededDemoEmail(email) {
     process.env.SEED_OWNER_EMAIL,
   ].filter(Boolean).map((value) => String(value).trim().toLowerCase());
   return configured.includes(normalized)
-    || /^owner(?:-[a-z0-9-]+|[0-9]+)?@jaipur\\.salon$/.test(normalized);
+    || /^owner(?:-[a-z0-9-]+|[0-9]+)?@jaipur\.salon$/.test(normalized);
 }
 
 const DUMMY_PASSWORD_HASH = ['scrypt', '16384', '8', '1', '0'.repeat(32), '0'.repeat(128)]
@@ -336,10 +336,14 @@ authRouter.post(
 /* Login                                                               */
 /* ------------------------------------------------------------------ */
 
-const DEMO_CREDENTIALS = {
-  'admin@beautyzone.app': process.env.SEED_ADMIN_PASSWORD || 'Admin@12345',
-  'owner@luminaluxe.in': process.env.SEED_OWNER_PASSWORD || 'Owner@12345',
-};
+function getDemoCredentials() {
+  const adminEmail = (process.env.SEED_ADMIN_EMAIL || 'admin@beautyzone.app').trim().toLowerCase();
+  const ownerEmail = (process.env.SEED_OWNER_EMAIL || 'owner@luminaluxe.in').trim().toLowerCase();
+  return {
+    [adminEmail]: process.env.SEED_ADMIN_PASSWORD || 'Admin@12345',
+    [ownerEmail]: process.env.SEED_OWNER_PASSWORD || 'Owner@12345',
+  };
+}
 
 authRouter.post(
   '/login',
@@ -364,8 +368,9 @@ authRouter.post(
       return res.status(401).json({ error: genericError });
     }
 
+    const demoCreds = getDemoCredentials();
     const demoAuthEnabled = !isProduction() && process.env.ALLOW_DEMO_AUTH !== 'false';
-    const isDemo = demoAuthEnabled && Boolean(DEMO_CREDENTIALS[email]);
+    const isDemo = demoAuthEnabled && Boolean(demoCreds[email]);
     let user = findUserByEmail(email);
 
     // Auto-provision/heal demo users only in non-production environments.
@@ -379,7 +384,7 @@ authRouter.post(
       return res.status(401).json({ error: genericError });
     }
 
-    const matchesDemoPassword = isDemo && password === DEMO_CREDENTIALS[email];
+    const matchesDemoPassword = isDemo && password === demoCreds[email];
 
     // For non-demo matches, check if account is temporarily locked
     if (!matchesDemoPassword && user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
@@ -465,8 +470,9 @@ authRouter.post(
   '/admin/login',
   loginLimiter,
   asyncHandler(async (req, res) => {
-    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
-    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    const { email: rawEmail, password: rawPassword } = req.body || {};
+    const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
+    const password = typeof rawPassword === 'string' ? rawPassword : '';
     const genericError = 'Invalid administrator credentials.';
     if (!email || !password) {
       return res.status(400).json({ error: 'Please enter both email and password.' });
@@ -476,24 +482,61 @@ authRouter.post(
       return res.status(401).json({ error: genericError });
     }
 
-    const user = findUserByEmail(email);
-    if (!user || !user.password_hash) {
+    const demoCreds = getDemoCredentials();
+    const demoAuthEnabled = !isProduction() && process.env.ALLOW_DEMO_AUTH !== 'false';
+    const isDemo = demoAuthEnabled && Boolean(demoCreds[email]);
+    let user = findUserByEmail(email);
+
+    if (!user && isDemo) {
+      ensureDemoUsers(hashPasswordSync);
+      user = findUserByEmail(email);
+    }
+
+    if (!user) {
       await verifyPassword(password, DUMMY_PASSWORD_HASH);
       return res.status(401).json({ error: genericError });
     }
-    if (user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
+
+    const matchesDemoPassword = isDemo && password === demoCreds[email];
+
+    if (!matchesDemoPassword && user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
       return res.status(429).json({ error: 'Too many failed attempts. Please try again in a few minutes.' });
     }
-    const ok = await verifyPassword(password, user.password_hash);
+
+    let ok = false;
+    if (matchesDemoPassword) {
+      ok = true;
+    } else if (user.password_hash) {
+      ok = await verifyPassword(password, user.password_hash);
+    }
+
     if (!ok) {
       const failed = (user.failed_logins || 0) + 1;
       const lock = failed >= MAX_FAILED_LOGINS ? new Date(Date.now() + LOCK_MS).toISOString() : null;
       db.prepare('UPDATE users SET failed_logins = ?, locked_until = ? WHERE id = ?').run(failed, lock, user.id);
+      audit({ ...req, user: { id: user.id, email: user.email } }, 'auth.login_failed', 'user', user.id, {
+        failed,
+        portal: 'admin',
+      });
       return res.status(401).json({ error: genericError });
     }
     if (user.status !== 'active') {
       return res.status(403).json({ error: 'This account has been disabled. Please contact support.' });
     }
+
+    if (user.failed_logins > 0 || user.locked_until) {
+      db.prepare('UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = ?').run(user.id);
+    }
+
+    if (needsRehash(user.password_hash) || matchesDemoPassword) {
+      try {
+        const freshHash = await hashPassword(password);
+        db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(freshHash, user.id);
+      } catch (err) {
+        console.error('[auth] Failed to refresh admin password hash:', err.message);
+      }
+    }
+
     if (user.role !== SUPER_ADMIN && user.role !== ADMIN) {
       // A salon owner who finds this page gets a clear pointer, never a session.
       audit({ ...req, user: { id: user.id, email: user.email } }, 'auth.portal_rejected', 'user', user.id, {

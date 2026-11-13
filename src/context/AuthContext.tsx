@@ -33,18 +33,58 @@ interface AuthContextValue {
 }
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+function isLocalDemoEmail(email: string): boolean {
+  const normalized = email.trim().toLowerCase();
+  return (
+    normalized === 'admin@beautyzone.app' ||
+    normalized === 'owner@luminaluxe.in' ||
+    /^owner(?:-[a-z0-9-]+|[0-9]+)?@jaipur\.salon$/.test(normalized)
+  );
+}
+
+function isNonFallbackSupabaseError(err: unknown): boolean {
+  const raw = err instanceof Error ? err.message : String(err || '');
+  const lower = raw.toLowerCase();
+  const code = String((err as { code?: string })?.code || '').toLowerCase();
+  return (
+    lower.includes('email not confirmed') ||
+    lower.includes('email not verified') ||
+    lower.includes('too many requests') ||
+    lower.includes('rate limit') ||
+    code === 'email_not_confirmed' ||
+    code === 'over_request_rate_limit'
+  );
+}
+
+function portalWrongError(portal: AuthPortal): Error {
+  return new Error(
+    portal === 'admin'
+      ? 'This account is a salon owner account. Please sign in at the salon owner portal.'
+      : 'This account is a platform administrator. Please sign in at the super admin portal.'
+  );
+}
+
 /** Turn raw GoTrue/network errors into copy an administrator can act on. */
 function friendlyAuthError(err: unknown): Error {
   const raw = err instanceof Error ? err.message : String(err || 'Sign-in failed.');
   const lower = raw.toLowerCase();
-  if (lower.includes('invalid login credentials') || lower.includes('invalid email or password')) {
+  const code = String((err as { code?: string })?.code || '').toLowerCase();
+  if (
+    lower.includes('invalid login credentials') ||
+    lower.includes('invalid email or password') ||
+    lower.includes('invalid administrator credentials') ||
+    code === 'invalid_credentials'
+  ) {
     return new Error('The email or password is incorrect. Please check your credentials and try again.');
   }
-  if (lower.includes('email not confirmed') || lower.includes('email not verified')) {
+  if (lower.includes('email not confirmed') || lower.includes('email not verified') || code === 'email_not_confirmed') {
     return new Error('Please confirm your email address first. Check your inbox for the verification link, then sign in again.');
   }
-  if (lower.includes('too many requests') || lower.includes('rate limit')) {
+  if (lower.includes('too many requests') || lower.includes('rate limit') || code === 'over_request_rate_limit') {
     return new Error('Too many sign-in attempts. Please wait a few minutes and try again.');
+  }
+  if (lower.includes('user already registered') || lower.includes('already exists') || code === 'user_already_exists') {
+    return new Error('An account with this email already exists. Please sign in or reset your password.');
   }
   if (lower.includes('failed to fetch') || lower.includes('network') || lower.includes('timed out')) {
     return new Error('We could not reach the authentication service. Check your connection and try again.');
@@ -229,45 +269,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const signInToPortal = useCallback(async (portal: AuthPortal, email: string, password: string) => {
     const normalizedEmail = email.trim().toLowerCase();
+    const localEndpoint = portal === 'admin' ? '/auth/admin/login' : '/auth/login';
+
+    const attemptLocalLogin = async (): Promise<AuthResponse> => {
+      try {
+        const data = await api.post<AuthResponse>(localEndpoint, { email: normalizedEmail, password });
+        apply(data);
+        return data;
+      } catch (err) {
+        if (err instanceof ApiError && err.code === 'WRONG_PORTAL') {
+          throw portalWrongError(portal);
+        }
+        throw err;
+      }
+    };
+
+    // In local development / preview, try local password auth first for seeded
+    // demo accounts so we don't fire a guaranteed 400 "Invalid login credentials"
+    // call to Supabase before succeeding locally.
+    if (!import.meta.env.PROD && isLocalDemoEmail(normalizedEmail)) {
+      try {
+        return await attemptLocalLogin();
+      } catch (err) {
+        if (err instanceof ApiError && err.status > 0 && err.status < 500) {
+          throw friendlyAuthError(err);
+        }
+        // If local API is unreachable (status === 0) or 5xx, continue to Supabase.
+      }
+    }
+
     let supabaseError: unknown = null;
+    let passwordVerifiedBySupabase = false;
     try {
       const result = await supabase.auth.signInWithPassword(normalizedEmail, password);
       if (!result.session?.access_token) {
         throw new Error('Sign-in did not create a valid session. Check your email confirmation and try again.');
       }
-      try {
-        return await syncAccessToken(result.session.access_token, portal);
-      } catch (err) {
-        // The bridge rejected this identity (wrong portal). Drop the Supabase
-        // session so the browser cannot carry a half-authenticated token into
-        // the other workspace's UI.
-        if (err instanceof ApiError && err.code === 'WRONG_PORTAL') {
-          await supabase.auth.signOut('local').catch(() => undefined);
-          throw err;
-        }
-        throw err;
-      }
+      passwordVerifiedBySupabase = true;
+      return await syncAccessToken(result.session.access_token, portal);
     } catch (err) {
+      // Once Supabase has verified the password, never mask bridge/profile
+      // errors (wrong portal, disabled account, unverified email, etc.) by
+      // falling back to local SQLite password auth.
+      if (passwordVerifiedBySupabase) {
+        if (err instanceof ApiError && (err.code === 'WRONG_PORTAL' || err.status === 403 || err.status === 409)) {
+          await supabase.auth.signOut('local').catch(() => undefined);
+        }
+        if (err instanceof ApiError && err.code === 'WRONG_PORTAL') {
+          throw portalWrongError(portal);
+        }
+        throw friendlyAuthError(err);
+      }
+      if (isNonFallbackSupabaseError(err)) {
+        throw friendlyAuthError(err);
+      }
       supabaseError = err;
-      if (err instanceof ApiError && err.code === 'WRONG_PORTAL') throw friendlyAuthError(err);
     }
 
     // Local/offline fallback with the same portal isolation.
     try {
-      const data = await api.post<AuthResponse>(
-        portal === 'admin' ? '/auth/admin/login' : '/auth/login',
-        { email: normalizedEmail, password }
-      );
-      apply(data);
-      return data;
+      return await attemptLocalLogin();
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'WRONG_PORTAL') {
-        throw new Error(
-          portal === 'admin'
-            ? 'This account is a salon owner account. Please sign in at the salon owner portal.'
-            : 'This account is a platform administrator. Please sign in at the super admin portal.'
-        );
-      }
       if (err instanceof ApiError && err.status === 0) throw friendlyAuthError(supabaseError);
       if (err instanceof ApiError && err.status > 0 && err.status < 500) throw friendlyAuthError(err);
       throw friendlyAuthError(supabaseError || err);

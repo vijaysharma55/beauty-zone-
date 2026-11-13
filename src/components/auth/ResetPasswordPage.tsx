@@ -4,17 +4,21 @@ import { AlertCircle, CheckCircle2, Eye, EyeOff, Lock, ShieldCheck } from 'lucid
 import { AuthLayout } from './AuthLayout';
 import { Button, Field, Input } from '../ui';
 import { supabase } from '../../lib/supabase';
-import { errorMessage } from '../../lib/api';
+import { api, errorMessage } from '../../lib/api';
+import { useAuth } from '../../context/AuthContext';
+import type { AuthResponse } from '../../types/auth';
 
 const SPECIAL_CHAR_REGEX = /[^A-Za-z0-9]/;
 
 export const ResetPasswordPage: React.FC = () => {
   const navigate = useNavigate();
+  const { setSession } = useAuth();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [accountEmail, setAccountEmail] = useState('');
+  const [localToken, setLocalToken] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
   const [sessionReady, setSessionReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -25,13 +29,29 @@ export const ResetPasswordPage: React.FC = () => {
     let cancelled = false;
     (async () => {
       try {
+        const params = new URLSearchParams(window.location.search);
+        const tokenParam = params.get('token')?.trim() || '';
+        if (tokenParam) {
+          const verified = await api.get<{ valid: boolean; email?: string; error?: string }>(
+            `/auth/verify-reset-token?token=${encodeURIComponent(tokenParam)}`
+          );
+          if (cancelled) return;
+          if (verified?.valid) {
+            setLocalToken(tokenParam);
+            setSessionReady(true);
+            setAccountEmail(verified.email || '');
+          } else {
+            setError(verified?.error || 'This reset link is invalid or expired. Request a new link and open it on this device.');
+          }
+          return;
+        }
+
         const recovered = await supabase.auth.recoverSessionFromUrl();
         const session = recovered || await supabase.auth.getSession();
         if (cancelled) return;
         setSessionReady(Boolean(session));
         setAccountEmail(session?.user?.email || '');
         if (!session) {
-          const params = new URLSearchParams(window.location.search);
           setError(params.get('error_description') || 'This reset link is invalid or expired. Request a new link and open it on this device.');
         }
       } catch (err) {
@@ -69,7 +89,17 @@ export const ResetPasswordPage: React.FC = () => {
     }
     setSubmitting(true);
     try {
-      await supabase.auth.updateUser({ password });
+      if (localToken) {
+        const result = await api.post<AuthResponse & { ok?: boolean }>('/auth/reset-password', {
+          token: localToken,
+          password,
+        });
+        if (result?.user) {
+          setSession(result);
+        }
+      } else {
+        await supabase.auth.updateUser({ password });
+      }
       setSuccess(true);
     } catch (err) {
       setError(errorMessage(err));

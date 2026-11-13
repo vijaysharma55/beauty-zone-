@@ -4,26 +4,56 @@ import { AlertCircle, ArrowLeft, CheckCircle2, Mail, X } from 'lucide-react';
 import { AuthLayout } from './AuthLayout';
 import { Button, Input } from '../ui';
 import { supabase } from '../../lib/supabase';
-import { errorMessage } from '../../lib/api';
+import { api, ApiError, errorMessage } from '../../lib/api';
 
 export const ForgotPasswordPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
+  const [devResetUrl, setDevResetUrl] = useState<string | null>(null);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!email.trim()) {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
       setError('Please enter your email address.');
       return;
     }
     setError('');
+    setDevResetUrl(null);
     setLoading(true);
     try {
-      await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase());
-      // Keep the same response for known and unknown addresses.
-      setSent(true);
+      const [localResult, supabaseResult] = await Promise.allSettled([
+        api.post<{ ok: boolean; message?: string; devResetUrl?: string }>('/auth/forgot-password', {
+          email: normalizedEmail,
+        }),
+        supabase.auth.resetPasswordForEmail(normalizedEmail),
+      ]);
+
+      if (localResult.status === 'rejected') {
+        const reason = localResult.reason;
+        if (reason instanceof ApiError && (reason.status === 400 || reason.status === 403 || reason.status === 429)) {
+          setError(reason.message);
+          return;
+        }
+      }
+
+      if (localResult.status === 'fulfilled' && localResult.value?.devResetUrl) {
+        try {
+          const parsed = new URL(localResult.value.devResetUrl, window.location.origin);
+          setDevResetUrl(`${parsed.pathname}${parsed.search}`);
+        } catch {
+          setDevResetUrl(localResult.value.devResetUrl);
+        }
+      }
+
+      if (localResult.status === 'fulfilled' || supabaseResult.status === 'fulfilled') {
+        // Keep the same response for known and unknown addresses.
+        setSent(true);
+      } else {
+        setError(errorMessage(supabaseResult.reason || localResult.reason));
+      }
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -54,10 +84,18 @@ export const ForgotPasswordPage: React.FC = () => {
                 <p className="mt-1 text-sm text-emerald-800">
                   If an account exists for <strong>{email.trim()}</strong>, a password reset link has been sent. Open it on this device to continue.
                 </p>
+                {devResetUrl && (
+                  <p className="mt-2 text-xs text-emerald-900">
+                    Local reset link ready:{' '}
+                    <Link to={devResetUrl} className="font-semibold underline hover:text-emerald-700">
+                      Reset password now
+                    </Link>
+                  </p>
+                )}
               </div>
             </div>
           </div>
-          <button type="button" onClick={() => { setSent(false); setEmail(''); }} className="w-full text-center text-xs text-slate-500 underline">
+          <button type="button" onClick={() => { setSent(false); setEmail(''); setDevResetUrl(null); }} className="w-full text-center text-xs text-slate-500 underline">
             Use a different email
           </button>
           <Link to="/login" className="block">
