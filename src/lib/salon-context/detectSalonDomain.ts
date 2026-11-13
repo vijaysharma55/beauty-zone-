@@ -46,8 +46,8 @@ const DOMAIN_ORDER: DomainKey[] = [
 ];
 
 const emptyScores = (): Record<DomainKey, number> => ({
-  nails: ['nail', 'nails', 'manicure', 'pedicure', 'gel polish', 'acrylic', 'polygel', 'nail art', 'nail extension', 'extension nails', 'chrome nails', 'cat eye', 'nakhun', 'नाखून'],
-  barber: ['barber', 'barbershop', 'gents', 'gent salon', 'men salon', 'mens salon', 'men\'s salon', 'beard', 'shave', 'shaving', 'mens grooming', 'male grooming', 'daadhi', 'dari', 'hajamat', 'दाढ़ी', 'हजामत'],
+  nails: 0, hair: 0, skin: 0, makeup: 0, spa_massage: 0,
+  barber: 0, bridal: 0, waxing_threading: 0, mehendi: 0, unisex_general: 0,
 });
 
 function normalizeText(value: unknown): string {
