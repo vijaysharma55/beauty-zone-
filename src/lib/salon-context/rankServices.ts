@@ -39,10 +39,14 @@ function normalized(value: unknown): string {
 
 function domainOrder(context: SalonSuggestionContext): DomainKey[] {
   const detection = context.detection || detectSalonDomain(context);
-  const preferred = detection.primaryDomain === 'unisex_general'
-    ? ['unisex_general' as DomainKey, ...detection.secondaryDomains]
+  const preferred: DomainKey[] = detection.primaryDomain === 'unisex_general'
+    ? ['unisex_general', ...detection.secondaryDomains]
     : [detection.primaryDomain, ...detection.secondaryDomains];
-  return [...new Set([...preferred, 'nails', 'hair', 'skin', 'makeup', 'bridal', 'waxing_threading', 'spa_massage', 'barber', 'mehendi', 'unisex_general'])];
+  const fallback: DomainKey[] = [
+    'nails', 'hair', 'skin', 'makeup', 'bridal',
+    'waxing_threading', 'spa_massage', 'barber', 'mehendi', 'unisex_general',
+  ];
+  return Array.from(new Set<DomainKey>([...preferred, ...fallback]));
 }
 
 function getGenderFocus(context: SalonSuggestionContext): 'women' | 'men' | 'unisex' {
