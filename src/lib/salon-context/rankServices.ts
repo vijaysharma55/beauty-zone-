@@ -168,10 +168,10 @@ export function buildTemplatePrefill(template: RankedTemplate, context: SalonSug
   const catalogPrice = range ? Math.round((range[0] + range[1]) / 2) : 0;
   const priorDescriptions = similar.map((service) => normalized(service.description)).join(' ');
   const tone = [
-    { marker: /\\b(signature|premium|luxury|bespoke)\\b/, value: 'signature' },
-    { marker: /\\b(gentle|soothing|relaxing|calm)\\b/, value: 'gentle' },
-    { marker: /\\b(professional|expert|precision|tailored)\\b/, value: 'professional' },
-    { marker: /\\b(natural|organic)\\b/, value: 'natural' },
+    { marker: /\b(signature|premium|luxury|bespoke)\b/, value: 'signature' },
+    { marker: /\b(gentle|soothing|relaxing|calm)\b/, value: 'gentle' },
+    { marker: /\b(professional|expert|precision|tailored)\b/, value: 'professional' },
+    { marker: /\b(natural|organic)\b/, value: 'natural' },
   ].find((candidate) => candidate.marker.test(priorDescriptions))?.value;
   const description = tone && template.description.startsWith('A ')
     ? `A ${tone} ${template.description.slice(2)}`
