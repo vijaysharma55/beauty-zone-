@@ -13,6 +13,10 @@ describe('detectSalonDomain', () => {
     expect(result.secondaryDomains).toContain('skin');
   });
 
+  it('uses a clear specialty tagline to rank specialist templates first', () => {
+    expect(detectSalonDomain({ tagline: 'Gel & Acrylic Specialists' }).primaryDomain).toBe('nails');
+  });
+
   it('detects a gents salon as barber rather than generic hair', () => {
     expect(detectSalonDomain({ name: 'Royal Gents Salon' }).primaryDomain).toBe('barber');
   });
