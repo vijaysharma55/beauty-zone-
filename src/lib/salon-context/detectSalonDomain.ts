@@ -172,7 +172,7 @@ export function detectSalonDomain(input: SalonDomainInput = {}): SalonDomainResu
   return {
     primaryDomain: top.domain,
     secondaryDomains,
-    confidence: Math.min(1, top.score / 16),
+    confidence: Math.min(1, top.score / 12),
     signals,
     scores,
   };
