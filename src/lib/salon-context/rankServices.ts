@@ -1,4 +1,4 @@
-import { detectSalonDomain, normalizeSalonContextText, type DomainKey, type SalonDomainResult, type SalonDomainInput } from './detectSalonDomain';
+import { detectSalonDomain, normalizeSalonContextText, type DomainKey, type ExistingServiceSignal, type SalonDomainResult, type SalonDomainInput } from './detectSalonDomain';
 import { getCatalogTemplates, SERVICE_CATALOG, type ServiceTemplate } from './serviceCatalog';
 
 export interface SalonSuggestionContext extends SalonDomainInput {
