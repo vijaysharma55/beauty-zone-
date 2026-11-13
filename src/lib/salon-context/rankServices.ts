@@ -1,4 +1,4 @@
-import { detectSalonDomain, normalizeSalonContextText, type DomainKey, type ExistingServiceSignal, type SalonDomainResult, type SalonDomainInput } from './detectSalonDomain';
+import { detectSalonDomain, normalizeSalonContextText, type DomainKey, type SalonDomainResult, type SalonDomainInput } from './detectSalonDomain';
 import { getCatalogTemplates, SERVICE_CATALOG, type ServiceTemplate } from './serviceCatalog';
 
 export interface SalonSuggestionContext extends SalonDomainInput {
@@ -32,12 +32,6 @@ export interface TemplatePrefill {
   priceIsSuggested: boolean;
   priceSource: 'salon-history' | 'catalog-range' | 'catalog-default';
 }
-
-const CATEGORY_DOMAIN: Record<string, DomainKey> = {
-  hair: 'hair', nails: 'nails', skin: 'skin', makeup: 'makeup',
-  bridal: 'bridal', spa: 'spa_massage', barber: 'barber',
-  waxing_threading: 'waxing_threading', mehendi: 'mehendi',
-};
 
 function normalized(value: unknown): string {
   return normalizeSalonContextText(value).replace(/s\b/g, '');
