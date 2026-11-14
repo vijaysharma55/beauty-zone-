@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { Check, Eye, Lock, Sparkles, Star, Users } from 'lucide-react';
-import type { TemplateId } from '../types/auth';
 
 /**
- * Normalised shape shared across all booking templates and salon staff rows.
+ * Normalised shape shared across booking forms and salon staff rows.
  */
 export interface StylistOption {
   id: string;
@@ -28,7 +27,6 @@ interface StylistSelectGridProps {
   primary?: string;
   background?: string;
   surface?: string;
-  templateId?: TemplateId;
   /** True when the salon website is unpublished (preview-only mode). */
   bookingDisabled?: boolean;
   anyLabel?: string;
@@ -54,7 +52,7 @@ const genuineRatingLabel = (option: StylistOption): string | null => {
 };
 
 /**
- * Responsive staff card picker shared across all booking templates.
+ * Responsive staff card picker shared across booking views.
  *
  * Displays staff photo, full name, designation, and genuine rating (only when
  * available), plus a “View Full Profile” button on every staff card.
@@ -68,7 +66,6 @@ export const StylistSelectGrid: React.FC<StylistSelectGridProps> = ({
   primary = '#0F172A',
   background = '#FAF5E5',
   surface = '#FFFFFF',
-  templateId = 'luxe',
   bookingDisabled = false,
   anyLabel = 'Any Available Stylist',
   anyDescription = 'Best match for your service',
@@ -77,10 +74,8 @@ export const StylistSelectGrid: React.FC<StylistSelectGridProps> = ({
 }) => {
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
   const anySelected = !bookingDisabled && selectedId === '';
-  const cardRadius =
-    templateId === 'noir' ? 'rounded-none' : templateId === 'minimal' ? 'rounded-xl' : 'rounded-2xl';
-  const btnRadius =
-    templateId === 'noir' ? 'rounded-none' : templateId === 'minimal' ? 'rounded-md' : 'rounded-lg';
+  const cardRadius = 'rounded-2xl';
+  const btnRadius = 'rounded-lg';
 
   return (
     <div role="radiogroup" aria-label="Select preferred stylist or staff member" className={className}>

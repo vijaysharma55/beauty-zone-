@@ -27,11 +27,7 @@ import {
   Languages,
 } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
-import {
-  WHITE_LABEL_PRESETS,
-  THEME_PRESETS,
-  FONT_PAIRINGS,
-} from '../data/whiteLabelConfig';
+import { FONT_PAIRINGS } from '../data/whiteLabelConfig';
 import { BrandLogoIcon, SalonBranch, LocalityZone, FAQItem } from '../types';
 import { LanguagesTab } from './customizer/LanguagesTab';
 import { DomainSeoTab } from './customizer/DomainSeoTab';
@@ -60,7 +56,6 @@ export const BrandEmblemIcon: React.FC<{
 };
 
 type CustomizerTab =
-  | 'presets'
   | 'identity'
   | 'theme'
   | 'content'
@@ -77,7 +72,6 @@ export const WhiteLabelCustomizer: React.FC = () => {
     updateBrand,
     updateTheme,
     updateSections,
-    applyPreset,
     resetToDefault,
     exportConfigJson,
     importConfigJson,
@@ -86,7 +80,7 @@ export const WhiteLabelCustomizer: React.FC = () => {
     customizerInitialTab,
   } = useBrand();
 
-  const [activeTab, setActiveTab] = useState<CustomizerTab>('presets');
+  const [activeTab, setActiveTab] = useState<CustomizerTab>('identity');
   const [copiedJson, setCopiedJson] = useState(false);
   const [importText, setImportText] = useState('');
   const [importFeedback, setImportFeedback] = useState<{
@@ -97,7 +91,9 @@ export const WhiteLabelCustomizer: React.FC = () => {
 
   useEffect(() => {
     if (isCustomizerOpen && customizerInitialTab) {
-      setActiveTab(customizerInitialTab as CustomizerTab);
+      setActiveTab(
+        customizerInitialTab === 'presets' ? 'identity' : (customizerInitialTab as CustomizerTab)
+      );
     }
   }, [isCustomizerOpen, customizerInitialTab]);
 
@@ -223,7 +219,6 @@ export const WhiteLabelCustomizer: React.FC = () => {
   };
 
   const TABS: { id: CustomizerTab; label: string; icon: React.ReactNode }[] = [
-    { id: 'presets', label: '1-Click Brand Presets', icon: <Sparkles className="w-4 h-4" /> },
     { id: 'identity', label: 'Brand & Logo', icon: <Building2 className="w-4 h-4" /> },
     { id: 'theme', label: 'Colors & Fonts', icon: <Palette className="w-4 h-4" /> },
     { id: 'content', label: 'Hero, Bridal & Founder', icon: <FileText className="w-4 h-4" /> },
@@ -322,88 +317,7 @@ export const WhiteLabelCustomizer: React.FC = () => {
 
         {/* Main Scrollable Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">
-          {/* TAB 1: 1-CLICK BRAND PRESETS */}
-          {activeTab === 'presets' && (
-            <div className="space-y-6">
-              <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-                <h3 className="text-base font-bold text-slate-900 mb-1">
-                  Instant 1-Click Salon Brand Presets
-                </h3>
-                <p className="text-xs text-slate-600 mb-4">
-                  Test how this white-label platform adapts to any salon brand, city, currency, color palette, and branch network in a single click.
-                </p>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {WHITE_LABEL_PRESETS.map((preset) => {
-                    const isSelected = brand.presetId === preset.id;
-                    return (
-                      <div
-                        key={preset.id}
-                        onClick={() => {
-                          applyPreset(preset.id);
-                          triggerToast(`Activated "${preset.label}" brand preset!`);
-                        }}
-                        className={`p-4 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
-                          isSelected
-                            ? 'border-[#D09A40] bg-[#FAF5E5]/60 shadow-md'
-                            : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-xs'
-                        }`}
-                      >
-                        <div>
-                          <div className="flex items-center justify-between gap-2 mb-2">
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700">
-                              {preset.badge}
-                            </span>
-                            {isSelected && (
-                              <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                                <Check className="w-3.5 h-3.5" /> Active
-                              </span>
-                            )}
-                          </div>
-
-                          <h4 className="font-serif text-lg font-bold text-slate-900">
-                            {preset.label}
-                          </h4>
-                          <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                            {preset.description}
-                          </p>
-                        </div>
-
-                        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                          <div className="flex items-center gap-1.5">
-                            <span
-                              className="w-5 h-5 rounded-full border border-slate-300 shadow-2xs"
-                              style={{ backgroundColor: preset.config.theme.primaryColor }}
-                              title="Primary Color"
-                            />
-                            <span
-                              className="w-5 h-5 rounded-full border border-slate-300 shadow-2xs"
-                              style={{ backgroundColor: preset.config.theme.accentColor }}
-                              title="Accent Color"
-                            />
-                            <span
-                              className="w-5 h-5 rounded-full border border-slate-300 shadow-2xs"
-                              style={{ backgroundColor: preset.config.theme.bgColor }}
-                              title="Canvas Color"
-                            />
-                            <span className="text-[11px] text-slate-500 ml-1 font-medium">
-                              {preset.config.cityName} · {preset.config.currencySymbol}
-                            </span>
-                          </div>
-
-                          <span className="text-xs font-bold text-[#D09A40] hover:underline">
-                            {isSelected ? 'Selected' : 'Apply Preset →'}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 2: BRAND IDENTITY & LOGO */}
+          {/* TAB 1: BRAND IDENTITY & LOGO */}
           {activeTab === 'identity' && (
             <div className="space-y-6">
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
@@ -613,51 +527,9 @@ export const WhiteLabelCustomizer: React.FC = () => {
             </div>
           )}
 
-          {/* TAB 3: COLORS & FONTS */}
+          {/* TAB 2: COLORS & FONTS */}
           {activeTab === 'theme' && (
             <div className="space-y-6">
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">
-                  Curated Color Palettes
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                  {THEME_PRESETS.map((theme) => {
-                    const isCurrent = brand.theme.id === theme.id;
-                    return (
-                      <button
-                        key={theme.id}
-                        type="button"
-                        onClick={() => {
-                          updateTheme(theme);
-                          triggerToast(`Applied "${theme.name}" color palette!`);
-                        }}
-                        className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
-                          isCurrent
-                            ? 'border-[#D09A40] bg-amber-50/40 ring-2 ring-[#D09A40]/30'
-                            : 'border-slate-200 hover:border-slate-300 bg-white'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 mb-2">
-                          <span
-                            className="w-6 h-6 rounded-full border border-black/10"
-                            style={{ backgroundColor: theme.primaryColor }}
-                          />
-                          <span
-                            className="w-6 h-6 rounded-full border border-black/10"
-                            style={{ backgroundColor: theme.accentColor }}
-                          />
-                          <span
-                            className="w-6 h-6 rounded-full border border-black/10"
-                            style={{ backgroundColor: theme.bgColor }}
-                          />
-                        </div>
-                        <div className="text-xs font-bold text-slate-900">{theme.name}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
               {/* Custom Hex Color Pickers */}
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
                 <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">

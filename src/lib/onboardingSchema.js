@@ -6,7 +6,7 @@ export const ONBOARDING_STEPS = [
   { title: 'Salon identity', shortTitle: 'Identity', fields: ['name', 'slug', 'tagline', 'description'] },
   { title: 'Location & contact', shortTitle: 'Location', fields: ['addressLine', 'city', 'state', 'phone', 'email'] },
   { title: 'Owner & branding', shortTitle: 'Branding', fields: ['ownerName', 'ownerPhone', 'logoUrl', 'coverImage'] },
-  { title: 'Template & hours', shortTitle: 'Finish', fields: ['templateId', 'timings'] },
+  { title: 'Opening hours', shortTitle: 'Finish', fields: ['templateId', 'timings'] },
 ];
 
 export const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];

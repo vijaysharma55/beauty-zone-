@@ -12,7 +12,7 @@ import {
   Star,
   X,
 } from 'lucide-react';
-import type { SalonStaff, StaffWorkPhoto, TemplateId } from '../types/auth';
+import type { SalonStaff, StaffWorkPhoto } from '../types/auth';
 import { describeWeeklySchedule } from '../lib/staffRoles.js';
 
 /** Complete staff profile data displayed in the full profile modal. */
@@ -76,7 +76,6 @@ interface StylistProfileModalProps {
   selected?: boolean;
   /** Controls live vs unpublished booking state. Defaults to true when omitted. */
   websitePublished?: boolean;
-  templateId?: TemplateId;
   accent?: string;
   primary?: string;
   background?: string;
@@ -106,7 +105,6 @@ export const StylistProfileModal: React.FC<StylistProfileModalProps> = ({
   profile,
   selected = false,
   websitePublished = true,
-  templateId = 'luxe',
   accent = '#D09A40',
   primary = '#0F172A',
   background = '#FAF5E5',
@@ -180,11 +178,9 @@ export const StylistProfileModal: React.FC<StylistProfileModalProps> = ({
     !profile.isDemo &&
     profile.bookingEnabled !== false;
 
-  const modalRadius =
-    templateId === 'noir' ? 'rounded-none' : templateId === 'minimal' ? 'rounded-2xl' : 'rounded-3xl';
-  const cardRadius =
-    templateId === 'noir' ? 'rounded-none' : templateId === 'minimal' ? 'rounded-lg' : 'rounded-2xl';
-  const headingClass = templateId === 'minimal' ? 'font-sans font-semibold' : 'font-serif';
+  const modalRadius = 'rounded-3xl';
+  const cardRadius = 'rounded-2xl';
+  const headingClass = 'font-serif';
 
   return (
     <div

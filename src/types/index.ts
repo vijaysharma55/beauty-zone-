@@ -453,7 +453,6 @@ export interface WhiteLabelSectionToggles {
 }
 
 export interface WhiteLabelConfig {
-  presetId: string;
   brandName: string;
   brandSubtext: string;
   tagline: string;

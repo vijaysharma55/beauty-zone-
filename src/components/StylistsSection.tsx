@@ -33,6 +33,8 @@ interface StylistsSectionProps {
   onUpdateGallery?: (items: GalleryItem[]) => void;
   liveStaff?: SalonStaff[] | null;
   websitePublished?: boolean;
+  staffPreviewMode?: 'auto' | 'demo' | 'real';
+  salonSlug?: string | null;
 }
 
 interface DisplayStylist extends Stylist {
@@ -196,6 +198,8 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
   onBookWithStylist,
   liveStaff = null,
   websitePublished = true,
+  staffPreviewMode = 'auto',
+  salonSlug = null,
 }) => {
   const { brand, t, updateBrand } = useBrand();
   // Full Profile Modal is strictly closed by default on page load.
@@ -221,6 +225,11 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
 
   const sourceStylists: DisplayStylist[] = useMemo(() => {
     if (!websitePublished) {
+      if (staffPreviewMode === 'real' && liveStaff !== null) {
+        return liveStaff
+          .filter((member) => member.active && !member.isDemo)
+          .map((member) => salonStaffToDisplay(member, defaultBranch));
+      }
       return DEMO_SALON_STAFF.map((member) => salonStaffToDisplay(member, defaultBranch));
     }
     if (liveStaff !== null) {
@@ -235,7 +244,7 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
       bookingEnabled: true,
       isDemo: false,
     }));
-  }, [websitePublished, liveStaff, brand.stylists, defaultBranch]);
+  }, [websitePublished, staffPreviewMode, liveStaff, brand.stylists, defaultBranch]);
 
   const usingDbStaff = !websitePublished || liveStaff !== null;
 
@@ -312,9 +321,14 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
           <p className="text-base text-[#4A4A4A]">{t('stylistsSubtitle')}</p>
 
           {!websitePublished && (
-            <p className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-4 py-1.5 text-xs font-semibold text-amber-900">
+            <p
+              data-testid="demo-staff-notice"
+              className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-4 py-1.5 text-xs font-semibold text-amber-900"
+            >
               <Lock className="h-3.5 w-3.5" />
-              Showing sample demo profiles while website is unpublished (not bookable).
+              {staffPreviewMode === 'real'
+                ? 'Showing your team draft while website is unpublished (online booking activates on publish).'
+                : 'Showing sample demo profiles while website is unpublished (not bookable).'}
             </p>
           )}
 
@@ -365,6 +379,7 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
             return (
               <div
                 key={stylist.id}
+                data-testid={`team-staff-card-${stylist.id}`}
                 className="relative w-full bg-white rounded-3xl overflow-hidden border border-[#0F172A]/10 elevation-subtle flex flex-col justify-between group h-full transition-all duration-500 hover:scale-[1.01] hover:shadow-2xl hover:border-[#D09A40]/40"
               >
                 {!usingDbStaff && manager.canManage && (
@@ -645,7 +660,13 @@ export const StylistsSection: React.FC<StylistsSectionProps> = ({
           onSubmit={(values) => manager.saveItem(normalizeStylistValues(values, manager.editorState?.item))}
         />
       )}
-      {chatWithStylist && <StylistChatModal stylist={chatWithStylist} onClose={() => setChatWithStylist(null)} />}
+      {chatWithStylist && (
+        <StylistChatModal
+          stylist={chatWithStylist}
+          salonSlug={salonSlug}
+          onClose={() => setChatWithStylist(null)}
+        />
+      )}
       <CrudToast message={manager.notice} />
     </section>
   );

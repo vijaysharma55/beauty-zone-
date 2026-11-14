@@ -229,7 +229,7 @@ const BranchReviewModal: React.FC<BranchReviewModalProps> = ({
 };
 
 export const SalonsLocations: React.FC<SalonsLocationsProps> = ({ onSelectBranchForBooking }) => {
-  const { brand, t, updateBrand } = useBrand();
+  const { brand, t, updateBrand, readOnly } = useBrand();
   const [activeBranchId, setActiveBranchId] = useState<string>(
     brand.branches[0]?.id || 'flagship-central'
   );
@@ -275,30 +275,32 @@ export const SalonsLocations: React.FC<SalonsLocationsProps> = ({ onSelectBranch
 
     const nextReviews = [createdReview, ...reviews];
     setReviews(nextReviews);
-    try {
-      localStorage.setItem('bz_branch_reviews', JSON.stringify(nextReviews));
-    } catch (e) {
-      console.error(e);
-    }
-
-    // Recalculate average rating for this branch
-    const targetBranchId = newReviewData.branchId;
-    const branchReviews = nextReviews.filter((r) => r.branchId === targetBranchId);
-    const totalPoints = branchReviews.reduce((sum, r) => sum + r.rating, 0);
-    const newRating = branchReviews.length > 0 ? Math.round((totalPoints / branchReviews.length) * 10) / 10 : 5.0;
-
-    const updatedBranches = brand.branches.map((b) => {
-      if (b.id === targetBranchId) {
-        return {
-          ...b,
-          googleRating: newRating,
-          reviewCount: branchReviews.length,
-        };
+    if (!readOnly) {
+      try {
+        localStorage.setItem('bz_branch_reviews', JSON.stringify(nextReviews));
+      } catch (e) {
+        console.error(e);
       }
-      return b;
-    });
 
-    updateBrand({ branches: updatedBranches });
+      // Recalculate average rating for this branch
+      const targetBranchId = newReviewData.branchId;
+      const branchReviews = nextReviews.filter((r) => r.branchId === targetBranchId);
+      const totalPoints = branchReviews.reduce((sum, r) => sum + r.rating, 0);
+      const newRating = branchReviews.length > 0 ? Math.round((totalPoints / branchReviews.length) * 10) / 10 : 5.0;
+
+      const updatedBranches = brand.branches.map((b) => {
+        if (b.id === targetBranchId) {
+          return {
+            ...b,
+            googleRating: newRating,
+            reviewCount: branchReviews.length,
+          };
+        }
+        return b;
+      });
+
+      updateBrand({ branches: updatedBranches });
+    }
   };
 
   // Google Maps directions URL targeting the specific branch address
@@ -332,17 +334,19 @@ export const SalonsLocations: React.FC<SalonsLocationsProps> = ({ onSelectBranch
           </p>
           <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
             <Link
-              to="/salons?city=Jaipur"
+              to={`/salons?city=${encodeURIComponent(brand.cityName)}`}
               className="inline-flex items-center gap-2 rounded-full bg-[#0F172A] px-5 py-2.5 text-xs font-bold text-[#FAF5E5] hover:bg-slate-800 transition shadow-sm"
             >
               <Compass className="w-4 h-4 text-[#D09A40]" />
-              <span>Explore Verified Salons in Jaipur</span>
+              <span>Explore Verified Salons in {brand.cityName}</span>
               <ArrowRight className="w-3.5 h-3.5 text-[#D09A40]" />
             </Link>
           </div>
         </div>
 
         {/* Interactive Google Maps Component Section */}
+        {brand.branches.length > 0 && (
+        <>
         <div className="bg-[#0F172A] text-[#FAF5E5] rounded-3xl border-2 border-[#D09A40]/50 shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12">
           {/* Left / Info Panel */}
           <div className="lg:col-span-5 p-6 sm:p-8 flex flex-col justify-between space-y-6 border-b lg:border-b-0 lg:border-r border-white/10 bg-gradient-to-b from-[#0F172A] to-[#1E293B]">
@@ -350,7 +354,7 @@ export const SalonsLocations: React.FC<SalonsLocationsProps> = ({ onSelectBranch
               {/* Branch Selector Tabs */}
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-[#D09A40] block mb-2">
-                  Select Jaipur Branch Location:
+                  Select {brand.cityName} Branch Location:
                 </span>
                 <div className="flex flex-wrap gap-2">
                   {brand.branches.map((b) => (
@@ -468,7 +472,7 @@ export const SalonsLocations: React.FC<SalonsLocationsProps> = ({ onSelectBranch
             {/* Map Overlay Badge */}
             <div className="absolute top-4 right-4 bg-[#0F172A]/90 backdrop-blur-md px-3.5 py-1.5 rounded-full text-xs font-bold text-[#FAF5E5] border border-[#D09A40]/40 shadow-xl flex items-center gap-2">
               <MapPin className="w-3.5 h-3.5 text-[#D09A40] animate-bounce" />
-              <span>Jaipur Branch: {activeBranch?.locality}</span>
+              <span>{brand.cityName} Branch: {activeBranch?.locality}</span>
             </div>
           </div>
         </div>
@@ -653,6 +657,8 @@ export const SalonsLocations: React.FC<SalonsLocationsProps> = ({ onSelectBranch
             );
           })}
         </div>
+        </>
+        )}
 
         {/* Home Service Callout Strip */}
         <div className="mt-12 bg-white rounded-3xl p-6 sm:p-8 border border-[#D09A40]/40 shadow-md flex flex-col md:flex-row items-center justify-between gap-6">

@@ -951,10 +951,16 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
           <div className="mt-6 flex flex-col items-center justify-center rounded-2xl border border-dashed border-[#0F172A]/20 bg-[#FAF5E5]/40 px-6 py-14 text-center">
             <Scissors className="h-10 w-10 text-neutral-300" />
             <h3 className="mt-3 font-serif text-lg font-bold text-[#0F172A]">
-              No treatments match this view
+              {allServices.length === 0 ? 'Services menu is being prepared' : 'No treatments match this view'}
             </h3>
             <p className="mt-1 max-w-md text-xs text-[#4A4A4A]">
-              Clear the search or category filter, or add a new service to the catalog.
+              {allServices.length === 0
+                ? manager.canManage
+                  ? 'Add your salon treatments and pricing to publish them here.'
+                  : 'Treatments added in the salon dashboard will appear here automatically.'
+                : manager.canManage
+                  ? 'Clear the search or category filter, or add a new service to the catalog.'
+                  : 'Clear the search or category filter to view available treatments.'}
             </p>
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
               <button

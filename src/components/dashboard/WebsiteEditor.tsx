@@ -15,10 +15,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api, errorMessage } from '../../lib/api';
-import type { GalleryImage, OpeningHours, Salon, TemplateId, WebsiteTemplate } from '../../types/auth';
+import type { GalleryImage, OpeningHours, Salon } from '../../types/auth';
 import {
   Alert,
-  Badge,
   Button,
   Card,
   CardHeader,
@@ -54,7 +53,6 @@ interface FormState {
   facebook: string;
   ownerName: string;
   ownerPhone: string;
-  templateId: TemplateId;
 }
 
 const DAY_LABELS: Record<OpeningHours['day'], string> = {
@@ -75,13 +73,6 @@ const DEFAULT_FORM_TIMINGS: OpeningHours[] = [
   { day: 'fri', open: '10:00', close: '21:00', closed: false },
   { day: 'sat', open: '09:00', close: '21:00', closed: false },
   { day: 'sun', open: '11:00', close: '18:00', closed: false },
-];
-
-const TEMPLATE_FALLBACK: WebsiteTemplate[] = [
-  { id: 'luxe', name: 'Luxe Gold', description: 'Rich navy + gold editorial layout with image-led hero.', premium: false },
-  { id: 'minimal', name: 'Minimal Ivory', description: 'Airy, typography-first layout for modern studios.', premium: false },
-  { id: 'noir', name: 'Noir Studio', description: 'High-contrast dark hero with bold service cards.', premium: true },
-  { id: 'blush', name: 'Blush Atelier', description: 'Soft rose palette with a gentle, romantic feel.', premium: false },
 ];
 
 const toForm = (salon: Salon): FormState => ({
@@ -106,7 +97,6 @@ const toForm = (salon: Salon): FormState => ({
   facebook: salon.facebook,
   ownerName: salon.ownerName || '',
   ownerPhone: salon.ownerPhone || '',
-  templateId: salon.templateId || 'luxe',
 });
 
 export const WebsiteEditor: React.FC = () => {
@@ -114,7 +104,6 @@ export const WebsiteEditor: React.FC = () => {
   const [form, setForm] = useState<FormState | null>(salon ? toForm(salon) : null);
   const [gallery, setGallery] = useState<GalleryImage[]>(salon?.gallery || []);
   const [timings, setTimings] = useState<OpeningHours[]>(salon?.timings || []);
-  const [templates, setTemplates] = useState<WebsiteTemplate[]>(TEMPLATE_FALLBACK);
   const [theme, setTheme] = useState({
     accent: salon?.theme?.accent || '#D09A40',
     primary: salon?.theme?.primary || '#0F172A',
@@ -127,13 +116,6 @@ export const WebsiteEditor: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [uploadingGallery, setUploadingGallery] = useState(false);
   const galleryInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    api
-      .get<{ templates: WebsiteTemplate[] }>('/public/templates')
-      .then((res) => setTemplates(res.templates))
-      .catch(() => setTemplates(TEMPLATE_FALLBACK));
-  }, []);
 
   useEffect(() => {
     if (!salon) return;
@@ -187,6 +169,7 @@ export const WebsiteEditor: React.FC = () => {
     try {
       await api.patch('/salon', {
         ...form,
+        templateId: 'luxe',
         gallery,
         theme,
         timings,
@@ -353,44 +336,6 @@ export const WebsiteEditor: React.FC = () => {
               placeholder="Award-winning bridal makeovers in the heart of the city."
             />
           </Field>
-        </div>
-      </Card>
-
-      {/* Template */}
-      <Card>
-        <CardHeader
-          title="Website template"
-          description="Pick a starting layout. Your brand colours and content are applied on top of it."
-        />
-        <div className="grid gap-3 p-5 sm:grid-cols-2">
-          {templates.map((template) => {
-            const selected = form.templateId === template.id;
-            return (
-              <button
-                key={template.id}
-                type="button"
-                onClick={() => set('templateId', template.id)}
-                aria-pressed={selected}
-                className={[
-                  'rounded-xl border p-4 text-left transition-colors',
-                  selected
-                    ? 'border-[#D09A40] bg-[#D09A40]/10 ring-1 ring-[#D09A40]/40'
-                    : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50',
-                ].join(' ')}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-slate-900">{template.name}</span>
-                  {selected ? (
-                    <Check className="h-4 w-4 text-[#8a641f]" />
-                  ) : template.premium ? (
-                    <Badge tone="gold">Premium</Badge>
-                  ) : null}
-                </div>
-                <p className="mt-1 text-xs text-slate-500">{template.description}</p>
-                <TemplatePreview id={template.id} theme={theme} />
-              </button>
-            );
-          })}
         </div>
       </Card>
 
@@ -670,34 +615,6 @@ export const WebsiteEditor: React.FC = () => {
             <Save className="h-4 w-4" /> Save changes
           </Button>
         </div>
-      </div>
-    </div>
-  );
-};
-
-/** Small abstract preview so owners can compare templates at a glance. */
-const TemplatePreview: React.FC<{ id: TemplateId; theme: { accent: string; primary: string; background: string; surface: string } }> = ({
-  id,
-  theme,
-}) => {
-  const palettes: Record<TemplateId, { bg: string; bar: string; block: string }> = {
-    luxe: { bg: theme.primary, bar: theme.accent, block: 'rgba(255,255,255,0.18)' },
-    minimal: { bg: theme.surface, bar: theme.primary, block: 'rgba(15,23,42,0.08)' },
-    noir: { bg: '#0b0b0f', bar: theme.accent, block: 'rgba(255,255,255,0.14)' },
-    blush: { bg: '#FBEDEC', bar: '#C97C7C', block: 'rgba(201,124,124,0.2)' },
-  };
-  const palette = palettes[id] || palettes.luxe;
-  return (
-    <div className="mt-3 overflow-hidden rounded-lg border border-black/5" aria-hidden="true">
-      <div className="h-14 p-2" style={{ backgroundColor: palette.bg }}>
-        <div className="h-1.5 w-10 rounded-full" style={{ backgroundColor: palette.bar }} />
-        <div className="mt-2 h-2 w-24 rounded-full" style={{ backgroundColor: palette.bar, opacity: 0.85 }} />
-        <div className="mt-1.5 h-1.5 w-16 rounded-full" style={{ backgroundColor: palette.bar, opacity: 0.4 }} />
-      </div>
-      <div className="grid grid-cols-3 gap-1 p-2" style={{ backgroundColor: theme.background }}>
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="h-6 rounded" style={{ backgroundColor: palette.block }} />
-        ))}
       </div>
     </div>
   );

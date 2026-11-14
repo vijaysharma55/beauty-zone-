@@ -399,7 +399,6 @@ const SnapshotSummary: React.FC<{ snapshot: ApprovalSnapshot }> = ({ snapshot })
   return (
     <div className="space-y-3 text-xs">
       <div className="flex flex-wrap gap-2">
-        <Badge tone="slate">Template: {String(salon.templateId || 'luxe')}</Badge>
         <Badge tone="slate">{services.length} active services</Badge>
         <Badge tone="slate">{staff.length} team members</Badge>
         <Badge tone="slate">{salon.gallery?.length || 0} photos</Badge>

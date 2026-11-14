@@ -17,17 +17,21 @@ interface FooterProps {
   onNavigate: (sectionId: string) => void;
   onOpenInspector: () => void;
   onOpenManagement: () => void;
+  popularServices?: string[];
+  hideOwnerTools?: boolean;
 }
 
 export const Footer: React.FC<FooterProps> = ({
   onNavigate,
   onOpenInspector,
   onOpenManagement,
+  popularServices,
+  hideOwnerTools = false,
 }) => {
-  const { brand, setIsCustomizerOpen, t } = useBrand();
+  const { brand, setIsCustomizerOpen, t, readOnly } = useBrand();
   const { user } = useAuth();
-  // Template/catalog tools are only offered to signed-in owners and admins.
-  const isStaff = isStaffRole(user?.role);
+  // Template/catalog tools are only offered to signed-in owners and admins on the main editor view.
+  const isStaff = isStaffRole(user?.role) && !readOnly && !hideOwnerTools;
   const accountHref = user ? homeForAuthUser(user, true) : '/login';
 
   const branchNames =
@@ -82,14 +86,16 @@ export const Footer: React.FC<FooterProps> = ({
               {t('footerQuickLinks')}
             </h2>
             <ul className="space-y-2.5 text-sm text-[#FAF5E5]/75">
-              <li>
-                <button
-                  onClick={() => onNavigate('packages')}
-                  className="hover:text-[#D09A40] transition-colors cursor-pointer"
-                >
-                  Combo Packages
-                </button>
-              </li>
+              {brand.sections.showPackages && (
+                <li>
+                  <button
+                    onClick={() => onNavigate('packages')}
+                    className="hover:text-[#D09A40] transition-colors cursor-pointer"
+                  >
+                    Combo Packages
+                  </button>
+                </li>
+              )}
               <li>
                 <button
                   onClick={() => onNavigate('services')}
@@ -131,7 +137,7 @@ export const Footer: React.FC<FooterProps> = ({
                 </button>
               </li>
               <li>
-                <Link to="/salons?city=Jaipur" className="hover:text-[#D09A40] transition-colors">
+                <Link to={`/salons?city=${encodeURIComponent(brand.cityName)}`} className="hover:text-[#D09A40] transition-colors">
                   Explore all salons
                 </Link>
               </li>
@@ -152,12 +158,32 @@ export const Footer: React.FC<FooterProps> = ({
               {t('footerPopularServices')}
             </h2>
             <ul className="space-y-2.5 text-sm text-[#FAF5E5]/75">
-              <li>Signature HD Bridal Makeup</li>
-              <li>Moroccan Nanoplastia & Hair Botox</li>
-              <li>24K Gold Leaf Glow Facial</li>
-              <li>7-Step Deep Clean Hydra-Facial</li>
-              <li>Bridal Gel Nail Extensions & Art</li>
-              <li>Makeup & Hair Academy Courses</li>
+              {popularServices !== undefined ? (
+                popularServices.length > 0 ? (
+                  popularServices.slice(0, 6).map((svcTitle, idx) => (
+                    <li key={`${svcTitle}-${idx}`}>
+                      <button
+                        type="button"
+                        onClick={() => onNavigate('services')}
+                        className="text-left hover:text-[#D09A40] transition-colors cursor-pointer"
+                      >
+                        {svcTitle}
+                      </button>
+                    </li>
+                  ))
+                ) : (
+                  <li className="text-[#FAF5E5]/55">Services menu coming soon</li>
+                )
+              ) : (
+                <>
+                  <li>Signature HD Bridal Makeup</li>
+                  <li>Moroccan Nanoplastia & Hair Botox</li>
+                  <li>24K Gold Leaf Glow Facial</li>
+                  <li>7-Step Deep Clean Hydra-Facial</li>
+                  <li>Bridal Gel Nail Extensions & Art</li>
+                  <li>Makeup & Hair Academy Courses</li>
+                </>
+              )}
             </ul>
           </div>
 

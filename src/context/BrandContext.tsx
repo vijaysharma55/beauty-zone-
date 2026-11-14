@@ -10,7 +10,6 @@ import {
 } from '../types';
 import {
   DEFAULT_WHITE_LABEL_CONFIG,
-  WHITE_LABEL_PRESETS,
   loadWhiteLabelConfig,
   saveWhiteLabelConfig,
   WHITE_LABEL_STORAGE_KEY,
@@ -36,7 +35,6 @@ interface BrandContextValue {
     value: string
   ) => void;
   resetCustomTranslations: (lang?: SupportedLanguage) => void;
-  applyPreset: (presetId: string) => void;
   resetToDefault: () => void;
   exportConfigJson: () => string;
   importConfigJson: (jsonString: string) => { success: boolean; error?: string };
@@ -46,6 +44,8 @@ interface BrandContextValue {
   setIsCustomizerOpen: (open: boolean) => void;
   customizerInitialTab: string | null;
   openCustomizerTab: (tab: string) => void;
+  /** True when rendered for a preview/public salon view where localStorage mutations are disabled. */
+  readOnly?: boolean;
 }
 
 const BrandContext = createContext<BrandContextValue | undefined>(undefined);
@@ -100,7 +100,10 @@ export const BrandProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       try {
         const cloudBrand = await loadSiteSection<Partial<WhiteLabelConfig>>('brand');
         if (cancelled) return;
-        if (cloudBrand) setBrand((current) => ({ ...current, ...cloudBrand }));
+        if (cloudBrand) {
+          const { presetId: _removedPresetId, ...sanitizedCloudBrand } = cloudBrand as Partial<WhiteLabelConfig> & { presetId?: unknown };
+          setBrand((current) => ({ ...current, ...sanitizedCloudBrand }));
+        }
       } catch (error) {
         console.error('[brand] Supabase load failed; retaining local configuration:', error);
       } finally {
@@ -338,27 +341,6 @@ export const BrandProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   }, []);
 
-  const applyPreset = useCallback((presetId: string) => {
-    const found = WHITE_LABEL_PRESETS.find((p) => p.id === presetId);
-    if (found) {
-      const cloned: WhiteLabelConfig = JSON.parse(JSON.stringify(found.config));
-      const slug = cloned.brandName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-      cloned.domainSeo = {
-        ...DEFAULT_WHITE_LABEL_CONFIG.domainSeo,
-        ...(cloned.domainSeo || {}),
-        customDomain: `www.${slug.replace(/-/g, '')}.com`,
-        subdomainSlug: slug,
-        seoTitle: `${cloned.brandName} — ${cloned.brandSubtext} | ${cloned.cityName}`,
-        seoDescription: cloned.heroDescription,
-        canonicalUrl: `https://www.${slug.replace(/-/g, '')}.com`,
-        ogTitle: `${cloned.brandName} (${cloned.cityName}) — ${cloned.tagline}`,
-        ogDescription: cloned.heroDescription,
-        ogImageUrl: cloned.heroImage,
-        themeColorHex: cloned.theme.primaryColor,
-      };
-      setBrand(cloned);
-    }
-  }, []);
 
   const resetToDefault = useCallback(() => {
     if (typeof window !== 'undefined') {
@@ -397,25 +379,26 @@ export const BrandProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             error: 'Invalid configuration JSON: missing brandName field.',
           };
         }
+        const { presetId: _removedPresetId, ...sanitizedImported } = parsed;
         setBrand((prev) => ({
           ...DEFAULT_WHITE_LABEL_CONFIG,
           ...prev,
-          ...parsed,
+          ...sanitizedImported,
           theme: {
             ...DEFAULT_WHITE_LABEL_CONFIG.theme,
-            ...(parsed.theme || {}),
+            ...(sanitizedImported.theme || {}),
           },
           sections: {
             ...DEFAULT_WHITE_LABEL_CONFIG.sections,
-            ...(parsed.sections || {}),
+            ...(sanitizedImported.sections || {}),
           },
           localization: {
             ...DEFAULT_WHITE_LABEL_CONFIG.localization,
-            ...(parsed.localization || {}),
+            ...(sanitizedImported.localization || {}),
           },
           domainSeo: {
             ...DEFAULT_WHITE_LABEL_CONFIG.domainSeo,
-            ...(parsed.domainSeo || {}),
+            ...(sanitizedImported.domainSeo || {}),
           },
         }));
         return { success: true };
@@ -459,7 +442,6 @@ export const BrandProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         t,
         updateCustomTranslation,
         resetCustomTranslations,
-        applyPreset,
         resetToDefault,
         exportConfigJson,
         importConfigJson,
@@ -483,3 +465,104 @@ export function useBrand(): BrandContextValue {
   }
   return ctx;
 }
+
+/**
+ * Scoped brand provider for unified salon websites (Preview, /salon/:slug, Subdomain,
+ * and signed-in owner main view) so every section renders that salon's edited copy,
+ * contact details and colours without touching global localStorage.
+ */
+export const BrandOverrideProvider: React.FC<{
+  brand: WhiteLabelConfig;
+  readOnly?: boolean;
+  children: React.ReactNode;
+}> = ({ brand: overrideBrand, readOnly = true, children }) => {
+  const parent = useContext(BrandContext);
+  const [language, setLanguageState] = useState<SupportedLanguage>(
+    overrideBrand.localization?.activeLanguage || overrideBrand.localization?.defaultLanguage || 'en'
+  );
+
+  const langMeta =
+    SUPPORTED_LANGUAGES.find((l) => l.code === language) || SUPPORTED_LANGUAGES[0];
+  const isRtl = langMeta.dir === 'rtl';
+
+  const t = useCallback(
+    (key: keyof TranslationDictionary): string => {
+      const customLangDict = overrideBrand.localization?.customTranslations?.[language];
+      if (customLangDict && customLangDict[key]) {
+        return customLangDict[key] as string;
+      }
+      const builtinLangDict = DEFAULT_TRANSLATIONS[language];
+      if (builtinLangDict && builtinLangDict[key]) {
+        return builtinLangDict[key];
+      }
+      return DEFAULT_TRANSLATIONS.en[key] || String(key);
+    },
+    [overrideBrand.localization, language]
+  );
+
+  const convertPrice = useCallback(
+    (amount: number): number => {
+      const rate = CURRENCY_RATES[overrideBrand.currencyCode] ?? 1;
+      if (rate === 1) return Math.round(amount);
+      return Math.max(5, Math.round(amount * rate));
+    },
+    [overrideBrand.currencyCode]
+  );
+
+  const formatPrice = useCallback(
+    (amount: number): string => {
+      const converted = convertPrice(amount);
+      const locale = overrideBrand.currencyCode === 'INR' ? 'en-IN' : 'en-US';
+      return `${overrideBrand.currencySymbol}${converted.toLocaleString(locale)}`;
+    },
+    [overrideBrand.currencySymbol, overrideBrand.currencyCode, convertPrice]
+  );
+
+  const noop = useCallback(() => {}, []);
+
+  const scopedStyles = {
+    '--wl-bg': overrideBrand.theme.bgColor,
+    '--wl-primary': overrideBrand.theme.primaryColor,
+    '--wl-accent': overrideBrand.theme.accentColor,
+    '--wl-accent-hover': overrideBrand.theme.accentHoverColor,
+    '--wl-text-muted': overrideBrand.theme.textMutedColor,
+    '--wl-surface': overrideBrand.theme.surfaceColor,
+    '--wl-font-heading': overrideBrand.theme.fontHeading,
+    '--wl-font-body': overrideBrand.theme.fontBody,
+    backgroundColor: overrideBrand.theme.bgColor,
+    color: overrideBrand.theme.primaryColor,
+  } as React.CSSProperties;
+
+  return (
+    <BrandContext.Provider
+      value={{
+        brand: overrideBrand,
+        updateBrand: readOnly ? noop : parent?.updateBrand || noop,
+        updateTheme: readOnly ? noop : parent?.updateTheme || noop,
+        updateSections: readOnly ? noop : parent?.updateSections || noop,
+        updateLocalization: readOnly ? noop : parent?.updateLocalization || noop,
+        updateDomainSeo: readOnly ? noop : parent?.updateDomainSeo || noop,
+        language,
+        setLanguage: setLanguageState,
+        isRtl,
+        t,
+        updateCustomTranslation: readOnly ? noop : parent?.updateCustomTranslation || noop,
+        resetCustomTranslations: readOnly ? noop : parent?.resetCustomTranslations || noop,
+        resetToDefault: readOnly ? noop : parent?.resetToDefault || noop,
+        exportConfigJson: () => JSON.stringify(overrideBrand, null, 2),
+        importConfigJson: () => ({ success: false, error: 'Read-only view' }),
+        formatPrice,
+        convertPrice,
+        isCustomizerOpen: readOnly ? false : parent?.isCustomizerOpen || false,
+        setIsCustomizerOpen: readOnly ? noop : parent?.setIsCustomizerOpen || noop,
+        customizerInitialTab: parent?.customizerInitialTab || null,
+        openCustomizerTab: readOnly ? noop : parent?.openCustomizerTab || noop,
+        readOnly,
+      }}
+    >
+      <div style={scopedStyles} dir={isRtl ? 'rtl' : 'ltr'} className="w-full min-h-screen">
+        {children}
+      </div>
+    </BrandContext.Provider>
+  );
+};

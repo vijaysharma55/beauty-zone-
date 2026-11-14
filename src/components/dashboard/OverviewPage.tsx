@@ -197,7 +197,7 @@ export const OverviewPage: React.FC = () => {
         <Card>
           <CardHeader title="Quick actions" description="Jump straight into the most common tasks." />
           <div className="grid gap-2 p-4 sm:grid-cols-2">
-            <QuickLink to="/dashboard/website" icon={<Globe className="h-4 w-4" />} title="Edit website" subtitle="Brand, template, contact, gallery" />
+            <QuickLink to="/dashboard/website" icon={<Globe className="h-4 w-4" />} title="Edit website" subtitle="Brand, contact, gallery, colours" />
             <QuickLink to="/dashboard/services" icon={<Scissors className="h-4 w-4" />} title="Services & prices" subtitle="Add or update menu" />
             <QuickLink to="/dashboard/staff" icon={<Users className="h-4 w-4" />} title="Manage team" subtitle="Artists and specialists" />
             <QuickLink to="/dashboard/approval" icon={<FileCheck2 className="h-4 w-4" />} title="Approvals" subtitle="Submit & track status" />

@@ -16,8 +16,8 @@ import {
   onboardingStepSchemas,
   onboardingValuesSchema,
 } from '../../lib/onboardingSchema.js';
-import type { MembershipPlan, Salon, WebsiteTemplate } from '../../types/auth';
-import { Alert, Badge, Button, Card, Field, Input, PageHeader, Textarea } from '../ui';
+import type { MembershipPlan, Salon } from '../../types/auth';
+import { Alert, Button, Card, Field, Input, PageHeader, Textarea } from '../ui';
 import { DescriptionSuggestions } from './DescriptionSuggestions';
 import { OnboardingImageField } from './OnboardingImageField';
 import { TaglineSuggestions } from './TaglineSuggestions';
@@ -28,13 +28,6 @@ type SavedDraft = { draft: Draft; revision: number; completed: boolean; updatedA
 type SaveStatus = 'loading' | 'load-error' | 'idle' | 'pending' | 'saving' | 'saved' | 'error' | 'conflict' | 'completed';
 type SyncState = { status: SaveStatus; message: string; backupAvailable: boolean };
 type Availability = { slug: string; status: 'idle' | 'checking' | 'available' | 'taken' | 'error'; reason?: string };
-
-const FALLBACK_TEMPLATES: WebsiteTemplate[] = [
-  { id: 'luxe', name: 'Luxe Gold', description: 'Rich navy + gold editorial layout.', premium: false },
-  { id: 'minimal', name: 'Minimal Ivory', description: 'Airy, typography-first layout.', premium: false },
-  { id: 'noir', name: 'Noir Studio', description: 'Bold dark hero with strong cards.', premium: true },
-  { id: 'blush', name: 'Blush Atelier', description: 'Soft rose, romantic feel.', premium: false },
-];
 
 const remoteDraft = {
   read: async () => (await api.get<{ draft: SavedDraft | null }>('/salon/onboarding/draft')).draft,
@@ -48,7 +41,7 @@ const stepDescriptions = [
   'Start with the details that make your salon yours.',
   'Help clients find you and get in touch.',
   'Give your future website a recognisable look.',
-  'Choose your starting look and set your weekly hours.',
+  'Set your weekly opening hours to finish setting up your website.',
 ];
 
 /** Guide an owner through validated, revisioned salon setup and recovery. */
@@ -69,7 +62,6 @@ export const OnboardingPage: React.FC = () => {
   const values = useWatch({ control }) as Values;
   const [step, setStep] = useState(1);
   const [syncState, setSyncState] = useState<SyncState>({ status: 'loading', message: '', backupAvailable: true });
-  const [templates, setTemplates] = useState<WebsiteTemplate[]>([]);
   const [availability, setAvailability] = useState<Availability>({ slug: '', status: 'idle' });
   const [slugRetry, setSlugRetry] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -159,12 +151,6 @@ export const OnboardingPage: React.FC = () => {
     });
     return () => subscription.unsubscribe();
   }, [watch, getValues]);
-
-  useEffect(() => {
-    api.get<{ templates: WebsiteTemplate[] }>('/public/templates')
-      .then((res) => setTemplates(res.templates))
-      .catch(() => setTemplates([]));
-  }, []);
 
   const slug = values?.slug || '';
   useEffect(() => {
@@ -438,16 +424,6 @@ export const OnboardingPage: React.FC = () => {
 
               {step === 4 && <>
                 <div>
-                  <h3 className="text-sm font-semibold text-slate-900">Website template <span className="text-red-500">*</span></h3>
-                  <p className="mt-1 text-xs text-slate-500">Pick a starting point. You can refine it later.</p>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    {(templates.length ? templates : FALLBACK_TEMPLATES).map((template) => <button key={template.id} type="button" onClick={() => setValue('templateId', template.id, { shouldDirty: true, shouldValidate: true })} aria-pressed={values.templateId === template.id} className={`rounded-xl border p-4 text-left transition-colors ${values.templateId === template.id ? 'border-[#D09A40] bg-[#D09A40]/10' : 'border-slate-200 hover:bg-slate-50'}`}>
-                      <div className="flex items-center justify-between gap-2"><span className="text-sm font-semibold text-slate-900">{template.name}</span>{values.templateId === template.id ? <Check className="h-4 w-4 text-[#8a641f]" /> : template.premium ? <Badge tone="gold">Premium</Badge> : null}</div>
-                      <p className="mt-1 text-xs text-slate-500">{template.description}</p>
-                    </button>)}
-                  </div>
-                </div>
-                <div className="border-t border-slate-100 pt-5">
                   <h3 className="text-sm font-semibold text-slate-900">Opening hours <span className="text-red-500">*</span></h3>
                   <p className="mt-1 text-xs text-slate-500">Set at least one open day. Closing time must be after opening time.</p>
                   <div className="mt-3 space-y-2">

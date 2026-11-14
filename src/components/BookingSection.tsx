@@ -77,6 +77,8 @@ interface BookingSectionProps {
   liveStaff?: SalonStaff[] | null;
   /** Controls whether real booking is enabled (false when salon website is unpublished). */
   websitePublished?: boolean;
+  /** Preview staff display mode when website is unpublished. */
+  staffPreviewMode?: 'auto' | 'demo' | 'real';
 }
 
 /** Legacy static grid — kept as the last-resort render when a date is not chosen yet. */
@@ -92,7 +94,16 @@ const ServicePicker: React.FC<{
   const categories = Array.from(new Set(services.map((s) => s.category)));
   const [activeCategory, setActiveCategory] = useState(categories[0] || 'all');
 
-  const filtered = services.filter((s) => s.category === activeCategory);
+  if (services.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-[#0F172A]/20 bg-[#FAF5E5]/60 p-6 text-center text-xs text-[#4A4A4A]">
+        No services listed yet. Add your services in <strong>Dashboard → Services &amp; Prices</strong> to display them for booking.
+      </div>
+    );
+  }
+
+  const resolvedCategory = categories.includes(activeCategory as any) ? activeCategory : categories[0];
+  const filtered = services.filter((s) => s.category === resolvedCategory);
 
   return (
     <div className="space-y-4">
@@ -104,7 +115,7 @@ const ServicePicker: React.FC<{
             type="button"
             onClick={() => setActiveCategory(cat)}
             className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border ${
-              activeCategory === cat
+              resolvedCategory === cat
                 ? 'bg-[#0F172A] text-[#D09A40] border-[#0F172A]'
                 : 'bg-white text-slate-500 border-slate-200 hover:border-[#D09A40]'
             }`}
@@ -178,9 +189,16 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   defaultDurationMinutes = 60,
   liveStaff = null,
   websitePublished = true,
+  staffPreviewMode = 'auto',
 }) => {
   const { brand, formatPrice, convertPrice, t } = useBrand();
-  const catalogServices = services.length > 0 ? services : SALON_SERVICES;
+  const effectiveSalonSlug = salonSlug || 'lumina-luxe';
+  const catalogServices =
+    salonSlug && salonSlug !== 'lumina-luxe'
+      ? services
+      : services.length > 0
+        ? services
+        : SALON_SERVICES;
 
   const defaultBranchName =
     brand.branches[0]?.name || `${brand.cityName} Flagship Salon`;
@@ -264,13 +282,16 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
 
   const dbDrivenStaff = useMemo<SalonStaff[] | null>(() => {
     if (!websitePublished) {
+      if (staffPreviewMode === 'real' && liveStaff !== null) {
+        return liveStaff.filter((member) => member.active && !member.isDemo);
+      }
       return [...DEMO_SALON_STAFF];
     }
     if (liveStaff !== null) {
       return liveStaff.filter((member) => member.active && !member.isDemo && member.bookingEnabled !== false);
     }
     return null;
-  }, [liveStaff, websitePublished]);
+  }, [liveStaff, websitePublished, staffPreviewMode]);
 
   const stylistOptions: StylistOption[] = useMemo(() => {
     if (dbDrivenStaff !== null) {
@@ -757,7 +778,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
   // Load the server payment configuration (mode, advance percentage, hold time).
   useEffect(() => {
     let active = true;
-    getPaymentConfig('lumina-luxe')
+    getPaymentConfig(effectiveSalonSlug)
       .then((config) => {
         if (active) setPayConfig(config);
       })
@@ -767,7 +788,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
     return () => {
       active = false;
     };
-  }, []);
+  }, [effectiveSalonSlug]);
 
   const promoDiscount = appliedPromo ? appliedPromo.discountAmount : 0;
   const totalEstimatedAmount = Math.max(0, treatmentPrice + distanceFee - promoDiscount);
@@ -897,7 +918,7 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
       if (created.payment?.required) {
         if (!payConfig) {
           try {
-            setPayConfig(await getPaymentConfig('lumina-luxe'));
+            setPayConfig(await getPaymentConfig(effectiveSalonSlug));
           } catch {
             // The checkout still works from the order's own provider details.
           }
@@ -1158,6 +1179,17 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
 
           {!isSubmitted ? (
             <form id="booking-form" onSubmit={handleFinalAction} className="p-6 sm:p-10 space-y-7" noValidate>
+              {!websitePublished && (
+                <div className="flex items-start gap-2.5 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900">
+                  <Lock className="w-4 h-4 shrink-0 mt-0.5 text-amber-700" />
+                  <div>
+                    <p className="font-bold">Preview Mode — Online Booking Locked</p>
+                    <p className="mt-0.5 leading-relaxed text-amber-800">
+                      Visitors can explore your booking steps and service pricing, while real client reservations activate automatically once your salon website is approved and published.
+                    </p>
+                  </div>
+                </div>
+              )}
               {/* Speak to Book Voice AI Bar */}
               <div className="p-4 rounded-2xl bg-[#FAF5E5] border border-[#D09A40]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-start gap-3">
@@ -2010,10 +2042,14 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
 
                       <button
                         type="submit"
-                        disabled={submitState === 'submitting'}
-                        className="action-base primary-action action-lg w-full sm:w-auto flex-1 sm:flex-none justify-center"
+                        disabled={!websitePublished || submitState === 'submitting'}
+                        className="action-base primary-action action-lg w-full sm:w-auto flex-1 sm:flex-none justify-center disabled:opacity-60 disabled:cursor-not-allowed"
                       >
-                        {submitState === 'submitting' ? (
+                        {!websitePublished ? (
+                          <>
+                            <Lock className="w-4 h-4" /> Booking activates on publish
+                          </>
+                        ) : submitState === 'submitting' ? (
                           <>
                             <Loader2 className="w-4 h-4 animate-spin" /> Reserving slot…
                           </>
@@ -2252,7 +2288,12 @@ export const BookingSection: React.FC<BookingSectionProps> = ({
         open={isCheckoutOpen && Boolean(checkoutBooking)}
         booking={checkoutBooking}
         config={payConfig}
-        theme={{ accent: '#D09A40', primary: '#0F172A', background: '#FAF5E5', surface: '#FFFFFF' }}
+        theme={{
+          accent: brand.theme?.accentColor || '#D09A40',
+          primary: brand.theme?.primaryColor || '#0F172A',
+          background: brand.theme?.bgColor || '#FAF5E5',
+          surface: brand.theme?.surfaceColor || '#FFFFFF',
+        }}
         onClose={handleCheckoutClose}
         onConfirmed={handlePaymentConfirmed}
       />

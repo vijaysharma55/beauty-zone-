@@ -174,7 +174,7 @@ describe('salon onboarding wizard', () => {
     change('Salon logo URL', 'https://example.com/logo.png');
     await waitFor(() => expect(next().disabled).toBe(false));
     fireEvent.click(next());
-    await screen.findByRole('heading', { name: 'Template & hours' });
+    await screen.findByRole('heading', { name: 'Opening hours' });
     const finish = screen.getByRole('button', { name: 'Finish setup' }) as HTMLButtonElement;
     await waitFor(() => expect(finish.disabled).toBe(false), { timeout: 3000 });
     change('Monday closing time', '09:00');

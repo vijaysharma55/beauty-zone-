@@ -41,8 +41,9 @@ import { useBrand } from './context/BrandContext';
 import { useAuth } from './context/AuthContext';
 import { isAdminRole } from './lib/roles.js';
 import { api, ApiError } from './lib/api';
-import type { PublicSalonResponse, SalonStaff } from './types/auth';
+import type { PublicSalonResponse, Salon, SalonService, SalonStaff } from './types/auth';
 import { Button } from './components/ui';
+import { SalonSite } from './components/site/SalonSite';
 import { SubdomainAwareHome } from './components/site/SubdomainResolver';
 import { PUBLIC_PATHS } from './publicPaths';
 import { homeStructuredData, SITE_ORIGIN } from './homeMetadata';
@@ -96,7 +97,7 @@ const WhiteLabelCustomizer = React.lazy(() => import('./components/WhiteLabelCus
 
 function MarketingSite() {
   const { brand, formatPrice, isCustomizerOpen } = useBrand();
-  const { user } = useAuth();
+  const { user, salon: authSalon, workflow } = useAuth();
   const navigate = useNavigate();
   const [services, setServices] = useState<ServiceItem[]>(() => getStoredServices());
   const [packages, setPackages] = useState<SalonPackage[]>(() => getStoredPackages());
@@ -105,7 +106,48 @@ function MarketingSite() {
   const [liveStaff, setLiveStaff] = useState<SalonStaff[] | null>(null);
   const [flagshipPublished, setFlagshipPublished] = useState<boolean>(true);
 
+  const isOwnerWithSalon = user?.role === 'salon_owner' && Boolean(authSalon);
+  const [ownerSalon, setOwnerSalon] = useState<Salon | null>(authSalon);
+  const [ownerServices, setOwnerServices] = useState<SalonService[]>([]);
+  const [ownerStaff, setOwnerStaff] = useState<SalonStaff[]>([]);
+
   useEffect(() => {
+    if (!isOwnerWithSalon || !authSalon) {
+      setOwnerSalon(null);
+      setOwnerServices([]);
+      setOwnerStaff([]);
+      return;
+    }
+    let cancelled = false;
+    setOwnerSalon(authSalon);
+    Promise.all([
+      api.get<{ salon: Salon }>('/salon'),
+      api.get<{ services: SalonService[] }>('/salon/services'),
+      api.get<{ staff: SalonStaff[] }>('/salon/staff'),
+    ])
+      .then(([salonRes, serviceRes, staffRes]) => {
+        if (cancelled) return;
+        setOwnerSalon(salonRes.salon);
+        setOwnerServices(serviceRes.services.filter((s) => s.active));
+        setOwnerStaff(
+          staffRes.staff
+            .filter((s) => s.active)
+            .map((s) => ({
+              ...s,
+              workPhotos: s.workPhotosConsent ? s.workPhotos : [],
+            }))
+        );
+      })
+      .catch(() => {
+        // Keep authSalon state if auxiliary fetch fails
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOwnerWithSalon, authSalon?.id, authSalon?.updatedAt]);
+
+  useEffect(() => {
+    if (isOwnerWithSalon) return;
     let cancelled = false;
     api
       .get<PublicSalonResponse>('/public/salons/lumina-luxe')
@@ -123,7 +165,7 @@ function MarketingSite() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isOwnerWithSalon]);
   /**
    * Pull the signed-in owner's published content from Supabase; localStorage
    * remains a durable fallback cache. Cloud and local catalogues are
@@ -315,6 +357,66 @@ function MarketingSite() {
     setPreselectedPromoCode(voucherCode);
     scrollToSection('booking');
   };
+
+  if (isOwnerWithSalon && ownerSalon) {
+    const statusLabel = ownerSalon.published && !ownerSalon.suspended
+      ? 'Live Website'
+      : (workflow?.status || ownerSalon.status) === 'pending'
+        ? 'Pending Approval'
+        : (workflow?.status || ownerSalon.status) === 'approved'
+          ? 'Approved · Ready to Publish'
+          : 'Draft Mode';
+
+    return (
+      <SalonSite
+        salon={ownerSalon}
+        services={ownerServices}
+        staff={ownerStaff}
+        staffPreviewMode={ownerSalon.published ? 'real' : 'demo'}
+        previewBanner={
+          <div className="border-b border-[#D09A40]/40 bg-[#0F172A] px-4 py-2.5 text-xs text-[#FAF5E5]">
+            <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-[#D09A40] px-2.5 py-0.5 text-[11px] font-bold text-[#0F172A]">
+                  {statusLabel}
+                </span>
+                <span>
+                  Viewing your main salon website (<strong>{ownerSalon.name}</strong>)
+                  {ownerSalon.published ? ` · Live at /salon/${ownerSalon.slug}` : ' · Edits from Dashboard reflect here automatically'}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  to="/dashboard/website"
+                  className="rounded-full bg-white/10 px-3 py-1 font-semibold hover:bg-white/20"
+                >
+                  Edit Website
+                </Link>
+                <Link
+                  to="/dashboard/services"
+                  className="rounded-full bg-white/10 px-3 py-1 font-semibold hover:bg-white/20"
+                >
+                  Services
+                </Link>
+                <Link
+                  to="/dashboard/staff"
+                  className="rounded-full bg-white/10 px-3 py-1 font-semibold hover:bg-white/20"
+                >
+                  Staff
+                </Link>
+                <Link
+                  to="/dashboard/preview"
+                  className="rounded-full bg-[#D09A40] px-3 py-1 font-bold text-[#0F172A] hover:bg-[#DCA54A]"
+                >
+                  Dashboard Preview
+                </Link>
+              </div>
+            </div>
+          </div>
+        }
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen w-full flex flex-col bg-[#FAF5E5] text-[#0F172A] selection:bg-[#D09A40] selection:text-[#0F172A] pb-16 lg:pb-0">

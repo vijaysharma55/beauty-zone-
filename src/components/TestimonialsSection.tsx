@@ -4,7 +4,7 @@ import { useBrand } from '../context/BrandContext';
 import { Testimonial } from '../types';
 
 export const TestimonialsSection: React.FC = () => {
-  const { brand, t, updateBrand } = useBrand();
+  const { brand, t, updateBrand, readOnly } = useBrand();
   const [reviews, setReviews] = useState<Testimonial[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [rating, setRating] = useState<number>(5);
@@ -12,10 +12,13 @@ export const TestimonialsSection: React.FC = () => {
   const [comment, setComment] = useState('');
 
   useEffect(() => {
-    // Load persisted reviews
-    const stored = localStorage.getItem('bz_testimonials');
+    if (readOnly) {
+      setReviews(brand.testimonials);
+      return;
+    }
+    const stored = typeof localStorage !== 'undefined' ? localStorage.getItem('bz_testimonials') : null;
     setReviews(stored ? JSON.parse(stored) : brand.testimonials);
-  }, [brand.testimonials]);
+  }, [brand.testimonials, readOnly]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,8 +33,10 @@ export const TestimonialsSection: React.FC = () => {
     };
     const updated = [newReview, ...reviews];
     setReviews(updated);
-    localStorage.setItem('bz_testimonials', JSON.stringify(updated));
-    updateBrand({ testimonials: updated });
+    if (!readOnly) {
+      localStorage.setItem('bz_testimonials', JSON.stringify(updated));
+      updateBrand({ testimonials: updated });
+    }
     setIsModalOpen(false);
     setClientName('');
     setComment('');

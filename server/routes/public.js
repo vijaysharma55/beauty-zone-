@@ -425,14 +425,11 @@ publicRouter.get('/slug-available', slugLimiter, (req, res) => {
   });
 });
 
-/** Approved-template catalogue for the customizer (no auth needed to read). */
+/** Main website layout metadata (single unified design). */
 publicRouter.get('/templates', (req, res) => {
   res.json({
     templates: [
-      { id: 'luxe', name: 'Luxe Gold', description: 'Rich navy + gold editorial layout with image-led hero.', premium: false },
-      { id: 'minimal', name: 'Minimal Ivory', description: 'Airy, typography-first layout for modern studios.', premium: false },
-      { id: 'noir', name: 'Noir Studio', description: 'High-contrast dark hero with bold service cards.', premium: true },
-      { id: 'blush', name: 'Blush Atelier', description: 'Soft rose palette with a gentle, romantic feel.', premium: false },
+      { id: 'luxe', name: 'Main Website', description: 'Unified BeautyZone salon website layout.', premium: false },
     ],
   });
 });

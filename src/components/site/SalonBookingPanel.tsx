@@ -72,10 +72,8 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
   onSelectStaffId,
 }) => {
   const isWebsiteLive = Boolean(salon.published && !salon.suspended);
-  const templateId = salon.templateId || 'luxe';
-  const panelRadius =
-    templateId === 'noir' ? 'rounded-none' : templateId === 'minimal' ? 'rounded-xl' : 'rounded-2xl';
-  const headingClass = templateId === 'minimal' ? 'font-sans font-semibold' : 'font-serif';
+  const panelRadius = 'rounded-2xl';
+  const headingClass = 'font-serif';
 
   const bookableServices = useMemo(() => {
     const activeReal = services.filter((s) => s.active);
@@ -392,7 +390,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
 
   const inputStyle: React.CSSProperties = {
     width: '100%',
-    borderRadius: templateId === 'noir' ? '0' : '0.75rem',
+    borderRadius: '0.75rem',
     border: `1px solid ${primary}22`,
     backgroundColor: background,
     color: primary,
@@ -591,7 +589,7 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
         <p className="mt-2 max-w-xl text-sm" style={{ color: `${primary}99` }}>
           {isWebsiteLive
             ? "Pick a service, select your preferred specialist and choose a time that suits you — we'll confirm by phone or WhatsApp."
-            : 'Preview how clients will browse your services and specialists across templates. Online booking activates automatically once your salon website is published.'}
+            : 'Preview how clients will browse your services and specialists. Online booking activates automatically once your salon website is published.'}
         </p>
 
         {!isWebsiteLive && (
@@ -688,7 +686,6 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
                 primary={primary}
                 background={background}
                 surface={surface}
-                templateId={templateId}
                 bookingDisabled={!isWebsiteLive}
                 anyLabel="Any Available Stylist"
                 anyDescription="Best match for your service"
@@ -950,7 +947,6 @@ export const SalonBookingPanel: React.FC<SalonBookingPanelProps> = ({
         profile={profileStaffData}
         selected={Boolean(profileStaff && staffId === profileStaff.id && isWebsiteLive)}
         websitePublished={isWebsiteLive}
-        templateId={templateId}
         accent={accent}
         primary={primary}
         background={background}

@@ -5,10 +5,11 @@ import { useBrand } from '../context/BrandContext';
 
 interface StylistChatModalProps {
   stylist: Stylist;
+  salonSlug?: string | null;
   onClose: () => void;
 }
 
-export const StylistChatModal: React.FC<StylistChatModalProps> = ({ stylist, onClose }) => {
+export const StylistChatModal: React.FC<StylistChatModalProps> = ({ stylist, salonSlug, onClose }) => {
   const { brand } = useBrand();
   const [formData, setFormData] = useState({
     name: '',
@@ -28,7 +29,7 @@ export const StylistChatModal: React.FC<StylistChatModalProps> = ({ stylist, onC
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          salonId: brand.domainSeo.subdomainSlug || 'default',
+          salonId: salonSlug || brand.domainSeo.subdomainSlug || 'default',
           stylistId: stylist.id,
           stylistName: stylist.name,
           userName: formData.name,
