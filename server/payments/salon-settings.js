@@ -146,7 +146,7 @@ function validateFixedPaise(value, field = 'Advance amount') {
  * advance type must carry a valid value (> ₹0, percent ≤ 100). A fixed amount
  * larger than a booking total is clamped to the total at checkout time.
  */
-export function validateSettingsPatch(body, current) {
+export function validateSettingsPatch(body, current, config = resolvePaymentConfig()) {
   const b = body && typeof body === 'object' ? body : {};
   const out = { ...current };
 
@@ -249,7 +249,7 @@ export function validateSettingsPatch(body, current) {
   // usable in this deployment. A configured-but-unverified provider is not
   // usable, and a production platform Razorpay account cannot receive a
   // salon's funds without a verified linked account.
-  const paymentConfig = resolvePaymentConfig();
+  const paymentConfig = config;
   const providerMode = out.verificationMode === 'provider';
   const linkedProviderReady = Boolean(
     out.providerAccountId && out.providerOnboardingStatus === 'verified'
