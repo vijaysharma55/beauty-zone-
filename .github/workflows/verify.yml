@@ -3,6 +3,15 @@ name: Pull request verification
 on:
   pull_request:
     branches: [main]
+  push:
+    branches:
+      - main
+      - fix/beautyzone-payment-dob-clean-pr
+      - feat/complete-supabase-operations-2026-11-03
+      - feature/nexora-salonos-landing
+      - fix/stylist-follow-ci-and-storage
+      - feat/promotion-studio
+      - fix/force-show-homepage-trending-reels
   workflow_dispatch:
 
 permissions:
@@ -27,10 +36,10 @@ jobs:
         run: |
           bun install --frozen-lockfile || bun install
       - name: Commit regenerated Bun lockfile
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_BRANCH: ${{ github.head_ref }}
+          PR_BRANCH: ${{ github.head_ref || github.ref_name }}
           REPOSITORY: ${{ github.repository }}
         run: |
           if ! git diff --quiet -- bun.lock; then
