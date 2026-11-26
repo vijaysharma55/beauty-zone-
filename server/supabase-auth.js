@@ -315,7 +315,9 @@ export async function verifySupabaseAccessToken(accessToken, { fresh = false, da
   // profile value; otherwise validate the signup metadata or the DOB supplied
   // to this authenticated session exchange and save it using the service role.
   const storedDobRaw = profile.date_of_birth;
-  let dob = normalizeDob(storedDobRaw);
+  const existingLocalUser = findUserById(identity.id) || findUserByEmail(email);
+  const existingLocalDob = normalizeDob(existingLocalUser?.date_of_birth);
+  let dob = normalizeDob(storedDobRaw) || existingLocalDob;
   if (storedDobRaw && !dob) {
     throw new HttpError(409, 'Your saved date of birth is invalid. Contact support to correct your profile.', 'DOB_PROFILE_INVALID');
   }
@@ -323,7 +325,7 @@ export async function verifySupabaseAccessToken(accessToken, { fresh = false, da
     let requestedDob;
     try {
       requestedDob = validateDob(
-        dateOfBirth || identity.user_metadata?.date_of_birth,
+        dateOfBirth || identity.user_metadata?.date_of_birth || existingLocalDob,
         { required: true }
       );
     } catch {
