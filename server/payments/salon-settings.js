@@ -146,7 +146,7 @@ function validateFixedPaise(value, field = 'Advance amount') {
  * advance type must carry a valid value (> ₹0, percent ≤ 100). A fixed amount
  * larger than a booking total is clamped to the total at checkout time.
  */
-export function validateSettingsPatch(body, current) {
+export function validateSettingsPatch(body, current, config = resolvePaymentConfig()) {
   const b = body && typeof body === 'object' ? body : {};
   const out = { ...current };
 
@@ -245,6 +245,30 @@ export function validateSettingsPatch(body, current) {
       throw new ValidationError('Complete provider linked-account onboarding and KYC before activating automatic payments');
     }
   }
+  // A required advance must have a collection channel that is actually
+  // usable in this deployment. A configured-but-unverified provider is not
+  // usable, and a production platform Razorpay account cannot receive a
+  // salon's funds without a verified linked account.
+  const paymentConfig = config;
+  const providerMode = out.verificationMode === 'provider';
+  const linkedProviderReady = Boolean(
+    out.providerAccountId && out.providerOnboardingStatus === 'verified'
+  );
+  const gatewayUsable = Boolean(
+    paymentConfig.available && out.gatewayEnabled &&
+      (!providerMode || linkedProviderReady) &&
+      (linkedProviderReady || process.env.NODE_ENV !== 'production')
+  );
+  const manualUpiUsable = Boolean(
+    out.manualUpiEnabled && !providerMode &&
+      out.upiId && isValidUpiVpa(out.upiId)
+  );
+  if (out.advanceEnabled && !gatewayUsable && !manualUpiUsable) {
+    throw new ValidationError(
+      'Required advance payments need an active payment channel. Enable a usable gateway or configure manual UPI, or turn off the advance requirement.'
+    );
+  }
+
   const anyMethod = PAYMENT_METHOD_KEYS.some((key) => out.methods[key]);
   if (!anyMethod) throw new ValidationError('Enable at least one payment method');
 

@@ -151,7 +151,7 @@ test('production gateway cannot collect into the ordinary platform account', () 
     assert.equal(resolveSalonChannels(salon, liveConfig).gateway, false);
     const linked = validateSettingsPatch({
       verificationMode: 'provider', providerAccountId: 'acc_SALON12345', providerOnboardingStatus: 'verified',
-    }, getSalonPaymentSettings(salon, liveConfig));
+    }, getSalonPaymentSettings(salon, liveConfig), liveConfig);
     saveSalonPaymentSettings(salon, linked);
     const channels = resolveSalonChannels(salon, liveConfig);
     assert.equal(channels.gateway, true);

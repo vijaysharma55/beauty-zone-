@@ -30,7 +30,7 @@ before(async () => {
       id: uid, email: 'bridge@example.test', email_confirmed_at: '2026-01-01T00:00:00Z',
       user_metadata: { name: 'Bridge Owner' }, app_metadata: { provider: 'email' },
     });
-    if (url.pathname === '/rest/v1/profiles') return send(200, [{ id: uid, email: 'bridge@example.test', name: 'Bridge Owner', role: 'salon_owner', status: 'active', email_verified: true }]);
+    if (url.pathname === '/rest/v1/profiles') return send(200, [{ id: uid, email: 'bridge@example.test', name: 'Bridge Owner', role: 'salon_owner', status: 'active', email_verified: true, date_of_birth: '1991-01-01' }]);
     if (url.pathname === '/rest/v1/onboarding_profiles') return send(200, row ? [row] : []);
     if (url.pathname === '/rest/v1/salons') {
       if (req.method === 'PATCH') {

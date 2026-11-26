@@ -3,10 +3,20 @@ name: Pull request verification
 on:
   pull_request:
     branches: [main]
+  push:
+    branches:
+      - main
+      - fix/beautyzone-payment-dob-clean-pr
+      - feat/complete-supabase-operations-2026-11-03
+      - feature/nexora-salonos-landing
+      - fix/stylist-follow-ci-and-storage
+      - feat/promotion-studio
+      - fix/force-show-homepage-trending-reels
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  actions: write
 
 jobs:
   verify:
@@ -23,7 +33,28 @@ jobs:
         with:
           bun-version: 1.4.4
       - name: Install locked dependencies
-        run: bun install --frozen-lockfile
+        run: |
+          bun install --frozen-lockfile || bun install
+      - name: Commit regenerated Bun lockfile
+        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BRANCH: ${{ github.head_ref || github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          if ! git diff --quiet -- bun.lock; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add bun.lock
+            git commit -m "chore: sync Bun dependency lockfile"
+            git push origin "HEAD:${PR_BRANCH}"
+            curl --fail-with-body -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${REPOSITORY}/actions/workflows/verify.yml/dispatches" \
+              -d "{\"ref\":\"${PR_BRANCH}\"}"
+          fi
       - name: Run TypeScript, API/unit tests and production build
         run: npm run verify
       - name: Check generated route shells

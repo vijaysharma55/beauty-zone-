@@ -205,7 +205,7 @@ function normalizeDob(rawDob) {
  * Verify a Supabase access token and return a fully trusted identity/role.
  * Throws HttpError with an actionable message on every failure path.
  */
-export async function verifySupabaseAccessToken(accessToken, { fresh = false } = {}) {
+export async function verifySupabaseAccessToken(accessToken, { fresh = false, dateOfBirth } = {}) {
   if (typeof accessToken !== 'string' || !accessToken.trim() || accessToken.length > 8192) {
     throw new HttpError(401, 'A valid Supabase access token is required.');
   }
@@ -310,6 +310,69 @@ export async function verifySupabaseAccessToken(accessToken, { fresh = false } =
     ? identity.identities.find((item) => item.provider === 'google')?.id || null
     : null;
 
+  // A salon-owner identity cannot receive an application session without a
+  // validated DOB persisted in the trusted profile row. Prefer an existing
+  // profile value; otherwise validate the signup metadata or the DOB supplied
+  // to this authenticated session exchange and save it using the service role.
+  const storedDobRaw = profile.date_of_birth;
+  const existingLocalUser = findUserById(identity.id) || findUserByEmail(email);
+  const existingLocalDob = normalizeDob(existingLocalUser?.date_of_birth);
+  let dob = normalizeDob(storedDobRaw) || existingLocalDob;
+  if (storedDobRaw && !dob) {
+    throw new HttpError(409, 'Your saved date of birth is invalid. Contact support to correct your profile.', 'DOB_PROFILE_INVALID');
+  }
+  if (role === 'salon_owner' && !normalizeDob(storedDobRaw)) {
+    let requestedDob;
+    try {
+      requestedDob = validateDob(
+        dateOfBirth || identity.user_metadata?.date_of_birth || existingLocalDob,
+        { required: true }
+      );
+    } catch {
+      throw new HttpError(
+        400,
+        'Date of birth is required before a new salon-owner account can continue. Open Create account, enter your date of birth, and retry Google sign-up.',
+        'DOB_REQUIRED'
+      );
+    }
+    if (!config.serviceRoleKey) {
+      throw new HttpError(
+        503,
+        'Date of birth was validated but could not be saved to your BeautyZone profile. Configure SUPABASE_SERVICE_ROLE_KEY and retry.',
+        'DOB_PROFILE_WRITE_UNAVAILABLE'
+      );
+    }
+    const dobWrite = await requestJson(
+      `${config.projectUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(identity.id)}&date_of_birth=is.null`,
+      {
+        method: 'PATCH',
+        headers: {
+          ...restHeaders(config.serviceRoleKey, config.serviceRoleKey),
+          'Content-Type': 'application/json',
+          Prefer: 'return=representation',
+        },
+        body: { date_of_birth: requestedDob },
+      }
+    );
+    if (!dobWrite.ok) {
+      throw new HttpError(
+        409,
+        dobWrite.data?.message || 'Could not save your date of birth to your BeautyZone profile. Please retry.',
+        'DOB_PROFILE_WRITE_FAILED'
+      );
+    }
+    const writtenRow = Array.isArray(dobWrite.data) ? dobWrite.data[0] : null;
+    dob = normalizeDob(writtenRow?.date_of_birth);
+    if (!dob) {
+      const refreshed = await readProfile(config, token, identity.id);
+      dob = normalizeDob(refreshed.row?.date_of_birth);
+    }
+    if (!dob) {
+      throw new HttpError(409, 'Your date of birth was not saved. Please retry sign-in.', 'DOB_PROFILE_WRITE_UNCONFIRMED');
+    }
+    profile = { ...profile, date_of_birth: dob };
+  }
+
   const value = {
     identityId: identity.id,
     email,
@@ -319,7 +382,7 @@ export async function verifySupabaseAccessToken(accessToken, { fresh = false } =
     provider,
     providerId,
     emailVerified: emailConfirmed,
-    dob: normalizeDob(profile.date_of_birth || identity.user_metadata?.date_of_birth || null),
+    dob,
   };
   if (!fresh) verifyCache.set(cacheKey, { value, expiresAt: Date.now() + VERIFY_CACHE_TTL_MS });
   return value;
@@ -346,6 +409,7 @@ export function syncLocalUser(verified, { touchLogin = false } = {}) {
       localUser.role !== verified.role ||
       localUser.auth_provider !== verified.provider ||
       Number(localUser.email_verified || 0) !== (verified.emailVerified ? 1 : 0) ||
+      (verified.dob && localUser.date_of_birth !== verified.dob) ||
       (touchLogin && !localUser.last_login_at);
     if (needsUpdate) {
       db.prepare(

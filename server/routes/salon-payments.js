@@ -95,7 +95,7 @@ salonPaymentsRouter.put('/payment-settings', (req, res) => {
   const body = { ...(req.body || {}) };
   // Owners may submit onboarding details, but cannot self-attest provider KYC.
   delete body.providerOnboardingStatus;
-  const candidate = validateSettingsPatch(body, current);
+  const candidate = validateSettingsPatch(body, current, resolvePaymentConfig());
   if (!current.manualUpiEnabled && candidate.manualUpiEnabled && body.confirmActivation !== true) {
     throw new HttpError(409, 'Confirm the salon name, UPI ID and QR preview before activating payments.', 'ACTIVATION_CONFIRMATION_REQUIRED');
   }
@@ -146,7 +146,7 @@ salonPaymentsRouter.put('/payment-methods', (req, res) => {
   for (const key of ['methods', 'upiId', 'paymentDisplayName', 'upiQrUrl', 'manualUpiEnabled', 'gatewayEnabled']) {
     if (b[key] !== undefined) patch[key] = b[key];
   }
-  const next = validateSettingsPatch(patch, current);
+  const next = validateSettingsPatch(patch, current, resolvePaymentConfig());
   saveSalonPaymentSettings(salon.id, next);
   audit(req, 'salon.payment_methods_updated', 'salon', salon.id, {
     manualUpiEnabled: next.manualUpiEnabled,

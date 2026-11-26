@@ -21,12 +21,15 @@ export const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
+  const today = new Date();
+  const maxDob = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
   if (user) {
     return <Navigate to={homeForAuthUser(user, Boolean(salon))} replace />;
@@ -35,6 +38,10 @@ export const RegisterPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!dateOfBirth) {
+      setError('Date of birth is required to create your salon owner account.');
+      return;
+    }
     if (!rules.every((r) => r.test(password))) {
       setError('Please choose a stronger password that meets all requirements below.');
       return;
@@ -45,7 +52,7 @@ export const RegisterPage: React.FC = () => {
     }
     setLoading(true);
     try {
-      const data = await register(name.trim(), email.trim(), password);
+      const data = await register(name.trim(), email.trim(), password, dateOfBirth);
       if (!data.user) {
         setNotice('Account request received. Open the confirmation link sent to ' + data.pendingEmail + ' to activate your account, then sign in.');
         return;
@@ -62,7 +69,11 @@ export const RegisterPage: React.FC = () => {
     setError('');
     setLoading(true);
     try {
-      const data = await loginWithGoogle(credential);
+      if (!dateOfBirth) {
+        setError('Enter your date of birth before continuing with Google sign-up.');
+        return;
+      }
+      const data = await loginWithGoogle(credential, dateOfBirth);
       navigate(data.salon ? '/dashboard' : '/dashboard/onboarding', { replace: true });
     } catch (err) {
       setError(errorMessage(err));
@@ -127,6 +138,19 @@ export const RegisterPage: React.FC = () => {
               className="pl-9"
             />
           </div>
+        </Field>
+
+        <Field label="Date of birth" htmlFor="dateOfBirth" required>
+          <Input
+            id="dateOfBirth"
+            type="date"
+            min="1900-01-01"
+            max={maxDob}
+            required
+            value={dateOfBirth}
+            onChange={(e) => setDateOfBirth(e.target.value)}
+            autoComplete="bday"
+          />
         </Field>
 
         <Field label="Password" htmlFor="password" required>

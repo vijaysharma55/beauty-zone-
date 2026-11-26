@@ -194,7 +194,7 @@ test('manual refund requires real reference and never claims automatic bank proc
 
 test('inactive QR cannot start new payments and delete preserves transaction history', async () => {
   const current = await api(ownerA).get('/api/salon/payment-settings');
-  const inactive = await api(ownerA).put('/api/salon/payment-settings', { manualUpiEnabled: false });
+  const inactive = await api(ownerA).put('/api/salon/payment-settings', { manualUpiEnabled: false, advanceEnabled: false });
   assert.equal(inactive.status, 200);
   assert.equal(inactive.data.settings.channels.manual, false);
   const publicConfig = await api(client()).get('/api/public/payments/config?salon=lumina-luxe');
