@@ -239,6 +239,14 @@ test('first-time Google owner sessions require a valid DOB and persist it to the
   assert.equal(allowed.status, 200, JSON.stringify(allowed.data));
   assert.equal(mockProfile.date_of_birth, '1993-08-12');
   assert.equal(allowed.data.user.dateOfBirth || allowed.data.user.date_of_birth, '1993-08-12');
+
+  // Existing Google identities with a trusted DOB may sign in without
+  // re-entering it. Only first-time profiles need the registration field.
+  const existingGoogleLogin = await request('POST', '/api/auth/supabase-session', {
+    accessToken: 'google-owner-existing-dob',
+  });
+  assert.equal(existingGoogleLogin.status, 200, JSON.stringify(existingGoogleLogin.data));
+  assert.equal(existingGoogleLogin.data.user.dateOfBirth || existingGoogleLogin.data.user.date_of_birth, '1993-08-12');
 });
 
 test('ALLOW_UNVERIFIED_EMAIL_LOGIN lets an unverified owner sign in, and stays off by default', async () => {
