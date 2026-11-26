@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Building2, CheckCircle2, Download, ImagePlus, Landmark, Loader2, QrCode, ShieldCheck, Trash2, UploadCloud } from 'lucide-react';
 import { api, errorMessage } from '../../lib/api';
 import { getOwnerPaymentSettings, saveOwnerPaymentSettings, type OwnerPaymentSettings } from '../../lib/ownerPayments';
@@ -16,6 +16,7 @@ const blank: OwnerPaymentSettings = {
 export const PaymentSettingsPage: React.FC = () => {
   const [settings, setSettings] = useState<OwnerPaymentSettings>(blank);
   const [loading, setLoading] = useState(true);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
@@ -24,9 +25,26 @@ export const PaymentSettingsPage: React.FC = () => {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    getOwnerPaymentSettings().then(setSettings).catch((err) => setError(errorMessage(err))).finally(() => setLoading(false));
+  const loadSettings = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const loaded = await getOwnerPaymentSettings();
+      setSettings(loaded);
+      setSettingsLoaded(true);
+    } catch (err) {
+      // Never allow the blank defaults to be saved over existing owner
+      // settings after a failed initial read.
+      setSettingsLoaded(false);
+      setError(errorMessage(err));
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadSettings();
+  }, [loadSettings]);
 
   const update = <K extends keyof OwnerPaymentSettings>(key: K, value: OwnerPaymentSettings[K]) =>
     setSettings((current) => ({ ...current, [key]: value }));
@@ -48,6 +66,10 @@ export const PaymentSettingsPage: React.FC = () => {
   };
 
   const save = async (confirmActivation = false) => {
+    if (!settingsLoaded) {
+      setError('Payment settings have not loaded. Retry loading before saving so existing settings are not overwritten.');
+      return;
+    }
     if (settings.verificationMode === 'static_qr' && settings.manualUpiEnabled && !settings.upiQrUrl) {
       setError('Upload your UPI QR before activating payments.'); return;
     }
@@ -78,6 +100,14 @@ export const PaymentSettingsPage: React.FC = () => {
   };
 
   if (loading) return <div className="flex justify-center py-24 text-slate-500"><Loader2 className="h-6 w-6 animate-spin" /></div>;
+  if (!settingsLoaded) {
+    return (
+      <div className="mx-auto max-w-xl space-y-4 py-12">
+        <Alert tone="error">{error || 'Payment settings could not be loaded. Your saved values have not been changed.'}</Alert>
+        <Button variant="secondary" onClick={() => void loadSettings()}>Retry loading payment settings</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
