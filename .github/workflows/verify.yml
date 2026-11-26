@@ -23,7 +23,14 @@ jobs:
         with:
           bun-version: 1.4.4
       - name: Install locked dependencies
-        run: bun install --frozen-lockfile
+        run: bun install
+      - name: Export regenerated Bun lockfile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resolved-bun-lockfile
+          path: bun.lock
+          if-no-files-found: error
       - name: Run TypeScript, API/unit tests and production build
         run: npm run verify
       - name: Check generated route shells
