@@ -95,6 +95,16 @@ before(async () => {
       res.end(JSON.stringify([mockProfile]));
       return;
     }
+    if (req.method === 'PATCH' && req.url.startsWith('/rest/v1/profiles')) {
+      let body = '';
+      req.on('data', (chunk) => { body += chunk; });
+      req.on('end', () => {
+        mockProfile = { ...mockProfile, ...JSON.parse(body || '{}') };
+        res.writeHead(200);
+        res.end(JSON.stringify([mockProfile]));
+      });
+      return;
+    }
     res.writeHead(404);
     res.end(JSON.stringify({ message: 'Mock Supabase endpoint not found.' }));
   });
@@ -127,6 +137,7 @@ async function startApi(extraEnv = {}) {
       DISABLE_HMR: 'true',
       SUPABASE_URL: `http://127.0.0.1:${mockPort}`,
       SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test_only',
+      SUPABASE_SERVICE_ROLE_KEY: 'service-role-test-only',
       SEED_ADMIN_EMAIL: 'admin@beautyzone.app',
       SEED_ADMIN_PASSWORD: 'Admin@12345',
       SEED_OWNER_EMAIL: 'owner@luminaluxe.in',
@@ -186,6 +197,44 @@ test('disabled and unverified Supabase identities cannot create application sess
   mockIdentity = { ...mockIdentity, email_confirmed_at: null, confirmed_at: null };
   const unverified = await request('POST', '/api/auth/supabase-session', { accessToken: 'unverified-test-access-token' });
   assert.equal(unverified.status, 403);
+});
+
+test('first-time Google owner sessions require a valid DOB and persist it to the trusted profile', async () => {
+  mockIdentity = {
+    ...mockIdentity,
+    app_metadata: { provider: 'google' },
+    user_metadata: { name: 'Google Owner' },
+    email_confirmed_at: '2026-01-01T00:00:00.000Z',
+    confirmed_at: '2026-01-01T00:00:00.000Z',
+  };
+  mockProfile = {
+    ...mockProfile,
+    name: 'Google Owner',
+    role: 'salon_owner',
+    status: 'active',
+    date_of_birth: null,
+  };
+
+  const missingDob = await request('POST', '/api/auth/supabase-session', {
+    accessToken: 'google-owner-without-dob',
+  });
+  assert.equal(missingDob.status, 400);
+  assert.equal(missingDob.data.code, 'DOB_REQUIRED');
+
+  const invalidDob = await request('POST', '/api/auth/supabase-session', {
+    accessToken: 'google-owner-invalid-dob',
+    dateOfBirth: '2026-02-30',
+  });
+  assert.equal(invalidDob.status, 400);
+  assert.equal(mockProfile.date_of_birth, null);
+
+  const allowed = await request('POST', '/api/auth/supabase-session', {
+    accessToken: 'google-owner-with-valid-dob',
+    dateOfBirth: '1993-08-12',
+  });
+  assert.equal(allowed.status, 200, JSON.stringify(allowed.data));
+  assert.equal(mockProfile.date_of_birth, '1993-08-12');
+  assert.equal(allowed.data.user.dateOfBirth || allowed.data.user.date_of_birth, '1993-08-12');
 });
 
 test('ALLOW_UNVERIFIED_EMAIL_LOGIN lets an unverified owner sign in, and stays off by default', async () => {
