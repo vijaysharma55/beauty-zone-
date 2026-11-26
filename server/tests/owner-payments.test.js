@@ -216,6 +216,17 @@ test('owner sets a fixed ₹200 advance; checkout charges ₹200 and computes th
   assert.equal(booking.data.payment.totalPaise, SERVICE_PRICE_PAISE);
 });
 
+test('owner cannot require an advance without an active payment channel', async () => {
+  const owner = await loginOwner();
+  const result = await owner.put('/api/salon/payment-settings', {
+    advanceEnabled: true,
+    gatewayEnabled: false,
+    manualUpiEnabled: false,
+  });
+  assert.equal(result.status, 400, JSON.stringify(result.data));
+  assert.match(result.data.error || '', /active payment channel/i);
+});
+
 test('customer cannot manipulate the advance amount from the frontend', async () => {
   // Client tries to pay only ₹1 by forging amount/advance fields.
   const booking = await createBooking({ amountPaise: 100, advancePaise: 100, advancePaid: true, status: 'confirmed' });
