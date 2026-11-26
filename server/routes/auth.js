@@ -179,7 +179,7 @@ authRouter.post(
 
     // Verify the token with Supabase Auth and resolve RBAC from the trusted
     // public.profiles row. This is the ONLY place application roles come from.
-    const verified = await verifySupabaseAccessToken(accessToken, { fresh: true });
+    const verified = await verifySupabaseAccessToken(accessToken, { fresh: true, dateOfBirth: req.body?.dateOfBirth ?? req.body?.dob });
     if (!verified) {
       throw new HttpError(401, 'Phone sign-ins are for customer appointments only. Use an email admin account.');
     }
@@ -219,7 +219,7 @@ function portalSessionHandler(portal, { adminAllowed }) {
     if (!accessToken || accessToken.length > 8192) {
       throw new ValidationError('A valid Supabase access token is required.');
     }
-    const verified = await verifySupabaseAccessToken(accessToken, { fresh: true });
+    const verified = await verifySupabaseAccessToken(accessToken, { fresh: true, dateOfBirth: req.body?.dateOfBirth ?? req.body?.dob });
     if (!verified) {
       throw new HttpError(401, 'This sign-in method is not available for this portal.');
     }
@@ -584,18 +584,29 @@ authRouter.post(
       } else if (user.google_sub !== profile.sub) {
         throw new HttpError(409, 'This email is already linked to a different Google account.');
       }
+      // Existing Google accounts with a saved DOB continue without re-entry.
+      if (user.role === 'salon_owner' && !user.date_of_birth) {
+        const dateOfBirth = validateDob(req.body?.dateOfBirth ?? req.body?.dob, { required: true });
+        db.prepare('UPDATE users SET date_of_birth = ?, updated_at = ? WHERE id = ? AND date_of_birth IS NULL')
+          .run(dateOfBirth, nowIso(), user.id);
+        user = findUserById(user.id);
+        if (!user?.date_of_birth) {
+          throw new HttpError(409, 'Date of birth could not be saved. Please retry Google sign-in.', 'DOB_PROFILE_WRITE_FAILED');
+        }
+      }
     } else {
       const settings = getSettings();
       if (settings.allowRegistrations === false) {
         return res.status(403).json({ error: 'New registrations are currently closed. Please contact support.' });
       }
+      const dateOfBirth = validateDob(req.body?.dateOfBirth ?? req.body?.dob, { required: true });
       const id = newId();
       const ts = nowIso();
       db.prepare(
         `INSERT INTO users (id, email, password_hash, auth_provider, google_sub, name, role, status,
-           email_verified, email_verified_at, created_at, updated_at)
-         VALUES (?, ?, NULL, 'google', ?, ?, 'salon_owner', 'active', 1, ?, ?, ?)`
-      ).run(id, profile.email, profile.sub, profile.name.slice(0, 120), ts, ts, ts);
+           email_verified, email_verified_at, date_of_birth, created_at, updated_at)
+         VALUES (?, ?, NULL, 'google', ?, ?, 'salon_owner', 'active', 1, ?, ?, ?, ?)`
+      ).run(id, profile.email, profile.sub, profile.name.slice(0, 120), ts, dateOfBirth, ts, ts);
       user = findUserById(id);
     }
 
