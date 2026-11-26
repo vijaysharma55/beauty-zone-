@@ -245,6 +245,30 @@ export function validateSettingsPatch(body, current) {
       throw new ValidationError('Complete provider linked-account onboarding and KYC before activating automatic payments');
     }
   }
+  // A required advance must have a collection channel that is actually
+  // usable in this deployment. A configured-but-unverified provider is not
+  // usable, and a production platform Razorpay account cannot receive a
+  // salon's funds without a verified linked account.
+  const paymentConfig = resolvePaymentConfig();
+  const providerMode = out.verificationMode === 'provider';
+  const linkedProviderReady = Boolean(
+    out.providerAccountId && out.providerOnboardingStatus === 'verified'
+  );
+  const gatewayUsable = Boolean(
+    paymentConfig.available && out.gatewayEnabled &&
+      (!providerMode || linkedProviderReady) &&
+      (linkedProviderReady || process.env.NODE_ENV !== 'production')
+  );
+  const manualUpiUsable = Boolean(
+    out.manualUpiEnabled && !providerMode &&
+      out.upiId && isValidUpiVpa(out.upiId)
+  );
+  if (out.advanceEnabled && !gatewayUsable && !manualUpiUsable) {
+    throw new ValidationError(
+      'Required advance payments need an active payment channel. Enable a usable gateway or configure manual UPI, or turn off the advance requirement.'
+    );
+  }
+
   const anyMethod = PAYMENT_METHOD_KEYS.some((key) => out.methods[key]);
   if (!anyMethod) throw new ValidationError('Enable at least one payment method');
 
