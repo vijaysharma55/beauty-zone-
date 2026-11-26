@@ -104,7 +104,7 @@ export const PaymentSettingsPage: React.FC = () => {
     return (
       <div className="mx-auto max-w-xl space-y-4 py-12">
         <Alert tone="error">{error || 'Payment settings could not be loaded. Your saved values have not been changed.'}</Alert>
-        <Button variant="secondary" onClick={() => void loadSettings()}>Retry loading payment settings</Button>
+        <Button onClick={() => void loadSettings()}>Retry loading payment settings</Button>
       </div>
     );
   }
