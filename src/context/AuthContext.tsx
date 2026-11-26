@@ -24,8 +24,8 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<AuthResponse>;
   /** Super admin portal sign-in. Refuses salon owner accounts server-side. */
   adminLogin: (email: string, password: string) => Promise<AuthResponse>;
-  register: (name: string, email: string, password: string) => Promise<RegisterResult>;
-  loginWithGoogle: (credential: string) => Promise<AuthResponse>;
+  register: (name: string, email: string, password: string, dateOfBirth: string) => Promise<RegisterResult>;
+  loginWithGoogle: (credential: string, dateOfBirth?: string) => Promise<AuthResponse>;
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
   refresh: () => Promise<AuthResponse | null>;
@@ -128,11 +128,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const syncAccessToken = useCallback(async (
     rawToken: string,
-    portal: AuthPortal | 'session' = 'session'
+    portal: AuthPortal | 'session' = 'session',
+    dateOfBirth?: string
   ): Promise<AuthResponse> => {
     const accessToken = String(rawToken || '').trim();
     if (!accessToken) throw new Error('Sign-in did not create a valid session. Please try again.');
-    const cacheKey = `${portal}:${accessToken}`;
+    const cacheKey = `${portal}:${accessToken}:${dateOfBirth || ''}`;
     const pending = syncInFlight.current.get(cacheKey);
     if (pending) return pending;
 
@@ -141,7 +142,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const endpoint =
       portal === 'session' ? '/auth/supabase-session' : `/auth/${portal}/supabase-session`;
     const sequence = ++latestSyncSeq.current;
-    const task = api.post<AuthResponse>(endpoint, { accessToken })
+    const task = api.post<AuthResponse>(endpoint, { accessToken, ...(dateOfBirth ? { dateOfBirth } : {}) })
       .then((data) => {
         if (!data?.user?.role) {
           throw new Error('Your account role could not be verified. Please contact support.');
@@ -350,19 +351,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [signInToPortal]
   );
 
-  const register = useCallback(async (name: string, email: string, password: string): Promise<RegisterResult> => {
+  const register = useCallback(async (name: string, email: string, password: string, dateOfBirth: string): Promise<RegisterResult> => {
     let result;
     try {
-      result = await supabase.auth.signUp(email.trim().toLowerCase(), password, name.trim());
+      result = await supabase.auth.signUp(email.trim().toLowerCase(), password, name.trim(), dateOfBirth);
     } catch (err) {
       throw friendlyAuthError(err);
     }
-    if (result.session?.access_token) return syncAccessToken(result.session.access_token, 'owner');
+    if (result.session?.access_token) return syncAccessToken(result.session.access_token, 'owner', dateOfBirth);
     apply(null);
     return { user: null, emailVerificationSent: true, pendingEmail: email.trim().toLowerCase() };
   }, [apply, syncAccessToken]);
 
-  const loginWithGoogle = useCallback(async (credential: string) => {
+  const loginWithGoogle = useCallback(async (credential: string, dateOfBirth?: string) => {
     let result;
     try {
       result = await supabase.auth.signInWithIdToken('google', credential);
@@ -370,7 +371,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw friendlyAuthError(err);
     }
     if (!result.session?.access_token) throw new Error('Google sign-in did not create a valid session.');
-    return syncAccessToken(result.session.access_token, 'owner');
+    return syncAccessToken(result.session.access_token, 'owner', dateOfBirth);
   }, [syncAccessToken]);
 
   const logout = useCallback(async () => {
