@@ -202,6 +202,8 @@ test('disabled and unverified Supabase identities cannot create application sess
 test('first-time Google owner sessions require a valid DOB and persist it to the trusted profile', async () => {
   mockIdentity = {
     ...mockIdentity,
+    id: '20000000-0000-4000-8000-000000000002',
+    email: 'first-time-google-owner@example.com',
     app_metadata: { provider: 'google' },
     user_metadata: { name: 'Google Owner' },
     email_confirmed_at: '2026-01-01T00:00:00.000Z',
@@ -209,6 +211,8 @@ test('first-time Google owner sessions require a valid DOB and persist it to the
   };
   mockProfile = {
     ...mockProfile,
+    id: '20000000-0000-4000-8000-000000000002',
+    email: 'first-time-google-owner@example.com',
     name: 'Google Owner',
     role: 'salon_owner',
     status: 'active',
