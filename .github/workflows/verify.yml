@@ -6,7 +6,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  actions: write
 
 jobs:
   verify:
@@ -23,14 +24,28 @@ jobs:
         with:
           bun-version: 1.4.4
       - name: Install locked dependencies
-        run: bun install
-      - name: Export regenerated Bun lockfile
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: resolved-bun-lockfile
-          path: bun.lock
-          if-no-files-found: error
+        run: |
+          bun install --frozen-lockfile || bun install
+      - name: Commit regenerated Bun lockfile
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BRANCH: ${{ github.head_ref }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          if ! git diff --quiet -- bun.lock; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add bun.lock
+            git commit -m "chore: sync Bun dependency lockfile"
+            git push origin "HEAD:${PR_BRANCH}"
+            curl --fail-with-body -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${REPOSITORY}/actions/workflows/verify.yml/dispatches" \
+              -d "{\"ref\":\"${PR_BRANCH}\"}"
+          fi
       - name: Run TypeScript, API/unit tests and production build
         run: npm run verify
       - name: Check generated route shells
