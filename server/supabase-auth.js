@@ -321,7 +321,7 @@ export async function verifySupabaseAccessToken(accessToken, { fresh = false, da
   if (storedDobRaw && !dob) {
     throw new HttpError(409, 'Your saved date of birth is invalid. Contact support to correct your profile.', 'DOB_PROFILE_INVALID');
   }
-  if (role === 'salon_owner' && !dob) {
+  if (role === 'salon_owner' && !normalizeDob(storedDobRaw)) {
     let requestedDob;
     try {
       requestedDob = validateDob(
